@@ -1,13 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Param,
-  Patch,
-  Post,
-  Query,
-  Req,
-} from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Req} from '@nestjs/common';
 
 import { ConversationService } from './conversation.service';
 
@@ -22,15 +13,10 @@ export class ConversationController {
   ) {}
 
   @Post()
-  async create(
-    @Body() dto: CreateConversationDto,
-    @Req() req: any,
-  ) {
-    const userId =
-      req.user._id.toString();
+  async create( @Body() dto: CreateConversationDto, @Req() req: any,) {
+    const userId = req.user._id.toString();
 
-    const conversation =
-      await this.conversationsService.create(
+    const conversation = await this.conversationsService.create(
         dto,
         userId,
       );
@@ -40,25 +26,17 @@ export class ConversationController {
     };
   }
 
-  // GET /conversations
   @Get()
-  async findAll(
-    @Req() req: any,
-  ) {
-    const userId =
-      req.user._id.toString();
+  async findAll(@Req() req: any) {
+    const userId = req.user._id.toString();
 
-    const conversations =
-      await this.conversationsService.findAll(
-        userId,
-      );
+    const conversations = await this.conversationsService.findAll(userId);
 
     return {
       conversations,
     };
   }
 
-  // GET /conversations/:id/messages
   @Get(':conversationId/messages')
   async getMessages(
     @Param('conversationId')
@@ -72,8 +50,7 @@ export class ConversationController {
 
     @Req() req?: any,
   ) {
-    const userId =
-      req.user._id.toString();
+    const userId = req.user._id.toString();
 
     return this.conversationsService.getMessages(
       conversationId,
@@ -83,7 +60,6 @@ export class ConversationController {
     );
   }
 
-  // PATCH /conversations/:id/seen
   @Patch(':conversationId/seen')
   async markAsSeen(
     @Param('conversationId')
@@ -91,16 +67,11 @@ export class ConversationController {
 
     @Req() req: any,
   ) {
-    const userId =
-      req.user._id.toString();
+    const userId = req.user._id.toString();
 
-    return this.conversationsService.markAsSeen(
-      conversationId,
-      userId,
-    );
+    return this.conversationsService.markAsSeen(conversationId, userId);
   }
 
-  // PATCH /conversations/:id
   @Patch(':conversationId')
   async update(
     @Param('conversationId')
@@ -110,8 +81,7 @@ export class ConversationController {
 
     @Req() req: any,
   ) {
-    const userId =
-      req.user._id.toString();
+    const userId = req.user._id.toString();
 
     return this.conversationsService.update(
       conversationId,
@@ -120,7 +90,6 @@ export class ConversationController {
     );
   }
 
-  // POST /conversations/:id/participants
   @Post(':conversationId/participants')
   async addParticipants(
     @Param('conversationId')
@@ -130,8 +99,7 @@ export class ConversationController {
 
     @Req() req: any,
   ) {
-    const userId =
-      req.user._id.toString();
+    const userId = req.user._id.toString();
 
     return this.conversationsService.addParticipants(
       conversationId,

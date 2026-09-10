@@ -7,6 +7,7 @@ import { Message, MessageDocument } from '../messages/schemas/message.schema';
 import { AddParticipantDto } from './dto/add.participant.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
 
+
 @Injectable()
 export class ConversationService {
     constructor(
@@ -224,51 +225,37 @@ export class ConversationService {
 
     async markAsSeen(conversationId: string, userId: string) {
         if (!Types.ObjectId.isValid(conversationId)) {
-        throw new BadRequestException('Conversation ID không hợp lệ');
+            throw new BadRequestException('Conversation ID không hợp lệ');
         }
 
-        const userObjectId =
-        new Types.ObjectId(userId);
+        const userObjectId = new Types.ObjectId(userId);
 
-        const conversation =
-        await this.conversationModel
+        const conversation = await this.conversationModel
             .findOne({
-            _id: new Types.ObjectId(
-                conversationId,
-            ),
-
-            'participants.userId': userObjectId,
+                _id: new Types.ObjectId(conversationId),
+                'participants.userId': userObjectId,
             })
             .lean();
 
         if (!conversation) {
-        throw new NotFoundException(
-            'Conversation không tồn tại hoặc bạn không có quyền',
-        );
+            throw new NotFoundException('Conversation không tồn tại hoặc bạn không có quyền');
         }
 
-        const lastMessage =
-        conversation.lastMessage;
+        const lastMessage = conversation.lastMessage;
 
         if (!lastMessage) {
-        return {
-            message:
-            'Không có tin nhắn cần đánh dấu đã xem',
-        };
+            return {
+                message:'Không có tin nhắn cần đánh dấu đã xem',
+            };
         }
 
-        if (
-        lastMessage.senderId?.toString() ===
-        userId
-        ) {
-        return {
-            message:
-            'Người gửi không cần đánh dấu đã xem',
-        };
+        if (lastMessage.senderId?.toString() === userId) {
+            return {
+                message:'Người gửi không cần đánh dấu đã xem'
+            };
         }
 
-        const updated =
-        await this.conversationModel.findByIdAndUpdate(
+        const updated = await this.conversationModel.findByIdAndUpdate(
             conversationId,
             {
             $addToSet: {
@@ -390,64 +377,40 @@ export class ConversationService {
         );
     }
 
-    private formatConversation(
-        conversation: ConversationDocument,
-    ) {
-        const object =
-        conversation.toObject();
+    private formatConversation(conversation: ConversationDocument) {
 
-        const participants =
-        (conversation.participants || []).map(
+        const object = conversation.toObject();
+
+        const participants = (conversation.participants || []).map(
             (participant: any) => ({
-            _id:
-                participant.userId?._id,
-
-            displayName:
-                participant.userId?.displayName,
-
-            avatarUrl:
-                participant.userId?.avatarUrl ??
-                null,
-
-            joinedAt:
-                participant.joinedAt,
+                _id: participant.userId?._id,
+                displayName:participant.userId?.displayName,
+                avatarUrl:participant.userId?.avatarUrl ?? null,
+                joinedAt:participant.joinedAt,
             }),
         );
 
         return {
-        ...object,
-        participants,
-        unreadCounts:
-            conversation.unreadCounts || {},
+            ...object,
+            participants,
+            unreadCounts:conversation.unreadCounts || {},
         };
     }
 
-    private formatLeanConversation(
-        conversation: any,
-    ) {
-        const participants =
-        (conversation.participants || []).map(
+    private formatLeanConversation(conversation: any,) {
+        const participants = (conversation.participants || []).map(
             (participant: any) => ({
-            _id:
-                participant.userId?._id,
-
-            displayName:
-                participant.userId?.displayName,
-
-            avatarUrl:
-                participant.userId?.avatarUrl ??
-                null,
-
-            joinedAt:
-                participant.joinedAt,
+                _id: participant.userId?._id,
+                displayName:participant.userId?.displayName,
+                avatarUrl:participant.userId?.avatarUrl ?? null,
+                joinedAt:participant.joinedAt,
             }),
         );
 
         return {
-        ...conversation,
-        participants,
-        unreadCounts:
-            conversation.unreadCounts || {},
+            ...conversation,
+            participants,
+            unreadCounts:conversation.unreadCounts || {},
         };
     }
 }
