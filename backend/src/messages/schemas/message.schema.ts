@@ -33,6 +33,9 @@ export class Message {
     type: String,
   })
   imgUrl?: string;
+
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export const MessageSchema = SchemaFactory.createForClass(Message);
