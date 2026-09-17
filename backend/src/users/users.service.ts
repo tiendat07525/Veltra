@@ -44,9 +44,6 @@ export class UsersService {
             throw new BadRequestException("Username không hợp lệ")
         }
         const user = await this.userModel.findOne({ username })
-        if (!user) {
-            throw new NotFoundException(`User không tồn tại`)
-        }
         return user
     }
 
