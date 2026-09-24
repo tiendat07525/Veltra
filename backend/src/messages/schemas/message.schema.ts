@@ -34,6 +34,8 @@ export class Message {
   })
   imgUrl?: string;
 
+  isPinned: Boolean;
+
   createdAt: Date;
   updatedAt: Date;
 }

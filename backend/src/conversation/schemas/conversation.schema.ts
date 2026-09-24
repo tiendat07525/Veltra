@@ -20,6 +20,11 @@ export class Participant {
     default: Date.now,
   })
   joinedAt: Date;
+
+  @Prop({
+    enum: ['admin', 'member']
+  })
+  role: string
 }
 
 //========================================================================================

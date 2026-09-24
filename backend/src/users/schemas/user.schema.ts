@@ -46,6 +46,14 @@ export class User {
         sparse: true
     })
     phone: string
+
+    @Prop({
+        default: 'Offline',
+        enum: ['Online', 'Offline', 'Unvailable']
+    })
+    onlineStatus: string
+
+    lastSeen: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

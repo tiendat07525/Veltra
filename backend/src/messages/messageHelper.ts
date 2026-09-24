@@ -5,7 +5,7 @@ export const updateConversationAfterCreateMessage = (
     senderId,
 ) => {
     conversation.set({
-        seendBy: [],
+        seenBy: [],
         lastMessageAt: message.createdAt,
         lastMessage: {
             _id: message._id,
@@ -15,12 +15,20 @@ export const updateConversationAfterCreateMessage = (
         },
     });
 
-    conversation.participant.forEach((p) => {
-        const memberId = p.userId?.toString()
-        const isSender = memberId === senderId?.toString();
-        const prevCount = conversation.unreadCounts?.get(memberId) || 0
+    if (!conversation.unreadCounts) {
+        conversation.unreadCounts = new Map();
+    }
 
-        conversation.unreadCounts.set(memberId, isSender ? 0 : prevCount+1);
+    const participants = conversation.participants || [];
+    participants.forEach((p) => {
+        const memberId = p.userId?.toString();
+        if (!memberId) return;
+        const isSender = memberId === senderId?.toString();
+        const prevCount = conversation.unreadCounts?.get ? (conversation.unreadCounts.get(memberId) || 0) : 0;
+
+        if (conversation.unreadCounts?.set) {
+            conversation.unreadCounts.set(memberId, isSender ? 0 : prevCount + 1);
+        }
     });
 }
 

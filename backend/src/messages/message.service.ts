@@ -10,6 +10,8 @@ import { emitNewMessage, updateConversationAfterCreateMessage } from "./messageH
 import { isObject } from "class-validator";
 import { NotFoundException } from "@nestjs/common";
 
+import { RealtimeService } from "src/realtime/realtime.service";
+
 @Injectable()
 export class MessageService {
     constructor(
@@ -17,6 +19,7 @@ export class MessageService {
         private readonly messageModel: Model<MessageDocument>,
         @InjectModel(Conversation.name)
         private readonly conversationModel: Model<ConversationDocument>,
+        private readonly realtimeService: RealtimeService,
     ){}
 
     async sendDirectMessage(dto: CreateMessageDto, userId: string){
@@ -63,11 +66,37 @@ export class MessageService {
 
             await conversation.save()
 
-            //emitNewMessage(io, conversation, message); cài socket mới dùng đc
+            // Emit realtime message:new to participants' private user rooms
+            const rawMessage = message.toObject ? message.toObject() : message;
+            const messagePayload = {
+                _id: rawMessage._id.toString(),
+                conversationId: conversation._id.toString(),
+                senderId: senderId.toString(),
+                content: rawMessage.content,
+                createdAt: rawMessage.createdAt,
+                updatedAt: rawMessage.updatedAt,
+            };
+
+            const conversationPayload = {
+                _id: conversation._id.toString(),
+                lastMessage: conversation.lastMessage,
+                lastMessageAt: conversation.lastMessageAt,
+            };
+
+            conversation.participants?.forEach((p) => {
+                const memberId = p.userId?.toString();
+                if (memberId) {
+                    this.realtimeService.emitToUser(memberId, 'message:new', {
+                        message: messagePayload,
+                        conversation: conversationPayload,
+                    });
+                }
+            });
 
             return {
                 success: true,
-                message: 'Thành công'
+                message: 'Thành công',
+                data: messagePayload,
             }
         } catch (error) {
             console.error('Lỗi gửi tin nhắn trực tiếp: ', error)
