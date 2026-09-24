@@ -1,37 +1,56 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Camera, Check, User, Mail, Phone, MapPin, Sparkles } from 'lucide-react';
-import { CURRENT_USER } from '@/data/mock/users';
 import { UserAvatar } from '@/components/ui/UserAvatar';
+import { authService } from '@/services/api/auth.service';
+import { userService } from '@/services/api/user.service';
 
 interface ProfileViewProps {
   onShowToast: (message: string, type?: 'success' | 'info' | 'error') => void;
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({ onShowToast }) => {
-  const [displayName, setDisplayName] = useState(CURRENT_USER.displayName);
-  const [username, setUsername] = useState(CURRENT_USER.username);
-  const [bio, setBio] = useState(CURRENT_USER.bio || 'Product Designer & Frontend Engineer building Veltra.');
-  const [email, setEmail] = useState(CURRENT_USER.email);
+  const [displayName, setDisplayName] = useState('');
+  const [username, setUsername] = useState('');
+  const [bio, setBio] = useState('Product Designer & Frontend Engineer building Veltra.');
+  const [email, setEmail] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('+1 (555) 349-2918');
-  const [location, setLocation] = useState(CURRENT_USER.location || 'San Francisco, CA');
-  const [avatar, setAvatar] = useState(CURRENT_USER.avatar);
+  const [location, setLocation] = useState('San Francisco, CA');
+  const [avatar, setAvatar] = useState('');
 
-  const handleSave = (e: React.FormEvent) => {
+  useEffect(() => {
+    authService.getCurrentUser().then((u) => {
+        if (u) {
+            setDisplayName(u.displayName || '');
+            setUsername(u.username || '');
+            setBio(u.bio || '');
+            setEmail(u.email || '');
+            setPhoneNumber(u.phone || '');
+            setAvatar(u.avatarUrl || '');
+        }
+    });
+  }, []);
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    onShowToast('Profile settings saved successfully!', 'success');
+    try {
+        await userService.updateProfile({ displayName, bio, phone: phoneNumber } as any);
+        onShowToast('Lưu cài đặt hồ sơ thành công!', 'success');
+    } catch (err) {
+        onShowToast('Lưu cài đặt hồ sơ thất bại.', 'error');
+    }
   };
 
   const handleRandomAvatar = () => {
     const randomSeed = Math.floor(Math.random() * 1000);
     const newAvatar = `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80&sig=${randomSeed}`;
     setAvatar(newAvatar);
-    onShowToast('Avatar updated. Click save to persist.', 'info');
+    onShowToast('Đã cập nhật ảnh đại diện. Nhấp lưu để áp dụng.', 'info');
   };
 
   return (
     <div className="flex-1 h-full flex flex-col bg-slate-50 dark:bg-slate-950 overflow-hidden">
       <header className="h-16 px-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center shrink-0">
-        <h1 className="text-xl font-bold text-slate-900 dark:text-white">Account Profile</h1>
+        <h1 className="text-xl font-bold text-slate-900 dark:text-white">Hồ sơ tài khoản</h1>
       </header>
 
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
@@ -49,7 +68,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onShowToast }) => {
                 type="button"
                 onClick={handleRandomAvatar}
                 className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                title="Change Avatar"
+                title="Thay đổi ảnh đại diện"
               >
                 <Camera className="w-6 h-6" />
               </button>
@@ -63,7 +82,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onShowToast }) => {
                 onClick={handleRandomAvatar}
                 className="mt-2.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
               >
-                Change Avatar Photo
+                Thay đổi ảnh đại diện
               </button>
             </div>
           </div>
@@ -73,7 +92,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onShowToast }) => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Display Name
+                  Tên hiển thị
                 </label>
                 <div className="relative">
                   <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -89,7 +108,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onShowToast }) => {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Username
+                  Tên người dùng
                 </label>
                 <div className="relative">
                   <span className="text-xs text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 font-semibold">@</span>
@@ -106,7 +125,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onShowToast }) => {
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                Bio & Status Message
+                Tiểu sử & Trạng thái
               </label>
               <textarea
                 rows={3}
@@ -119,7 +138,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onShowToast }) => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Email Address
+                  Địa chỉ email
                 </label>
                 <div className="relative">
                   <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -134,7 +153,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onShowToast }) => {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Phone Number
+                  Số điện thoại
                 </label>
                 <div className="relative">
                   <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -150,7 +169,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onShowToast }) => {
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                Location
+                Vị trí
               </label>
               <div className="relative">
                 <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -169,7 +188,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onShowToast }) => {
                 className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold shadow-md shadow-sky-600/30 transition-all hover:scale-102 active:scale-98"
               >
                 <Check className="w-4 h-4" />
-                <span>Save Profile</span>
+                <span>Lưu hồ sơ</span>
               </button>
             </div>
           </form>

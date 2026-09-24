@@ -39,7 +39,7 @@ export const CallModal: React.FC<CallModalProps> = ({
         {/* Background glow */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
 
-        {/* Video feed mock or Avatar */}
+        {/* Video feed placeholder (Frontend Only) */}
         {type === 'video' && !isVideoOff ? (
           <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-slate-800 border border-slate-700/60 mb-6 shadow-inner flex items-center justify-center">
             <img
@@ -56,7 +56,7 @@ export const CallModal: React.FC<CallModalProps> = ({
 
             {/* Self preview PIP */}
             <div className="absolute bottom-3 right-3 w-28 h-20 bg-slate-950/80 rounded-xl border border-white/20 overflow-hidden flex items-center justify-center text-[10px] text-slate-300">
-              <span>You</span>
+              <span>Bạn</span>
             </div>
           </div>
         ) : (
@@ -73,7 +73,7 @@ export const CallModal: React.FC<CallModalProps> = ({
 
         <h2 className="text-2xl font-bold text-white tracking-tight mb-1">{contactName}</h2>
         <p className="text-xs text-sky-400 font-medium tracking-wide uppercase mb-3">
-          {type === 'video' ? 'Encrypted Video Call' : 'Encrypted Audio Call'}
+          {type === 'video' ? 'Cuộc gọi video bảo mật' : 'Cuộc gọi thoại bảo mật'}
         </p>
 
         <div className="px-4 py-1.5 rounded-full bg-slate-800/80 border border-slate-700 text-sm font-mono text-slate-200 mb-8">
@@ -90,7 +90,7 @@ export const CallModal: React.FC<CallModalProps> = ({
                 ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
                 : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
             }`}
-            title={isMuted ? 'Unmute' : 'Mute'}
+            title={isMuted ? 'Bật mic' : 'Tắt mic'}
           >
             {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
           </button>
@@ -104,7 +104,7 @@ export const CallModal: React.FC<CallModalProps> = ({
                   ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
                 : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
               }`}
-              title={isVideoOff ? 'Turn on camera' : 'Turn off camera'}
+              title={isVideoOff ? 'Bật camera' : 'Tắt camera'}
             >
               {isVideoOff ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
             </button>
@@ -113,7 +113,7 @@ export const CallModal: React.FC<CallModalProps> = ({
           <button
             type="button"
             className="w-13 h-13 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center justify-center transition-colors"
-            title="Speaker output"
+            title="Loa ngoài"
           >
             <Volume2 className="w-5 h-5" />
           </button>
@@ -122,7 +122,7 @@ export const CallModal: React.FC<CallModalProps> = ({
             type="button"
             onClick={onEndCall}
             className="w-14 h-14 rounded-full bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center shadow-lg shadow-rose-600/40 transition-all hover:scale-105 active:scale-95"
-            title="End Call"
+            title="Kết thúc cuộc gọi"
           >
             <PhoneOff className="w-6 h-6" />
           </button>

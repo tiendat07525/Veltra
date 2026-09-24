@@ -18,13 +18,16 @@ export const OnlineStatusDot: React.FC<OnlineStatusDotProps> = ({
     lg: 'w-4 h-4 ring-2',
   };
 
-  const statusColors = {
+  const normStatus = (status || 'Offline').toLowerCase();
+  const validStatus = normStatus === 'online' ? 'online' : normStatus === 'away' ? 'away' : 'offline';
+
+  const statusColors: Record<'online' | 'away' | 'offline', string> = {
     online: 'bg-emerald-500 shadow-sm shadow-emerald-500/50',
     away: 'bg-amber-500 shadow-sm shadow-amber-500/50',
     offline: 'bg-slate-400 dark:bg-slate-500',
   };
 
-  const statusTitles = {
+  const statusTitles: Record<'online' | 'away' | 'offline', string> = {
     online: 'Online',
     away: 'Away',
     offline: 'Offline',
@@ -32,8 +35,8 @@ export const OnlineStatusDot: React.FC<OnlineStatusDotProps> = ({
 
   return (
     <span
-      title={statusTitles[status]}
-      className={`inline-block rounded-full ring-white dark:ring-slate-900 ${sizeClasses[size]} ${statusColors[status]} ${className}`}
+      title={statusTitles[validStatus]}
+      className={`inline-block rounded-full ring-white dark:ring-slate-900 ${sizeClasses[size]} ${statusColors[validStatus]} ${className}`}
     />
   );
 };

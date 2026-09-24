@@ -28,10 +28,10 @@ export const DeleteMessageModal: React.FC<DeleteMessageModalProps> = ({
         </div>
 
         <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
-          Delete message?
+          Xóa tin nhắn?
         </h3>
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">
-          This message will be removed from the conversation for everyone. This action cannot be undone.
+          Tin nhắn này sẽ bị xóa khỏi cuộc trò chuyện đối với tất cả mọi người. Hành động này không thể hoàn tác.
         </p>
 
         <div className="flex items-center justify-end gap-3">
@@ -40,7 +40,7 @@ export const DeleteMessageModal: React.FC<DeleteMessageModalProps> = ({
             onClick={onClose}
             className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
           >
-            Cancel
+            Hủy
           </button>
           <button
             type="button"
@@ -50,7 +50,7 @@ export const DeleteMessageModal: React.FC<DeleteMessageModalProps> = ({
             }}
             className="px-4 py-2 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-sm shadow-rose-600/30 transition-colors"
           >
-            Delete
+            Xóa
           </button>
         </div>
       </div>

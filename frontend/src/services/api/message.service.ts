@@ -1,51 +1,29 @@
-import {
-  getMessages,
-  sendMessage,
-  updateMessage,
-  deleteMessage,
-  toggleReaction,
-  togglePinMessage,
-  searchMessages,
-} from '@/lib/mock-api';
-import { Message, MessageType, ReactionEmoji } from '@/types/message';
+import api from './api';
+import { Message, MessagesResponse } from '@/types/message';
 
 export const messageService = {
-  async getMessages(conversationId: string): Promise<Message[]> {
-    return getMessages(conversationId);
+  /**
+   * Lấy tin nhắn của conversation (có hỗ trợ cursor pagination)
+   * GET /conversation/:conversationId/messages?limit=50&cursor=...
+   */
+  async getMessages(conversationId: string, limit = 50, cursor?: string): Promise<MessagesResponse> {
+    const params: Record<string, string> = { limit: String(limit) };
+    if (cursor) params.cursor = cursor;
+    const res = await api.get(`/conversation/${conversationId}/messages`, { params });
+    return res.data;
   },
 
+  /**
+   * Gửi tin nhắn trực tiếp
+   * POST /message/direct
+   * Body: { conversationId?: string, receiverId?: string, content: string }
+   */
   async sendMessage(params: {
-    conversationId: string;
-    senderId: string;
+    conversationId?: string;
+    receiverId?: string;
     content: string;
-    type?: MessageType;
-    mediaUrl?: string;
-    fileName?: string;
-    fileSize?: string;
-    fileType?: string;
-    duration?: number;
-    replyTo?: Message['replyTo'];
-  }): Promise<Message> {
-    return sendMessage(params);
-  },
-
-  async updateMessage(messageId: string, newContent: string): Promise<Message | undefined> {
-    return updateMessage(messageId, newContent);
-  },
-
-  async deleteMessage(messageId: string): Promise<boolean> {
-    return deleteMessage(messageId);
-  },
-
-  async toggleReaction(messageId: string, emoji: ReactionEmoji, userId: string): Promise<Message | undefined> {
-    return toggleReaction(messageId, emoji, userId);
-  },
-
-  async togglePin(messageId: string): Promise<boolean> {
-    return togglePinMessage(messageId);
-  },
-
-  async searchMessages(query: string, conversationId?: string): Promise<Message[]> {
-    return searchMessages(query, conversationId);
+  }): Promise<{ success: boolean; message: string; data?: Message }> {
+    const res = await api.post('/message/direct', params);
+    return res.data;
   },
 };

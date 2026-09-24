@@ -1,47 +1,50 @@
-export type MessageType =
-  | 'text'
-  | 'image'
-  | 'file'
-  | 'audio'
-  | 'video'
-  | 'system'
-  | 'call';
-
-export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read';
-
-export type ReactionEmoji = '❤️' | '👍' | '😂' | '😮' | '😢' | '😡' | '🙏';
+export type MessageType = 'text' | 'image' | 'file' | 'audio' | 'video' | 'system' | 'call';
+export type ReactionEmoji = '👍' | '❤️' | '😂' | '😮' | '😢' | '🔥' | '😡' | '🙏';
 
 export interface MessageReaction {
-  emoji: ReactionEmoji;
-  count: number;
-  users: string[]; // user IDs who reacted
+  emoji: ReactionEmoji | string;
+  userId?: string;
+  users?: string[];
+  count?: number;
 }
 
 export interface ReplyPreviewData {
-  id: string;
+  messageId: string;
   senderName: string;
   content: string;
-  type: MessageType;
+  type?: MessageType;
 }
 
+// Matches backend Message schema with UI compatibility
 export interface Message {
-  id: string;
+  _id: string;
+  id?: string;
   conversationId: string;
   senderId: string;
-  content: string;
-  type: MessageType;
-  createdAt: string;
-  status: MessageStatus;
-  reactions: MessageReaction[];
-  replyTo?: ReplyPreviewData;
-  isEdited?: boolean;
-  isDeleted?: boolean;
-  isPinned?: boolean;
+  content?: string;
+  imgUrl?: string;
   mediaUrl?: string;
-  thumbnailUrl?: string;
   fileName?: string;
   fileSize?: string;
-  fileType?: string;
-  duration?: number; // seconds for audio or call
+  duration?: number;
+  type?: MessageType;
+  status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   callStatus?: 'missed' | 'completed' | 'declined';
+  replyTo?: {
+    messageId?: string;
+    senderName?: string;
+    content?: string;
+  };
+  reactions?: MessageReaction[];
+  isPinned?: boolean;
+  isDeleted?: boolean;
+  isEdited?: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+// Response from GET /conversation/:id/messages
+export interface MessagesResponse {
+  messages: Message[];
+  nextCursor: string | null;
 }

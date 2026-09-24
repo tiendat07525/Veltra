@@ -1,80 +1,78 @@
-import React, { useState } from 'react';
-import { Conversation } from '@/types/conversation';
-import { User } from '@/types/user';
-import { Message, ReactionEmoji } from '@/types/message';
-import { ChatHeader } from './ChatHeader';
-import { MessageList } from '@/components/message/MessageList';
-import { MessageComposer } from './MessageComposer';
-import { ConversationInfo } from './ConversationInfo';
-import { ImageViewerModal } from './ImageViewerModal';
-import { DeleteMessageModal } from '@/components/message/DeleteMessageModal';
-import { ForwardMessageModal } from '@/components/message/ForwardMessageModal';
-import { CallModal } from './CallModal';
-import { CURRENT_USER } from '@/data/mock/users';
-import { MessageSquare, Sparkles } from 'lucide-react';
+'use client';
+
+import React, { useState, useRef, useEffect } from 'react';
+import { Conversation, ConversationParticipant } from '@/types/conversation';
+import { Message } from '@/types/message';
+import {
+  MessageSquare,
+  ArrowLeft,
+  Send,
+  Loader2,
+  AlertCircle,
+  RefreshCw,
+} from 'lucide-react';
+import { UserAvatar } from '@/components/ui/UserAvatar';
+import { formatTime, formatDate } from '@/lib/utils';
 
 interface ChatWindowProps {
   conversation: Conversation | null;
-  allConversations: Conversation[];
-  partner: User | null;
-  participantsMap: Map<string, User>;
+  conversationName: string;
+  partner: ConversationParticipant | null;
   messages: Message[];
   loadingMessages: boolean;
-  isTyping: boolean;
-  typingUser: string;
-  onSendMessage: (params: {
-    content: string;
-    type?: 'text' | 'image' | 'file' | 'audio';
-    mediaUrl?: string;
-    fileName?: string;
-    fileSize?: string;
-    fileType?: string;
-    duration?: number;
-  }) => void;
-  onReact: (messageId: string, emoji: ReactionEmoji) => void;
-  onEditMessage: (messageId: string, newContent: string) => void;
-  onDeleteMessage: (messageId: string) => void;
-  onTogglePinMessage: (messageId: string) => void;
-  onForwardMessage: (targetConversationId: string, message: Message) => void;
+  sendingMessage: boolean;
+  onSendMessage: (content: string) => void;
   onBackMobile: () => void;
-  onToggleMuteConversation: (convId: string) => void;
   onShowToast: (msg: string, type?: 'success' | 'info' | 'error') => void;
+  currentUserId: string;
+  messagesError: string | null;
+  onRefreshMessages: () => void;
 }
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
   conversation,
-  allConversations,
+  conversationName,
   partner,
-  participantsMap,
   messages,
   loadingMessages,
-  isTyping,
-  typingUser,
+  sendingMessage,
   onSendMessage,
-  onReact,
-  onEditMessage,
-  onDeleteMessage,
-  onTogglePinMessage,
-  onForwardMessage,
   onBackMobile,
-  onToggleMuteConversation,
   onShowToast,
+  currentUserId,
+  messagesError,
+  onRefreshMessages,
 }) => {
-  // Local state for interactive tools
-  const [showInfoPanel, setShowInfoPanel] = useState(false);
-  const [inChatSearch, setInChatSearch] = useState('');
-  const [showSearchInput, setShowSearchInput] = useState(false);
+  const [inputValue, setInputValue] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Modals state
-  const [activeImage, setActiveImage] = useState<{ url: string; caption?: string } | null>(null);
-  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
-  const [forwardTargetMessage, setForwardTargetMessage] = useState<Message | null>(null);
-  const [activeCall, setActiveCall] = useState<{ type: 'voice' | 'video'; contactName: string; contactAvatar: string } | null>(null);
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
-  // Replying & Editing
-  const [replyingTo, setReplyingTo] = useState<{ id: string; senderName: string; content: string } | null>(null);
-  const [editingMessage, setEditingMessage] = useState<Message | null>(null);
+  // Focus input when conversation changes
+  useEffect(() => {
+    if (conversation) {
+      inputRef.current?.focus();
+    }
+  }, [conversation?._id]);
 
+  const handleSend = () => {
+    if (!inputValue.trim() || sendingMessage) return;
+    onSendMessage(inputValue.trim());
+    setInputValue('');
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  // Empty state
   if (!conversation) {
     return (
       <div className="flex-1 h-full flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950 p-8 text-center text-slate-400">
@@ -82,171 +80,168 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           <MessageSquare className="w-8 h-8 stroke-[1.75]" />
         </div>
         <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-1">
-          No conversation selected
+          Chưa chọn cuộc trò chuyện nào
         </h3>
         <p className="text-xs max-w-sm text-slate-500 leading-relaxed">
-          Choose a conversation from the sidebar or start a new direct message to start realtime encrypted communication.
+          Chọn một cuộc trò chuyện từ danh sách hoặc bắt đầu tin nhắn mới.
         </p>
       </div>
     );
   }
 
-  const isGroup = conversation.type === 'group';
-
-  const handleCopyMessage = (content: string) => {
-    navigator.clipboard.writeText(content);
-    onShowToast('Message copied to clipboard', 'info');
-  };
-
-  const handleStartVoiceCall = () => {
-    setActiveCall({
-      type: 'voice',
-      contactName: conversation.name,
-      contactAvatar: conversation.avatar,
-    });
-  };
-
-  const handleStartVideoCall = () => {
-    setActiveCall({
-      type: 'video',
-      contactName: conversation.name,
-      contactAvatar: conversation.avatar,
-    });
-  };
+  // Group messages by date for display
+  const groupedMessages: { date: string; messages: Message[] }[] = [];
+  let currentDate = '';
+  messages.forEach((msg) => {
+    const msgDate = formatDate(msg.createdAt);
+    if (msgDate !== currentDate) {
+      currentDate = msgDate;
+      groupedMessages.push({ date: msgDate, messages: [msg] });
+    } else {
+      groupedMessages[groupedMessages.length - 1].messages.push(msg);
+    }
+  });
 
   return (
-    <div className="flex-1 h-full flex overflow-hidden relative">
-      {/* Main Chat Area */}
-      <div className="flex-1 h-full flex flex-col min-w-0 bg-white dark:bg-slate-950">
-        <ChatHeader
-          conversation={conversation}
-          partner={partner}
-          onBackMobile={onBackMobile}
-          onToggleInfo={() => setShowInfoPanel((prev) => !prev)}
-          onStartVoiceCall={handleStartVoiceCall}
-          onStartVideoCall={handleStartVideoCall}
-          searchQuery={inChatSearch}
-          onSearchChange={setInChatSearch}
-          showSearchInput={showSearchInput}
-          onToggleSearchInput={() => {
-            setShowSearchInput((prev) => !prev);
-            if (showSearchInput) setInChatSearch('');
-          }}
-          isInfoOpen={showInfoPanel}
-        />
+    <div className="flex-1 h-full flex flex-col min-w-0 bg-white dark:bg-slate-950">
+      {/* Header */}
+      <header className="h-16 px-4 flex items-center gap-3 border-b border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
+        {/* Back button (mobile) */}
+        <button
+          type="button"
+          onClick={onBackMobile}
+          className="md:hidden p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
 
-        <MessageList
-          messages={messages}
-          loading={loadingMessages}
-          isTyping={isTyping}
-          typingUser={typingUser}
-          currentUserId={CURRENT_USER.id}
-          isGroup={isGroup}
-          participantsMap={participantsMap}
-          searchQuery={inChatSearch}
-          onReact={onReact}
-          onReply={(msg, senderName) => {
-            setReplyingTo({
-              id: msg.id,
-              senderName,
-              content: msg.content,
-            });
-            setEditingMessage(null);
-          }}
-          onCopy={handleCopyMessage}
-          onEdit={(msg) => {
-            setEditingMessage(msg);
-            setReplyingTo(null);
-          }}
-          onDelete={(msgId) => setDeleteTargetId(msgId)}
-          onForward={(msg) => setForwardTargetMessage(msg)}
-          onTogglePin={onTogglePinMessage}
-          onOpenImage={(url, caption) => setActiveImage({ url, caption })}
+        <UserAvatar
+          src={partner?.avatarUrl}
+          name={conversationName}
+          size="md"
         />
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">
+            {conversationName}
+          </h3>
+          <p className="text-[11px] text-slate-500">
+            {conversation.type === 'group'
+              ? `${conversation.participants.length} thành viên`
+              : ''}
+          </p>
+        </div>
+      </header>
 
-        <MessageComposer
-          onSendMessage={(params) => {
-            if (editingMessage) {
-              onEditMessage(editingMessage.id, params.content);
-              setEditingMessage(null);
-              onShowToast('Message edited', 'info');
-            } else {
-              onSendMessage(params);
-            }
-          }}
-          replyingTo={replyingTo}
-          onCancelReply={() => setReplyingTo(null)}
-          editingMessage={editingMessage}
-          onCancelEdit={() => setEditingMessage(null)}
-          isGroup={isGroup}
-        />
+      {/* Messages Area */}
+      <div className="flex-1 overflow-y-auto px-4 py-3">
+        {loadingMessages ? (
+          <div className="flex items-center justify-center h-full">
+            <Loader2 className="w-6 h-6 animate-spin text-sky-500" />
+            <span className="ml-2 text-xs text-slate-400">Đang tải tin nhắn...</span>
+          </div>
+        ) : messagesError ? (
+          <div className="flex flex-col items-center justify-center h-full text-slate-400">
+            <AlertCircle className="w-8 h-8 text-rose-400 mb-2" />
+            <p className="text-xs text-rose-400 mb-2">{messagesError}</p>
+            <button
+              onClick={onRefreshMessages}
+              className="flex items-center gap-1 text-xs text-sky-400 hover:underline"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Thử lại
+            </button>
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-slate-400">
+            <MessageSquare className="w-8 h-8 opacity-40 mb-2" />
+            <p className="text-xs">Chưa có tin nhắn nào. Hãy gửi tin nhắn đầu tiên!</p>
+          </div>
+        ) : (
+          <>
+            {groupedMessages.map((group) => (
+              <div key={group.date}>
+                {/* Date separator */}
+                <div className="flex items-center justify-center my-4">
+                  <span className="px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-[11px] font-medium text-slate-500">
+                    {group.date}
+                  </span>
+                </div>
+
+                {/* Messages */}
+                {group.messages.map((msg) => {
+                  const msgSenderId =
+                    typeof msg.senderId === 'object' && msg.senderId !== null
+                      ? (msg.senderId as any)._id || (msg.senderId as any).id
+                      : String(msg.senderId);
+
+                  const isOwn = String(msgSenderId) === String(currentUserId);
+
+                  return (
+                    <div
+                      key={msg._id || msg.id}
+                      className={`flex mb-2.5 ${isOwn ? 'justify-end' : 'justify-start'}`}
+                    >
+                      <div
+                        className={`max-w-[75%] sm:max-w-[70%] md:max-w-[65%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed shadow-xs ${
+                          isOwn
+                            ? 'bg-sky-600 hover:bg-sky-500 text-white rounded-br-xs'
+                            : 'bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-bl-xs'
+                        }`}
+                      >
+                        {/* Show sender name in groups */}
+                        {!isOwn && conversation.type === 'group' && (
+                          <p className="text-[11px] font-semibold text-sky-500 dark:text-sky-400 mb-0.5">
+                            {conversation.participants.find((p) => String(p._id) === String(msgSenderId))
+                              ?.displayName || 'Người dùng'}
+                          </p>
+                        )}
+                        <p className="whitespace-pre-wrap break-words text-[13px]">{msg.content}</p>
+                        <p
+                          className={`text-[10px] mt-1 text-right select-none ${
+                            isOwn ? 'text-sky-200' : 'text-slate-500 dark:text-slate-400'
+                          }`}
+                        >
+                          {formatTime(msg.createdAt)}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+            <div ref={messagesEndRef} />
+          </>
+        )}
       </div>
 
-      {/* Right Information Panel (Desktop inline or Mobile Drawer) */}
-      {showInfoPanel && (
-        <div className="absolute inset-y-0 right-0 z-30 sm:static sm:z-auto shadow-2xl sm:shadow-none animate-in slide-in-from-right-2">
-          <ConversationInfo
-            conversation={conversation}
-            partner={partner}
-            participantsMap={participantsMap}
-            messages={messages}
-            onClose={() => setShowInfoPanel(false)}
-            onToggleMute={() => onToggleMuteConversation(conversation.id)}
-            onToggleSearch={() => {
-              setShowSearchInput(true);
-              setShowInfoPanel(false);
-            }}
-            onOpenImage={(url, caption) => setActiveImage({ url, caption })}
+      {/* Message Input */}
+      <div className="px-4 py-3 border-t border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
+        <div className="flex items-center gap-2">
+          <input
+            ref={inputRef}
+            type="text"
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Nhập tin nhắn..."
+            disabled={sendingMessage}
+            className="flex-1 px-4 py-2.5 bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-sky-500/50 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-sky-500/20 transition-all disabled:opacity-60"
           />
+          <button
+            type="button"
+            onClick={handleSend}
+            disabled={!inputValue.trim() || sendingMessage}
+            className="p-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
+            title="Gửi tin nhắn"
+          >
+            {sendingMessage ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Send className="w-4 h-4" />
+            )}
+          </button>
         </div>
-      )}
-
-      {/* Media Viewer Modal */}
-      <ImageViewerModal
-        isOpen={!!activeImage}
-        imageUrl={activeImage?.url || null}
-        caption={activeImage?.caption}
-        onClose={() => setActiveImage(null)}
-      />
-
-      {/* Delete Confirmation Modal */}
-      <DeleteMessageModal
-        isOpen={!!deleteTargetId}
-        onClose={() => setDeleteTargetId(null)}
-        onConfirm={() => {
-          if (deleteTargetId) {
-            onDeleteMessage(deleteTargetId);
-            onShowToast('Message deleted', 'info');
-          }
-        }}
-      />
-
-      {/* Forward Message Modal */}
-      <ForwardMessageModal
-        isOpen={!!forwardTargetMessage}
-        conversations={allConversations}
-        onClose={() => setForwardTargetMessage(null)}
-        onForward={(targetId) => {
-          if (forwardTargetMessage) {
-            onForwardMessage(targetId, forwardTargetMessage);
-            onShowToast('Message forwarded successfully', 'success');
-          }
-        }}
-      />
-
-      {/* Call Modal */}
-      {activeCall && (
-        <CallModal
-          isOpen={true}
-          type={activeCall.type}
-          contactName={activeCall.contactName}
-          contactAvatar={activeCall.contactAvatar}
-          onEndCall={() => {
-            setActiveCall(null);
-            onShowToast('Call ended', 'info');
-          }}
-        />
-      )}
+      </div>
     </div>
   );
 };

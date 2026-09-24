@@ -83,10 +83,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           </div>
           <div>
             <p className="text-sm font-semibold text-slate-900 dark:text-white">
-              {isMissed ? 'Missed Voice Call' : 'Completed Voice Call'}
+              {isMissed ? 'Cuộc gọi thoại nhỡ' : 'Cuộc gọi thoại kết thúc'}
             </p>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              {isMissed ? 'No answer' : `${Math.floor((message.duration || 0) / 60)} min ${((message.duration || 0) % 60)} sec`} • {message.createdAt}
+              {isMissed ? 'Không trả lời' : `${Math.floor((message.duration || 0) / 60)} phút ${((message.duration || 0) % 60)} giây`} • {message.createdAt}
             </p>
           </div>
         </div>
@@ -94,11 +94,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     );
   }
 
-  const senderName = sender ? sender.displayName : (isCurrentUser ? 'You' : 'Member');
+  const senderName = sender ? (sender.displayName || sender.username || 'Người dùng') : (isCurrentUser ? 'Bạn' : 'Thành viên');
 
   return (
     <div
-      id={`msg-${message.id}`}
+      id={`msg-${message.id || message._id}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       className={`group relative flex items-end gap-2 my-1 px-3 sm:px-4 transition-all ${
@@ -109,7 +109,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       {!isCurrentUser && showAvatar && (
         <div className="shrink-0 mb-1">
           <UserAvatar
-            src={sender?.avatar}
+            src={sender?.avatarUrl || sender?.avatar}
             name={senderName}
             size="sm"
             status={sender?.status}
@@ -136,7 +136,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         {message.isPinned && (
           <div className="flex items-center gap-1 text-[10px] text-amber-500 font-medium mb-1 px-2">
             <Pin className="w-3 h-3 fill-amber-500" />
-            <span>Pinned</span>
+            <span>Đã ghim</span>
           </div>
         )}
 
@@ -169,7 +169,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           {message.isDeleted ? (
             <div className="flex items-center gap-1.5 py-0.5 text-xs text-slate-400 dark:text-slate-500">
               <Info className="w-3.5 h-3.5" />
-              <span>This message was deleted.</span>
+              <span>Tin nhắn này đã bị xóa.</span>
             </div>
           ) : (
             <>
@@ -177,18 +177,18 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               {message.type === 'image' && (
                 <div className="space-y-1.5">
                   <div
-                    onClick={() => onOpenImage(message.mediaUrl || message.content, 'Photo')}
+                    onClick={() => onOpenImage(message.mediaUrl || message.content || '', 'Photo')}
                     className="relative rounded-xl overflow-hidden cursor-pointer group/img max-w-sm"
                   >
                     <img
                       src={message.mediaUrl || message.content}
-                      alt="Shared media"
+                      alt="Phương tiện được chia sẻ"
                       className="w-full max-h-72 object-cover rounded-xl transition-transform duration-200 group-hover/img:scale-102"
                       referrerPolicy="no-referrer"
                       loading="lazy"
                     />
                     <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-medium">
-                      Click to expand
+                      Nhấp để phóng to
                     </div>
                   </div>
                 </div>
@@ -221,7 +221,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                         ? 'hover:bg-white/20 text-white'
                         : 'hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'
                     }`}
-                    title="Download file"
+                    title="Tải tệp"
                   >
                     <Download className="w-4 h-4" />
                   </a>
@@ -246,7 +246,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               isCurrentUser ? 'justify-end text-sky-100/80' : 'justify-start text-slate-400'
             }`}
           >
-            {message.isEdited && !message.isDeleted && <span>(edited)</span>}
+            {message.isEdited && !message.isDeleted && <span>(đã sửa)</span>}
             <span>{message.createdAt}</span>
 
             {isCurrentUser && !message.isDeleted && (
@@ -267,21 +267,22 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         {message.reactions && message.reactions.length > 0 && (
           <div className="flex flex-wrap items-center gap-1 mt-1 -mb-1 px-1 z-10">
             {message.reactions.map((react, idx) => {
-              const hasReacted = react.users.includes(currentUserId);
+              const hasReacted = Boolean(react.users?.includes(currentUserId) || react.userId === currentUserId);
+              const count = react.count ?? (react.users ? react.users.length : 1);
               return (
                 <button
                   key={`${react.emoji}-${idx}`}
                   type="button"
-                  onClick={() => onReact(react.emoji)}
+                  onClick={() => onReact(react.emoji as any)}
                   className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border shadow-xs transition-transform active:scale-95 ${
                     hasReacted
                       ? 'bg-sky-50 dark:bg-sky-950/70 border-sky-400/50 text-sky-600 dark:text-sky-300'
                       : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50'
                   }`}
-                  title={`${react.count} reaction${react.count > 1 ? 's' : ''}`}
+                  title={`${count} reaction${count > 1 ? 's' : ''}`}
                 >
                   <span className="text-sm">{react.emoji}</span>
-                  <span className="text-[11px] font-semibold">{react.count}</span>
+                  <span className="text-[11px] font-semibold">{count}</span>
                 </button>
               );
             })}

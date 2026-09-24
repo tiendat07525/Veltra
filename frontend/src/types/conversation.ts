@@ -1,30 +1,41 @@
-import { MessageType } from './message';
+import { UserBasicInfo } from './user';
 
 export type ConversationType = 'direct' | 'group';
 
-export type ConversationFilter = 'all' | 'direct' | 'groups' | 'favorites' | 'unread';
+export type ConversationFilter = 'all' | 'direct' | 'groups' | 'unread';
+
+// Matches backend Conversation schema after formatting
+export interface ConversationParticipant extends UserBasicInfo {
+  joinedAt?: string;
+}
 
 export interface ConversationLastMessage {
-  id: string;
-  content: string;
-  senderId: string;
-  createdAt: string;
-  type: MessageType;
-  isRead?: boolean;
+  _id?: string;
+  content?: string;
+  senderId?: string | UserBasicInfo;
+  createdAt?: string;
+}
+
+export interface ConversationGroup {
+  name?: string;
+  createdBy?: string;
 }
 
 export interface Conversation {
-  id: string;
-  type: ConversationType;
-  name: string;
-  avatar: string;
+  _id: string;
+  id?: string;
+  name?: string;
+  avatar?: string;
   description?: string;
-  participants: string[]; // user IDs
-  admins?: string[]; // user IDs for group
-  lastMessage?: ConversationLastMessage;
-  unreadCount: number;
-  isPinned: boolean;
-  isMuted: boolean;
-  createdAt: string;
-  updatedAt: string;
+  isMuted?: boolean;
+  isPinned?: boolean;
+  type: ConversationType;
+  participants: ConversationParticipant[];
+  group?: ConversationGroup;
+  lastMessage?: ConversationLastMessage | null;
+  lastMessageAt?: string;
+  seenBy?: string[];
+  unreadCounts?: Record<string, number>;
+  createdAt?: string;
+  updatedAt?: string;
 }

@@ -9,7 +9,6 @@ import {
   CheckCheck,
   Check,
 } from 'lucide-react';
-import { MOCK_NOTIFICATIONS } from '@/data/mock/notifications';
 import { Notification, NotificationType } from '@/types/notification';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 
@@ -22,7 +21,9 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
   onOpenConversation,
   onNotificationsReadChange,
 }) => {
-  const [notifications, setNotifications] = useState<Notification[]>(MOCK_NOTIFICATIONS);
+  // TODO: Backend chưa hỗ trợ chức năng này.
+  // Cần bổ sung API backend trước khi kết nối frontend.
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [filterUnread, setFilterUnread] = useState(false);
 
   const getIcon = (type: NotificationType) => {
@@ -67,10 +68,10 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
       {/* Header */}
       <header className="h-16 px-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white">Notifications</h1>
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white">Thông báo</h1>
           {unreadCount > 0 && (
             <span className="px-2.5 py-0.5 rounded-full bg-sky-500 text-white text-xs font-bold">
-              {unreadCount} new
+              {unreadCount} mới
             </span>
           )}
         </div>
@@ -85,7 +86,7 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
                 : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
             }`}
           >
-            {filterUnread ? 'Show All' : 'Unread Only'}
+            {filterUnread ? 'Hiển thị tất cả' : 'Chỉ chưa đọc'}
           </button>
 
           <button
@@ -94,7 +95,7 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-medium transition-colors"
           >
             <CheckCheck className="w-4 h-4 text-sky-500" />
-            <span>Mark all read</span>
+            <span>Đánh dấu tất cả đã đọc</span>
           </button>
         </div>
       </header>
@@ -104,8 +105,8 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
         {filtered.length === 0 ? (
           <div className="h-64 flex flex-col items-center justify-center text-center text-slate-400 text-sm">
             <Bell className="w-10 h-10 mb-2 opacity-40 text-sky-500" />
-            <p className="font-semibold text-slate-700 dark:text-slate-300">All caught up!</p>
-            <p className="text-xs text-slate-400 mt-1">You have no unread notifications.</p>
+            <p className="font-semibold text-slate-700 dark:text-slate-300">Không có thông báo mới!</p>
+            <p className="text-xs text-slate-400 mt-1">Bạn không có thông báo chưa đọc nào.</p>
           </div>
         ) : (
           filtered.map((item) => (

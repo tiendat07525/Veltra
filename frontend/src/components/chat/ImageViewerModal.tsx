@@ -29,7 +29,7 @@ export const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         <span className="text-sm font-medium text-slate-300 truncate max-w-md">
-          {caption || 'Image Preview'}
+          {caption || 'Xem trước hình ảnh'}
         </span>
 
         <div className="flex items-center gap-2">
@@ -37,7 +37,7 @@ export const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
             type="button"
             onClick={() => setScale((s) => Math.min(s + 0.25, 2.5))}
             className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
-            title="Zoom In"
+            title="Phóng to"
           >
             <ZoomIn className="w-5 h-5" />
           </button>
@@ -45,7 +45,7 @@ export const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
             type="button"
             onClick={() => setScale((s) => Math.max(s - 0.25, 0.5))}
             className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
-            title="Zoom Out"
+            title="Thu nhỏ"
           >
             <ZoomOut className="w-5 h-5" />
           </button>
@@ -55,7 +55,7 @@ export const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
             rel="noreferrer"
             download="veltra-media.jpg"
             className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
-            title="Open Original"
+            title="Tải hình ảnh"
           >
             <Download className="w-5 h-5" />
           </a>
@@ -63,7 +63,7 @@ export const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
             type="button"
             onClick={onClose}
             className="p-2 rounded-xl bg-white/10 hover:bg-rose-500/80 text-white transition-colors ml-2"
-            title="Close Preview (Esc)"
+            title="Đóng (Esc)"
           >
             <X className="w-5 h-5" />
           </button>
@@ -77,7 +77,7 @@ export const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
       >
         <img
           src={imageUrl}
-          alt={caption || 'Preview'}
+          alt={caption || 'Xem trước'}
           style={{ transform: `scale(${scale})` }}
           className="rounded-2xl object-contain max-h-[75vh] w-auto shadow-2xl transition-transform duration-150 cursor-grab"
           referrerPolicy="no-referrer"

@@ -50,7 +50,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             type="button"
             onClick={onBackMobile}
             className="md:hidden p-1.5 -ml-1 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            title="Back to conversation list"
+            title="Quay lại danh sách trò chuyện"
           >
             <ChevronLeft className="w-6 h-6" />
           </button>
@@ -58,10 +58,10 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
 
         <div className="relative cursor-pointer" onClick={onToggleInfo}>
           <UserAvatar
-            src={conversation.avatar}
-            name={conversation.name}
+            src={isGroup ? undefined : partner?.avatarUrl}
+            name={isGroup ? (conversation.group?.name || 'Nhóm') : (partner?.displayName || partner?.username || 'Người dùng')}
             size="md"
-            status={partner?.status}
+            status={partner?.onlineStatus}
             showStatus={!isGroup}
           />
         </div>
@@ -69,22 +69,20 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         <div className="min-w-0 cursor-pointer" onClick={onToggleInfo}>
           <div className="flex items-center gap-1.5">
             <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white truncate">
-              {conversation.name}
+              {isGroup ? (conversation.group?.name || 'Nhóm trò chuyện') : (partner?.displayName || partner?.username || 'Người dùng')}
             </h2>
           </div>
 
           <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
             {isGroup ? (
-              <span>{conversation.participants.length} members</span>
+              <span>{conversation.participants.length} thành viên</span>
             ) : (
               <span className="flex items-center gap-1.5">
-                <OnlineStatusDot status={partner?.status || 'offline'} size="sm" />
-                {partner?.status === 'online' ? (
-                  <span className="text-emerald-500 font-medium">Active now</span>
-                ) : partner?.status === 'away' ? (
-                  <span className="text-amber-500 font-medium">{partner?.lastSeen || 'Away'}</span>
+                <OnlineStatusDot status={partner?.onlineStatus || 'Offline'} size="sm" />
+                {partner?.onlineStatus === 'Online' ? (
+                  <span className="text-emerald-500 font-medium">Trực tuyến</span>
                 ) : (
-                  <span>{partner?.lastSeen ? `Active ${partner.lastSeen}` : 'Offline'}</span>
+                  <span>{partner?.lastSeen ? `Hoạt động ${partner.lastSeen}` : 'Ngoại tuyến'}</span>
                 )}
               </span>
             )}
@@ -98,7 +96,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search in chat..."
+            placeholder="Tìm kiếm trong cuộc trò chuyện..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             className="w-full pl-9 pr-8 py-1.5 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:ring-1.5 focus:ring-sky-500 focus:outline-hidden"
@@ -119,7 +117,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         <button
           type="button"
           onClick={onToggleSearchInput}
-          title="Search conversation"
+          title="Tìm kiếm"
           className={`p-2 rounded-xl transition-colors ${
             showSearchInput
               ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400'
@@ -132,8 +130,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         <button
           type="button"
           onClick={onStartVoiceCall}
-          title="Start voice call"
-          className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-sky-500 transition-colors"
+          title="Gọi thoại (TODO: Backend)"
+          className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-sky-500 opacity-60 transition-colors"
         >
           <Phone className="w-4 h-4 sm:w-5 sm:h-5" />
         </button>
@@ -141,8 +139,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         <button
           type="button"
           onClick={onStartVideoCall}
-          title="Start video call"
-          className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-sky-500 transition-colors"
+          title="Gọi video (TODO: Backend)"
+          className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-sky-500 opacity-60 transition-colors"
         >
           <Video className="w-4 h-4 sm:w-5 sm:h-5" />
         </button>
@@ -152,7 +150,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         <button
           type="button"
           onClick={onToggleInfo}
-          title="Conversation information"
+          title="Thông tin cuộc trò chuyện"
           className={`p-2 rounded-xl transition-colors ${
             isInfoOpen
               ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400'

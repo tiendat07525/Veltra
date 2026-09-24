@@ -29,6 +29,6 @@ import { PassportModule } from '@nestjs/passport';
 
   providers: [AuthService, JwtStrategy],
 
-  exports: [AuthService, PassportModule]
+  exports: [AuthService, PassportModule, JwtModule]
 })
 export class AuthModule { }

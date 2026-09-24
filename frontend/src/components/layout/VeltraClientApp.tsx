@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useChat } from '@/hooks/use-chat';
 import { useTheme } from '@/hooks/use-theme';
 import { useMobile } from '@/hooks/use-mobile';
+import { useSocket } from '@/hooks/use-socket/use-socket';
 import { useRouter, usePathname } from '@/lib/navigation';
 import { MainSidebar, NavTab } from '@/components/layout/MainSidebar';
 import { ConversationSidebar } from '@/components/conversation/ConversationSidebar';
@@ -14,16 +15,18 @@ import { SettingsView } from '@/components/common/SettingsView';
 import { ProfileView } from '@/components/profile/ProfileView';
 import { AuthView } from '@/components/common/AuthView';
 import { Toast } from '@/components/ui/Toast';
-import { CallModal } from '@/components/chat/CallModal';
-import { User } from '@/types/user';
-import { Message } from '@/types/message';
+import { UserBasicInfo } from '@/types/user';
+import { Loader2 } from 'lucide-react';
 
 export function VeltraClientApp() {
   const router = useRouter();
   const pathname = usePathname();
   const { theme, toggleTheme, setTheme } = useTheme();
-  const isMobile = useMobile();
+  const { isMobile } = useMobile();
   const chat = useChat();
+
+  // Socket.IO infrastructure - tied directly to authentication lifecycle
+  useSocket();
 
   // Determine active tab from pathname
   const getTabFromPath = (path: string): NavTab => {
@@ -34,25 +37,30 @@ export function VeltraClientApp() {
     return 'chat';
   };
 
-  const [activeTab, setActiveTab] = useState<NavTab>(() => getTabFromPath(pathname));
-
-  useEffect(() => {
-    setActiveTab(getTabFromPath(pathname));
-  }, [pathname]);
+  const activeTab = getTabFromPath(pathname);
 
   // Mobile navigation state
   const [mobileViewChat, setMobileViewChat] = useState<boolean>(false);
 
   // Authentication state
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return !pathname.startsWith('/auth') && !pathname.startsWith('/register');
+    if (typeof window !== 'undefined') {
+      return !!localStorage.getItem('accessToken');
+    }
+    return false;
   });
 
   useEffect(() => {
-    if (pathname.startsWith('/auth') || pathname.startsWith('/register')) {
+    const token = localStorage.getItem('accessToken');
+    if (!token) {
       setIsAuthenticated(false);
+    } else {
+      setIsAuthenticated(true);
+      if (pathname === '/' || pathname.startsWith('/auth') || pathname.startsWith('/register')) {
+        router.push('/chat');
+      }
     }
-  }, [pathname]);
+  }, [pathname, router]);
 
   // Toast state
   const [toast, setToast] = useState<{
@@ -61,30 +69,13 @@ export function VeltraClientApp() {
     type?: 'success' | 'error' | 'info';
   } | null>(null);
 
-  // Global Call State
-  const [activeCall, setActiveCall] = useState<{
-    type: 'voice' | 'video';
-    contactName: string;
-    contactAvatar: string;
-  } | null>(null);
-
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({
       id: String(Date.now()),
       message,
       type,
     });
-  };
-
-  // Navigation tab handler
-  const handleTabChange = (tab: NavTab) => {
-    setActiveTab(tab);
-    if (tab === 'chat') {
-      setMobileViewChat(false);
-      router.push('/chat');
-    } else {
-      router.push(`/${tab}`);
-    }
+    setTimeout(() => setToast(null), 3000);
   };
 
   // Select conversation
@@ -95,57 +86,67 @@ export function VeltraClientApp() {
     }
   };
 
-  // Handle starting chat from contact
-  const handleStartChatFromContact = async (contact: User) => {
-    const existing = chat.allConversations.find(
-      (c) => c.type === 'direct' && c.participants.includes(contact.id)
-    );
+  // Handle starting chat from contact (friend)
+  const handleStartChatFromContact = async (contact: UserBasicInfo) => {
+    try {
+      // Check if a direct conversation already exists with this user
+      const existing = chat.allConversations.find(
+        (c) =>
+          c.type === 'direct' &&
+          c.participants.some((p) => p._id === contact._id)
+      );
 
-    if (existing) {
-      chat.setActiveConversationId(existing.id);
-    } else {
-      const newConv = await chat.createNewConversation({
-        type: 'direct',
-        name: contact.displayName,
-        participants: [chat.currentUser.id, contact.id],
-        avatar: contact.avatar,
-      });
-      chat.setActiveConversationId(newConv.id);
-    }
+      if (existing) {
+        chat.setActiveConversationId(existing._id);
+      } else {
+        // Create a new direct conversation
+        const newConv = await chat.createNewConversation({
+          type: 'direct',
+          participants: [contact._id],
+        });
+        chat.setActiveConversationId(newConv._id);
+      }
 
-    setActiveTab('chat');
-    router.push('/chat');
-    if (isMobile) {
-      setMobileViewChat(true);
+      router.push('/chat');
+      if (isMobile) {
+        setMobileViewChat(true);
+      }
+      showToast(`Đã mở cuộc trò chuyện với ${contact.displayName || contact.username}`, 'info');
+    } catch (err: any) {
+      showToast(err?.response?.data?.message || 'Lỗi khi tạo cuộc trò chuyện', 'error');
     }
-    showToast(`Opened chat with ${contact.displayName}`, 'info');
   };
 
-  // Handle forward message
-  const handleForwardMessage = async (targetConvId: string, message: Message) => {
-    await chat.messagesHook.sendMessage({
-      content: message.content,
-      type: message.type,
-      mediaUrl: message.mediaUrl,
-      fileName: message.fileName,
-      fileSize: message.fileSize,
-      fileType: message.fileType,
-      duration: message.duration,
-    });
-    chat.setActiveConversationId(targetConvId);
-    showToast('Message forwarded', 'success');
+  // Handle logout
+  const handleLogout = () => {
+    localStorage.removeItem('accessToken');
+    setIsAuthenticated(false);
+    router.push('/auth/login');
+    showToast('Đã đăng xuất khỏi Veltra', 'info');
   };
 
-  // If on login/register view
+  // If not authenticated
   if (!isAuthenticated) {
     return (
       <AuthView
         onLoginSuccess={() => {
           setIsAuthenticated(true);
           router.push('/chat');
-          showToast('Welcome back to Veltra', 'success');
+          showToast('Chào mừng trở lại Veltra!', 'success');
         }}
       />
+    );
+  }
+
+  // Loading current user
+  if (chat.currentUserLoading) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-slate-950">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-8 h-8 animate-spin text-sky-500" />
+          <p className="text-xs text-slate-400">Đang tải...</p>
+        </div>
+      </div>
     );
   }
 
@@ -153,17 +154,11 @@ export function VeltraClientApp() {
     <div className="flex h-full w-full bg-slate-950 text-slate-100 overflow-hidden select-none font-sans">
       {/* 1. Global Left Navigation Rail */}
       <MainSidebar
-        activeTab={activeTab}
-        onNavigate={handleTabChange}
         unreadMessagesCount={chat.totalUnreadCount}
-        unreadNotificationsCount={3}
+        unreadNotificationsCount={0}
         theme={theme}
         onToggleTheme={toggleTheme}
-        onLogout={() => {
-          setIsAuthenticated(false);
-          router.push('/auth/login');
-          showToast('Logged out of Veltra workspace', 'info');
-        }}
+        onLogout={handleLogout}
       />
 
       {/* 2. Main Content Area */}
@@ -171,7 +166,7 @@ export function VeltraClientApp() {
         {/* Chat Tab: 3-column layout */}
         {activeTab === 'chat' && (
           <div className="flex-1 h-full flex overflow-hidden">
-            {/* Conversation List Sidebar (Hidden on mobile when chat is active) */}
+            {/* Conversation List Sidebar */}
             <div
               className={`h-full shrink-0 md:block ${
                 mobileViewChat && isMobile ? 'hidden' : 'w-full md:w-80 lg:w-92'
@@ -185,21 +180,23 @@ export function VeltraClientApp() {
                 onSearchChange={chat.setSearchQuery}
                 filter={chat.filter}
                 onFilterChange={chat.setFilter}
-                participantsMap={chat.participantsMap}
-                onTogglePin={chat.togglePin}
-                onToggleMute={chat.toggleMute}
+                currentUserId={chat.currentUser?._id || ''}
                 onCreateNewConversation={async (params) => {
-                  const newConv = await chat.createNewConversation(params);
-                  chat.setActiveConversationId(newConv.id);
-                  if (isMobile) {
-                    setMobileViewChat(true);
+                  try {
+                    const newConv = await chat.createNewConversation(params);
+                    chat.setActiveConversationId(newConv._id);
+                    if (isMobile) {
+                      setMobileViewChat(true);
+                    }
+                    showToast('Đã tạo cuộc trò chuyện mới', 'success');
+                  } catch (err: any) {
+                    showToast(err?.response?.data?.message || 'Lỗi tạo cuộc trò chuyện', 'error');
                   }
-                  showToast(`Conversation "${params.name}" created`, 'success');
                 }}
               />
             </div>
 
-            {/* Chat Window (Hidden on mobile when list is active) */}
+            {/* Chat Window */}
             <div
               className={`flex-1 h-full overflow-hidden ${
                 !mobileViewChat && isMobile ? 'hidden' : 'flex'
@@ -207,22 +204,17 @@ export function VeltraClientApp() {
             >
               <ChatWindow
                 conversation={chat.activeConversation}
-                allConversations={chat.allConversations}
+                conversationName={chat.activeConversationName}
                 partner={chat.conversationPartner}
-                participantsMap={chat.participantsMap}
                 messages={chat.messagesHook.messages}
                 loadingMessages={chat.messagesHook.loading}
-                isTyping={chat.messagesHook.isTyping}
-                typingUser={chat.messagesHook.typingUser}
+                sendingMessage={chat.messagesHook.sending}
                 onSendMessage={chat.messagesHook.sendMessage}
-                onReact={chat.messagesHook.toggleReaction}
-                onEditMessage={chat.messagesHook.sendMessage}
-                onDeleteMessage={chat.messagesHook.deleteMessage}
-                onTogglePinMessage={chat.messagesHook.togglePinMessage}
-                onForwardMessage={handleForwardMessage}
                 onBackMobile={() => setMobileViewChat(false)}
-                onToggleMuteConversation={chat.toggleMute}
                 onShowToast={showToast}
+                currentUserId={chat.currentUser?._id || ''}
+                messagesError={chat.messagesHook.error}
+                onRefreshMessages={chat.messagesHook.refetch}
               />
             </div>
           </div>
@@ -232,20 +224,6 @@ export function VeltraClientApp() {
         {activeTab === 'contacts' && (
           <ContactsView
             onStartChat={handleStartChatFromContact}
-            onVoiceCall={(user) =>
-              setActiveCall({
-                type: 'voice',
-                contactName: user.displayName,
-                contactAvatar: user.avatar,
-              })
-            }
-            onVideoCall={(user) =>
-              setActiveCall({
-                type: 'video',
-                contactName: user.displayName,
-                contactAvatar: user.avatar,
-              })
-            }
           />
         )}
 
@@ -254,7 +232,6 @@ export function VeltraClientApp() {
           <NotificationsView
             onOpenConversation={(convId) => {
               chat.setActiveConversationId(convId);
-              setActiveTab('chat');
               router.push('/chat');
               if (isMobile) setMobileViewChat(true);
             }}
@@ -273,23 +250,9 @@ export function VeltraClientApp() {
         {activeTab === 'profile' && <ProfileView onShowToast={showToast} />}
       </main>
 
-      {/* Global Call Modal if triggered */}
-      {activeCall && (
-        <CallModal
-          isOpen={true}
-          type={activeCall.type}
-          contactName={activeCall.contactName}
-          contactAvatar={activeCall.contactAvatar}
-          onEndCall={() => {
-            setActiveCall(null);
-            showToast('Call ended', 'info');
-          }}
-        />
-      )}
-
       {/* Toast Notification Container */}
       {toast && (
-        <div className="fixed bottom-5 right-5 z-50 animate-in slide-in-from-bottom-5">
+        <div className="fixed bottom-5 right-5 z-50">
           <Toast
             id={toast.id}
             message={toast.message}

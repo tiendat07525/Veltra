@@ -21,9 +21,10 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
 
   if (!isOpen) return null;
 
-  const filtered = conversations.filter((c) =>
-    c.name.toLowerCase().includes(search.toLowerCase().trim())
-  );
+  const filtered = conversations.filter((c) => {
+    const name = c.name || c.group?.name || 'Hội thoại';
+    return name.toLowerCase().includes(search.toLowerCase().trim());
+  });
 
   return (
     <div
@@ -36,7 +37,7 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
       >
         <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
           <h3 className="text-base font-semibold text-slate-900 dark:text-white">
-            Forward message
+            Chuyển tiếp tin nhắn
           </h3>
           <button
             type="button"
@@ -52,7 +53,7 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search conversations..."
+            placeholder="Tìm kiếm cuộc trò chuyện..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-4 py-2 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm focus:ring-2 focus:ring-sky-500 focus:outline-hidden text-slate-800 dark:text-slate-100 placeholder-slate-400"
@@ -62,11 +63,13 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
         {/* Conversations list */}
         <div className="max-h-60 overflow-y-auto space-y-1 pr-1">
           {filtered.map((conv) => {
-            const isSelected = selectedId === conv.id;
+            const convId = conv._id || conv.id || '';
+            const convName = conv.name || conv.group?.name || 'Hội thoại';
+            const isSelected = selectedId === convId;
             return (
               <div
-                key={conv.id}
-                onClick={() => setSelectedId(conv.id)}
+                key={convId}
+                onClick={() => setSelectedId(convId)}
                 className={`flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-colors ${
                   isSelected
                     ? 'bg-sky-50 dark:bg-sky-950/40 border border-sky-500/30'
@@ -74,10 +77,10 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <UserAvatar src={conv.avatar} name={conv.name} size="sm" />
+                  <UserAvatar src={conv.avatar} name={convName} size="sm" />
                   <div>
                     <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                      {conv.name}
+                      {convName}
                     </p>
                     <p className="text-xs text-slate-400 capitalize">{conv.type}</p>
                   </div>
@@ -104,7 +107,7 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
             onClick={onClose}
             className="px-4 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
           >
-            Cancel
+            Hủy
           </button>
           <button
             type="button"
@@ -118,7 +121,7 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
             className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-sky-500 hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl shadow-xs"
           >
             <Send className="w-3.5 h-3.5" />
-            Forward
+            Chuyển tiếp
           </button>
         </div>
       </div>

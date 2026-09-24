@@ -48,7 +48,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
 
   // Extract shared media
   const sharedMedia = messages.filter(
-    (m) => m.type === 'image' && !m.isDeleted && (m.mediaUrl || m.content.startsWith('http'))
+    (m) => m.type === 'image' && !m.isDeleted && (m.mediaUrl || m.content?.startsWith('http'))
   );
 
   // Extract shared files
@@ -57,25 +57,21 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
   // Extract pinned
   const pinnedMessages = messages.filter((m) => m.isPinned && !m.isDeleted);
 
-  // Mock shared links
-  const sharedLinks = [
-    { title: 'Veltra Architecture Whitepaper', url: 'https://veltra.io/docs/architecture', date: 'Yesterday' },
-    { title: 'Figma Design System Tokens', url: 'https://figma.com/@veltra/design-tokens', date: 'May 14' },
-    { title: 'GitHub Core Monorepo', url: 'https://github.com/veltra-core/web', date: 'May 10' },
-  ];
+  // TODO: Backend chưa hỗ trợ chức năng lấy link
+  const sharedLinks: { title: string; url: string; date: string }[] = [];
 
   return (
     <div className="h-full flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200/80 dark:border-slate-800 w-full sm:w-80 lg:w-88 shrink-0 overflow-y-auto">
       {/* Top Header */}
       <div className="h-16 px-4 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between shrink-0">
         <h3 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white">
-          {isGroup ? 'Group Details' : 'Contact Details'}
+          {isGroup ? 'Chi tiết nhóm' : 'Chi tiết liên hệ'}
         </h3>
         <button
           type="button"
           onClick={onClose}
           className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          title="Close details"
+          title="Đóng"
         >
           <X className="w-5 h-5" />
         </button>
@@ -86,7 +82,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
         <div className="relative mb-3">
           <UserAvatar
             src={conversation.avatar}
-            name={conversation.name}
+            name={conversation.name || 'Hội thoại'}
             size="xl"
             status={partner?.status}
             showStatus={!isGroup}
@@ -99,17 +95,17 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
 
         {isGroup ? (
           <span className="text-xs text-sky-500 font-medium">
-            {conversation.participants.length} participants
+            {conversation.participants.length} thành viên
           </span>
         ) : (
           <span className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5 justify-center">
             <OnlineStatusDot status={partner?.status || 'offline'} size="sm" />
-            {partner?.status === 'online' ? 'Active Now' : partner?.lastSeen || 'Offline'}
+            {partner?.status === 'online' ? 'Trực tuyến' : partner?.lastSeen || 'Ngoại tuyến'}
           </span>
         )}
 
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 px-2 leading-relaxed">
-          {conversation.description || partner?.bio || 'Encrypted realtime channel powered by Veltra.'}
+          {conversation.description || partner?.bio || 'Kênh trò chuyện bảo mật bởi Veltra.'}
         </p>
 
         {/* Action Quick Buttons */}
@@ -124,7 +120,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
             }`}
           >
             {conversation.isMuted ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
-            <span>{conversation.isMuted ? 'Unmute' : 'Mute'}</span>
+            <span>{conversation.isMuted ? 'Bật thông báo' : 'Tắt thông báo'}</span>
           </button>
 
           <button
@@ -133,7 +129,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
             className="flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-medium bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 transition-colors"
           >
             <Search className="w-4 h-4" />
-            <span>Search</span>
+            <span>Tìm kiếm</span>
           </button>
         </div>
       </div>
@@ -148,7 +144,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
               activeTab === 'media' ? 'bg-white dark:bg-slate-900 text-sky-500 shadow-xs' : 'hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            Media
+            Ảnh/Video
           </button>
           <button
             type="button"
@@ -157,7 +153,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
               activeTab === 'files' ? 'bg-white dark:bg-slate-900 text-sky-500 shadow-xs' : 'hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            Files
+            Tệp tin
           </button>
           <button
             type="button"
@@ -166,7 +162,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
               activeTab === 'links' ? 'bg-white dark:bg-slate-900 text-sky-500 shadow-xs' : 'hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            Links
+            Liên kết
           </button>
           {isGroup ? (
             <button
@@ -176,7 +172,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
                 activeTab === 'members' ? 'bg-white dark:bg-slate-900 text-sky-500 shadow-xs' : 'hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              Members
+              Thành viên
             </button>
           ) : (
             <button
@@ -186,7 +182,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
                 activeTab === 'members' ? 'bg-white dark:bg-slate-900 text-sky-500 shadow-xs' : 'hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              About
+              Thông tin
             </button>
           )}
         </div>
@@ -198,16 +194,16 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
         {activeTab === 'media' && (
           <div className="space-y-3">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Shared Media ({sharedMedia.length})
+              Ảnh/Video đã chia sẻ ({sharedMedia.length})
             </span>
             {sharedMedia.length === 0 ? (
-              <p className="text-xs text-slate-400 py-6 text-center">No photos shared yet.</p>
+              <p className="text-xs text-slate-400 py-6 text-center">Chưa có ảnh nào được chia sẻ.</p>
             ) : (
               <div className="grid grid-cols-3 gap-2">
                 {sharedMedia.map((msg) => (
                   <div
-                    key={msg.id}
-                    onClick={() => onOpenImage(msg.mediaUrl || msg.content, 'Photo')}
+                    key={msg.id || msg._id}
+                    onClick={() => onOpenImage(msg.mediaUrl || msg.content || '', 'Photo')}
                     className="aspect-square rounded-xl overflow-hidden cursor-pointer group relative bg-slate-100 dark:bg-slate-800"
                   >
                     <img
@@ -228,10 +224,10 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
         {activeTab === 'files' && (
           <div className="space-y-2">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Shared Documents ({sharedFiles.length})
+              Tài liệu đã chia sẻ ({sharedFiles.length})
             </span>
             {sharedFiles.length === 0 ? (
-              <p className="text-xs text-slate-400 py-6 text-center">No files shared yet.</p>
+              <p className="text-xs text-slate-400 py-6 text-center">Chưa có tệp tin nào được chia sẻ.</p>
             ) : (
               sharedFiles.map((file) => (
                 <div
@@ -251,9 +247,9 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
                   </div>
                   <button
                     type="button"
-                    onClick={() => alert(`Downloading: ${file.fileName || 'file'}`)}
-                    className="p-1.5 text-slate-400 hover:text-sky-500 rounded-lg hover:bg-white dark:hover:bg-slate-700"
-                    title="Download"
+                    disabled
+                    className="p-1.5 text-slate-400 hover:text-sky-500 rounded-lg hover:bg-white dark:hover:bg-slate-700 opacity-50 cursor-not-allowed"
+                    title="Download (TODO: Backend)"
                   >
                     <Download className="w-4 h-4" />
                   </button>
@@ -267,7 +263,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
         {activeTab === 'links' && (
           <div className="space-y-2">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Shared Links ({sharedLinks.length})
+              Liên kết đã chia sẻ ({sharedLinks.length})
             </span>
             {sharedLinks.map((link, idx) => (
               <a
@@ -301,23 +297,24 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
               <>
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                    Participants ({conversation.participants.length})
+                    Thành viên ({conversation.participants.length})
                   </span>
                 </div>
                 <div className="space-y-2">
-                  {conversation.participants.map((userId) => {
-                    const member = participantsMap.get(userId);
-                    const isAdmin = conversation.admins?.includes(userId);
+                  {conversation.participants.map((p) => {
+                    const memberId = typeof p === 'string' ? p : p._id;
+                    const member = participantsMap.get(memberId) || (typeof p === 'object' ? (p as unknown as User) : undefined);
                     if (!member) return null;
+                    const isAdmin = conversation.group?.createdBy === memberId;
                     return (
                       <div
-                        key={userId}
+                        key={memberId}
                         className="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
                       >
                         <div className="flex items-center gap-2.5">
                           <UserAvatar
-                            src={member.avatar}
-                            name={member.displayName}
+                            src={member.avatarUrl || member.avatar}
+                            name={member.displayName || member.username || 'Thành viên'}
                             size="sm"
                             status={member.status}
                             showStatus
@@ -326,13 +323,13 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
                             <p className="text-xs font-medium text-slate-800 dark:text-slate-200">
                               {member.displayName}
                             </p>
-                            <span className="text-[10px] text-slate-400">{member.role || 'Member'}</span>
+                            <span className="text-[10px] text-slate-400">{member.role || 'Thành viên'}</span>
                           </div>
                         </div>
 
                         {isAdmin && (
                           <span className="px-2 py-0.5 rounded-md bg-sky-100 dark:bg-sky-950/60 text-[10px] font-semibold text-sky-600 dark:text-sky-400 flex items-center gap-1">
-                            <Shield className="w-3 h-3" /> Admin
+                            <Shield className="w-3 h-3" /> Quản trị viên
                           </span>
                         )}
                       </div>
@@ -343,11 +340,11 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
             ) : (
               <div className="space-y-3 text-xs">
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                  User Profile
+                  Hồ sơ người dùng
                 </span>
                 <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl space-y-2">
                   <div>
-                    <span className="text-[10px] text-slate-400 uppercase">Username</span>
+                    <span className="text-[10px] text-slate-400 uppercase">Tên đăng nhập</span>
                     <p className="font-medium text-slate-800 dark:text-slate-200">@{partner?.username}</p>
                   </div>
                   <div>
@@ -355,12 +352,14 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
                     <p className="font-medium text-slate-800 dark:text-slate-200">{partner?.email}</p>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-400 uppercase">Location</span>
+                    <span className="text-[10px] text-slate-400 uppercase">Vị trí</span>
                     <p className="font-medium text-slate-800 dark:text-slate-200">{partner?.location || 'San Francisco, CA'}</p>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-400 uppercase">Member Since</span>
-                    <p className="font-medium text-slate-800 dark:text-slate-200">{partner?.joinedDate || '2023'}</p>
+                    <span className="text-[10px] text-slate-400 uppercase">Thành viên từ</span>
+                    <p className="font-medium text-slate-800 dark:text-slate-200">
+                      {partner?.createdAt ? new Date(partner.createdAt).getFullYear() : '2024'}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -373,15 +372,12 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       <div className="p-4 border-t border-slate-200/60 dark:border-slate-800/80">
         <button
           type="button"
-          onClick={() => {
-            if (confirm(isGroup ? 'Are you sure you want to leave this group?' : 'Block this contact?')) {
-              alert('Action completed in mock state.');
-            }
-          }}
-          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+          disabled
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold text-rose-600/50 dark:text-rose-600/50 bg-rose-50/50 dark:bg-rose-950/20 cursor-not-allowed transition-colors"
+          title="TODO: Cần backend hỗ trợ"
         >
           <LogOut className="w-4 h-4" />
-          <span>{isGroup ? 'Leave Group' : 'Block Contact'}</span>
+          <span>{isGroup ? 'Rời nhóm' : 'Chặn liên hệ'}</span>
         </button>
       </div>
     </div>

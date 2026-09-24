@@ -69,8 +69,8 @@ export const MessageList: React.FC<MessageListProps> = ({
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
     return (
-      m.content.toLowerCase().includes(q) ||
-      (m.fileName && m.fileName.toLowerCase().includes(q))
+      Boolean(m.content?.toLowerCase().includes(q)) ||
+      Boolean(m.fileName && m.fileName.toLowerCase().includes(q))
     );
   });
 
@@ -122,27 +122,30 @@ export const MessageList: React.FC<MessageListProps> = ({
               Close
             </button>
           </div>
-          {pinnedMessages.map((msg) => (
-            <div
-              key={msg.id}
-              className="p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 text-xs flex items-center justify-between gap-2"
-            >
-              <div className="truncate">
-                <span className="font-semibold text-sky-500 mr-1.5">
-                  {participantsMap.get(msg.senderId)?.displayName || 'Member'}:
-                </span>
-                <span className="text-slate-700 dark:text-slate-200">{msg.content}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => onTogglePin(msg.id)}
-                className="text-slate-400 hover:text-rose-500 shrink-0"
-                title="Unpin"
+          {pinnedMessages.map((msg) => {
+            const msgId = msg._id || msg.id || '';
+            return (
+              <div
+                key={msgId}
+                className="p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 text-xs flex items-center justify-between gap-2"
               >
-                Unpin
-              </button>
-            </div>
-          ))}
+                <div className="truncate">
+                  <span className="font-semibold text-sky-500 mr-1.5">
+                    {participantsMap.get(msg.senderId)?.displayName || 'Member'}:
+                  </span>
+                  <span className="text-slate-700 dark:text-slate-200">{msg.content}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onTogglePin(msgId)}
+                  className="text-slate-400 hover:text-rose-500 shrink-0"
+                  title="Unpin"
+                >
+                  Unpin
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -175,25 +178,26 @@ export const MessageList: React.FC<MessageListProps> = ({
           const sender = participantsMap.get(msg.senderId);
           const nextMsg = filteredMessages[index + 1];
           const isLastInCluster = !nextMsg || nextMsg.senderId !== msg.senderId;
+          const msgId = msg._id || msg.id || String(index);
 
           return (
             <MessageBubble
-              key={msg.id}
+              key={msgId}
               message={msg}
               sender={sender}
               isCurrentUser={isCurrentUser}
               isGroup={isGroup}
               showAvatar={isLastInCluster}
               currentUserId={currentUserId}
-              onReact={(emoji) => onReact(msg.id, emoji)}
+              onReact={(emoji) => onReact(msgId, emoji)}
               onReply={() => onReply(msg, sender?.displayName || 'Member')}
-              onCopy={() => onCopy(msg.content)}
+              onCopy={() => onCopy(msg.content || '')}
               onEdit={isCurrentUser ? () => onEdit(msg) : undefined}
-              onDelete={isCurrentUser ? () => onDelete(msg.id) : undefined}
+              onDelete={isCurrentUser ? () => onDelete(msgId) : undefined}
               onForward={() => onForward(msg)}
-              onTogglePin={() => onTogglePin(msg.id)}
+              onTogglePin={() => onTogglePin(msgId)}
               onOpenImage={onOpenImage}
-              onMarkUnread={onMarkUnread ? () => onMarkUnread(msg.id) : undefined}
+              onMarkUnread={onMarkUnread ? () => onMarkUnread(msgId) : undefined}
             />
           );
         })}

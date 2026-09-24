@@ -1,43 +1,111 @@
+import { io, Socket } from 'socket.io-client';
+
 type SocketEventHandler = (...args: any[]) => void;
 
 class SocketService {
-  private listeners: Map<string, Set<SocketEventHandler>> = new Map();
-  private connected: boolean = false;
+  private socket: Socket | null = null;
+  private currentToken: string | null = null;
 
-  connect(url?: string, token?: string) {
-    // When connecting to NestJS WebSocket Gateway (e.g. io(url, { auth: { token } }))
-    this.connected = true;
+  /**
+   * Connect to Socket.IO server with JWT token.
+   * Ensures single instance per session and prevents duplicate connections.
+   */
+  connect(url?: string, token?: string): Socket | null {
+    if (typeof window === 'undefined') return null;
+
+    const authToken = token || localStorage.getItem('accessToken');
+    if (!authToken) {
+      return null;
+    }
+
+    const socketUrl =
+      url ||
+      process.env.NEXT_PUBLIC_SOCKET_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      process.env.NEXT_PUBLIC_API ||
+      'http://localhost:4000';
+
+    // If socket already exists with the same token and is connected or connecting, reuse it
+    if (this.socket && this.currentToken === authToken) {
+      if (this.socket.connected) {
+        return this.socket;
+      }
+      // Reconnect if disconnected
+      this.socket.connect();
+      return this.socket;
+    }
+
+    // Clean up previous socket if token changed
+    if (this.socket) {
+      this.disconnect();
+    }
+
+    this.currentToken = authToken;
+    this.socket = io(socketUrl, {
+      auth: {
+        token: authToken,
+      },
+      transports: ['websocket', 'polling'],
+      autoConnect: true,
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
+
+    return this.socket;
   }
 
-  disconnect() {
-    this.connected = false;
+  /**
+   * Disconnect and cleanup socket instance upon user logout or session termination
+   */
+  disconnect(): void {
+    if (this.socket) {
+      this.socket.removeAllListeners();
+      this.socket.disconnect();
+      this.socket = null;
+    }
+    this.currentToken = null;
   }
 
+  /**
+   * Check connection status
+   */
   isConnected(): boolean {
-    return this.connected;
+    return Boolean(this.socket?.connected);
   }
 
-  on(event: string, handler: SocketEventHandler) {
-    if (!this.listeners.has(event)) {
-      this.listeners.set(event, new Set());
-    }
-    this.listeners.get(event)!.add(handler);
+  /**
+   * Register an event listener
+   */
+  on(event: string, handler: SocketEventHandler): void {
+    this.socket?.on(event, handler);
   }
 
-  off(event: string, handler: SocketEventHandler) {
-    const set = this.listeners.get(event);
-    if (set) {
-      set.delete(handler);
+  /**
+   * Remove an event listener
+   */
+  off(event: string, handler?: SocketEventHandler): void {
+    if (handler) {
+      this.socket?.off(event, handler);
+    } else {
+      this.socket?.off(event);
     }
   }
 
-  emit(event: string, ...args: any[]) {
-    // In actual Socket.IO: this.socket?.emit(event, ...args)
-    const set = this.listeners.get(event);
-    if (set) {
-      set.forEach((handler) => handler(...args));
-    }
+  /**
+   * Emit an event
+   */
+  emit(event: string, ...args: any[]): void {
+    this.socket?.emit(event, ...args);
+  }
+
+  /**
+   * Return the underlying Socket instance if needed
+   */
+  getSocket(): Socket | null {
+    return this.socket;
   }
 }
 
 export const socketService = new SocketService();
+export default socketService;

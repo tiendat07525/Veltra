@@ -1,28 +1,34 @@
-export type UserStatus = 'online' | 'offline' | 'away';
+export type UserStatus = 'Online' | 'Offline' | 'Unvailable' | 'online' | 'offline' | 'away';
 
+// Matches backend User schema fields (returned by GET /users, GET /users/:id, populate)
 export interface User {
-  id: string;
+  _id: string;
+  id?: string;
   username: string;
-  displayName: string;
-  avatar: string;
-  coverImage?: string;
-  status: UserStatus;
-  lastSeen?: string;
-  bio?: string;
-  email: string;
+  displayName?: string;
+  avatarUrl?: string;
+  avatar?: string;
+  email?: string;
   phone?: string;
+  bio?: string;
   role?: string;
   location?: string;
-  joinedDate?: string;
+  status?: UserStatus | 'online' | 'offline' | 'away';
+  onlineStatus?: UserStatus;
+  lastSeen?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
+// Returned by GET /users/profile (same as User but guaranteed to have email)
 export interface CurrentUserProfile extends User {
-  settings: {
-    theme: 'dark' | 'light' | 'system';
-    soundEnabled: boolean;
-    notificationsEnabled: boolean;
-    readReceipts: boolean;
-    activeStatusVisible: boolean;
-    language: string;
-  };
+  email: string;
+}
+
+// Lightweight user info returned by populate() calls (friend list, conversation participants)
+export interface UserBasicInfo {
+  _id: string;
+  username?: string;
+  displayName?: string;
+  avatarUrl?: string;
 }

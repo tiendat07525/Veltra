@@ -67,9 +67,9 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
           setShowReactions((prev) => !prev);
           setShowMoreMenu(false);
         }}
-        title="React with emoji"
+        title="Thả cảm xúc"
         className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-sky-500 transition-colors"
-        aria-label="React with emoji"
+        aria-label="Thả cảm xúc"
       >
         <Smile className="w-4 h-4" />
       </button>
@@ -78,9 +78,9 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
       <button
         type="button"
         onClick={onReply}
-        title="Reply"
+        title="Trả lời"
         className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-sky-500 transition-colors"
-        aria-label="Reply to message"
+        aria-label="Trả lời tin nhắn"
       >
         <Reply className="w-4 h-4" />
       </button>
@@ -92,9 +92,9 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
           setShowMoreMenu((prev) => !prev);
           setShowReactions(false);
         }}
-        title="More actions"
+        title="Thêm tùy chọn"
         className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-sky-500 transition-colors"
-        aria-label="More options"
+        aria-label="Thêm tùy chọn"
       >
         <MoreHorizontal className="w-4 h-4" />
       </button>
@@ -124,7 +124,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
             className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-left transition-colors"
           >
             <Copy className="w-3.5 h-3.5 text-slate-500" />
-            Copy message
+            Sao chép tin nhắn
           </button>
 
           <button
@@ -136,7 +136,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
             className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-left transition-colors"
           >
             <Share2 className="w-3.5 h-3.5 text-slate-500" />
-            Forward
+            Chuyển tiếp
           </button>
 
           <button
@@ -148,7 +148,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
             className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-left transition-colors"
           >
             <Pin className="w-3.5 h-3.5 text-slate-500" />
-            {isPinned ? 'Unpin message' : 'Pin message'}
+            {isPinned ? 'Bỏ ghim tin nhắn' : 'Ghim tin nhắn'}
           </button>
 
           {onMarkUnread && (
@@ -161,7 +161,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
               className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-left transition-colors"
             >
               <Mail className="w-3.5 h-3.5 text-slate-500" />
-              Mark as unread
+              Đánh dấu chưa đọc
             </button>
           )}
 
@@ -177,7 +177,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
                   className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-left transition-colors"
                 >
                   <Edit2 className="w-3.5 h-3.5 text-slate-500" />
-                  Edit message
+                  Chỉnh sửa tin nhắn
                 </button>
               )}
               {onDelete && (
@@ -190,7 +190,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
                   className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 text-left transition-colors"
                 >
                   <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                  Delete message
+                  Xóa tin nhắn
                 </button>
               )}
             </>
@@ -203,7 +203,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
               className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 text-left transition-colors"
             >
               <Flag className="w-3.5 h-3.5" />
-              Report message
+              Báo cáo tin nhắn
             </button>
           )}
         </div>

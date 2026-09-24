@@ -4,9 +4,10 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
-import { Conversation } from './conversation/schemas/conversation.schema';
+import { ConversationModule } from './conversation/conversation.module';
 import { MessageModule } from './messages/message.module';
 import { FriendModule } from './friend/friend.module';
+import { RealtimeModule } from './realtime/realtime.module';
 
 @Module({
   imports: [
@@ -16,9 +17,10 @@ import { FriendModule } from './friend/friend.module';
     MongooseModule.forRoot(process.env.MONGODB_URL!),
     UsersModule,
     AuthModule,
-    Conversation,
+    ConversationModule,
     MessageModule,
-    FriendModule
+    FriendModule,
+    RealtimeModule
   ],
   controllers: [AppController],
 })

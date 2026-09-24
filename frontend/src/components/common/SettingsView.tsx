@@ -36,7 +36,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     <div className="flex-1 h-full flex flex-col bg-slate-50 dark:bg-slate-950 overflow-hidden">
       {/* Header */}
       <header className="h-16 px-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center shrink-0">
-        <h1 className="text-xl font-bold text-slate-900 dark:text-white">Settings & Preferences</h1>
+        <h1 className="text-xl font-bold text-slate-900 dark:text-white">Cài đặt & Tùy chọn</h1>
       </header>
 
       {/* Main Settings Grid */}
@@ -53,7 +53,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             }`}
           >
             <Moon className="w-4 h-4" />
-            <span>Appearance & Theme</span>
+            <span>Giao diện & Chủ đề</span>
           </button>
 
           <button
@@ -66,7 +66,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             }`}
           >
             <Bell className="w-4 h-4" />
-            <span>Notifications</span>
+            <span>Thông báo</span>
           </button>
 
           <button
@@ -79,7 +79,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             }`}
           >
             <Shield className="w-4 h-4" />
-            <span>Privacy & Visibility</span>
+            <span>Quyền riêng tư & Hiển thị</span>
           </button>
 
           <button
@@ -92,7 +92,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             }`}
           >
             <MessageSquare className="w-4 h-4" />
-            <span>Chat Experience</span>
+            <span>Trải nghiệm trò chuyện</span>
           </button>
 
           <button
@@ -105,7 +105,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             }`}
           >
             <Lock className="w-4 h-4" />
-            <span>Security & Sessions</span>
+            <span>Bảo mật & Phiên</span>
           </button>
         </div>
 
@@ -115,9 +115,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {activeSection === 'appearance' && (
             <div className="space-y-6">
               <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">Interface Theme</h3>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Chủ đề giao diện</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Select how Veltra looks on your device.
+                  Chọn cách Veltra hiển thị trên thiết bị của bạn.
                 </p>
               </div>
 
@@ -134,7 +134,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 shadow-xs flex items-center justify-center">
                     ☀️
                   </div>
-                  <span>Light</span>
+                  <span>Sáng</span>
                 </button>
 
                 <button
@@ -149,7 +149,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="w-10 h-10 rounded-xl bg-slate-900 border border-slate-700 shadow-xs flex items-center justify-center text-white">
                     🌙
                   </div>
-                  <span>Dark (Default)</span>
+                  <span>Tối (Mặc định)</span>
                 </button>
 
                 <button
@@ -164,7 +164,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 shadow-xs flex items-center justify-center">
                     💻
                   </div>
-                  <span>System Auto</span>
+                  <span>Tự động theo hệ thống</span>
                 </button>
               </div>
             </div>
@@ -174,17 +174,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {activeSection === 'notifications' && (
             <div className="space-y-5">
               <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">Alerts & Sounds</h3>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Cảnh báo & Âm thanh</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Configure incoming audio chimes and system banners.
+                  Cấu hình âm thanh thông báo đến và biểu ngữ hệ thống.
                 </p>
               </div>
 
               <div className="space-y-3">
                 <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
                   <div>
-                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Sound Effects</h4>
-                    <p className="text-[11px] text-slate-500">Play pleasant sound for incoming messages and reactions</p>
+                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Hiệu ứng âm thanh</h4>
+                    <p className="text-[11px] text-slate-500">Phát âm thanh dễ chịu cho tin nhắn và cảm xúc mới</p>
                   </div>
                   <input
                     type="checkbox"
@@ -196,8 +196,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                 <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
                   <div>
-                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Message Previews</h4>
-                    <p className="text-[11px] text-slate-500">Show message text preview in desktop notification popups</p>
+                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Xem trước tin nhắn</h4>
+                    <p className="text-[11px] text-slate-500">Hiển thị xem trước văn bản tin nhắn trong thông báo pop-up trên máy tính</p>
                   </div>
                   <input
                     type="checkbox"
@@ -209,8 +209,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                 <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
                   <div>
-                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Do Not Disturb</h4>
-                    <p className="text-[11px] text-slate-500">Mute all alert sounds and notification badges temporarily</p>
+                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Không làm phiền</h4>
+                    <p className="text-[11px] text-slate-500">Tạm thời tắt tất cả âm thanh thông báo và huy hiệu thông báo</p>
                   </div>
                   <input
                     type="checkbox"
@@ -227,17 +227,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {activeSection === 'privacy' && (
             <div className="space-y-5">
               <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">Privacy Controls</h3>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Kiểm soát quyền riêng tư</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Manage read receipts and your online status visibility.
+                  Quản lý xác nhận đã đọc và hiển thị trạng thái trực tuyến của bạn.
                 </p>
               </div>
 
               <div className="space-y-3">
                 <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
                   <div>
-                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Send Read Receipts</h4>
-                    <p className="text-[11px] text-slate-500">Allow others to see when you have read their messages</p>
+                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Gửi thông báo đã đọc</h4>
+                    <p className="text-[11px] text-slate-500">Cho phép người khác biết khi bạn đã đọc tin nhắn của họ</p>
                   </div>
                   <input
                     type="checkbox"
@@ -249,8 +249,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                 <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
                   <div>
-                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Display Last Seen Timestamp</h4>
-                    <p className="text-[11px] text-slate-500">Share your last active timestamp with team members</p>
+                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Hiển thị thời gian hoạt động gần nhất</h4>
+                    <p className="text-[11px] text-slate-500">Chia sẻ thời gian hoạt động gần nhất của bạn với các thành viên trong nhóm</p>
                   </div>
                   <input
                     type="checkbox"
@@ -267,17 +267,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {activeSection === 'chat' && (
             <div className="space-y-5">
               <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">Chat Behavior</h3>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Hành vi trò chuyện</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Tune keyboard shortcuts and media handling.
+                  Tinh chỉnh phím tắt và xử lý đa phương tiện.
                 </p>
               </div>
 
               <div className="space-y-3">
                 <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
                   <div>
-                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Press Enter to Send</h4>
-                    <p className="text-[11px] text-slate-500">Pressing Enter immediately sends message; Shift+Enter creates newline</p>
+                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Nhấn Enter để gửi</h4>
+                    <p className="text-[11px] text-slate-500">Nhấn Enter để gửi tin nhắn ngay lập tức; Shift+Enter để tạo dòng mới</p>
                   </div>
                   <input
                     type="checkbox"
@@ -289,8 +289,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                 <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
                   <div>
-                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Auto-download Shared Photos</h4>
-                    <p className="text-[11px] text-slate-500">Automatically cache media on fast connections</p>
+                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Tự động tải ảnh được chia sẻ</h4>
+                    <p className="text-[11px] text-slate-500">Tự động lưu trữ phương tiện vào bộ nhớ đệm trên các kết nối nhanh</p>
                   </div>
                   <input
                     type="checkbox"
@@ -307,16 +307,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {activeSection === 'security' && (
             <div className="space-y-5">
               <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">Security & Active Devices</h3>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Bảo mật & Thiết bị hoạt động</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Monitor signed-in clients and multi-factor encryption keys.
+                  Giám sát các máy khách đã đăng nhập và khóa mã hóa đa yếu tố.
                 </p>
               </div>
 
               <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between">
                 <div>
-                  <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Two-Factor Authentication (2FA)</h4>
-                  <p className="text-[11px] text-slate-500">Require an authenticator app code on new logins</p>
+                  <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Xác thực hai yếu tố (2FA)</h4>
+                  <p className="text-[11px] text-slate-500">Yêu cầu mã ứng dụng xác thực khi đăng nhập mới</p>
                 </div>
                 <input
                   type="checkbox"
@@ -328,7 +328,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
               <div className="space-y-2">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Active Sessions
+                  Các phiên hoạt động
                 </h4>
 
                 <div className="p-3 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
@@ -336,13 +336,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <Smartphone className="w-5 h-5 text-sky-500" />
                     <div>
                       <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                        Chrome on macOS Sonoma (Current)
+                        Chrome trên macOS Sonoma (Hiện tại)
                       </p>
-                      <span className="text-[10px] text-emerald-500 font-medium">Active now • San Francisco, US</span>
+                      <span className="text-[10px] text-emerald-500 font-medium">Đang hoạt động • San Francisco, US</span>
                     </div>
                   </div>
                   <span className="text-[10px] px-2 py-0.5 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 rounded-md font-bold">
-                    THIS DEVICE
+                    THIẾT BỊ NÀY
                   </span>
                 </div>
               </div>

@@ -53,7 +53,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   // Sync editing text
   useEffect(() => {
     if (editingMessage) {
-      setText(editingMessage.content);
+      setText(editingMessage.content || '');
       if (textareaRef.current) {
         textareaRef.current.focus();
       }
@@ -106,7 +106,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   const handleFinishVoiceRecording = () => {
     setIsRecordingVoice(false);
     onSendMessage({
-      content: `Voice message (${voiceSeconds}s)`,
+      content: `Tin nhắn thoại (${voiceSeconds}s)`,
       type: 'audio',
       duration: Math.max(voiceSeconds, 4),
     });
@@ -118,7 +118,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     setVoiceSeconds(0);
   };
 
-  // Mock File Upload
+  // File Upload (TODO: Backend File Upload API)
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -128,7 +128,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
       const reader = new FileReader();
       reader.onload = () => {
         onSendMessage({
-          content: 'Photo',
+          content: 'Hình ảnh',
           type: 'image',
           mediaUrl: reader.result as string,
         });
@@ -147,10 +147,10 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     e.target.value = '';
   };
 
-  // Quick Mock Send Presets
+  // Quick Send Presets (UI Only)
   const sendPresetImage = (url: string) => {
     onSendMessage({
-      content: 'Shared image',
+      content: 'Hình ảnh đã chia sẻ',
       type: 'image',
       mediaUrl: url,
     });
@@ -191,7 +191,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
         <div className="flex items-center justify-between px-3 py-2 mb-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border-l-4 border-sky-500 text-xs animate-in slide-in-from-bottom-1">
           <div className="flex flex-col min-w-0 pr-2">
             <span className="font-semibold text-sky-600 dark:text-sky-400">
-              Replying to {replyingTo.senderName}
+              Đang trả lời {replyingTo.senderName}
             </span>
             <span className="text-slate-600 dark:text-slate-300 truncate">
               {replyingTo.content}
@@ -201,7 +201,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
             type="button"
             onClick={onCancelReply}
             className="p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-            title="Cancel reply"
+            title="Hủy trả lời"
           >
             <X className="w-4 h-4" />
           </button>
@@ -213,7 +213,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
         <div className="flex items-center justify-between px-3 py-2 mb-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border-l-4 border-amber-500 text-xs animate-in slide-in-from-bottom-1">
           <div className="flex flex-col min-w-0 pr-2">
             <span className="font-semibold text-amber-600 dark:text-amber-400">
-              Editing message
+              Đang chỉnh sửa tin nhắn
             </span>
             <span className="text-slate-600 dark:text-slate-300 truncate">
               {editingMessage.content}
@@ -223,7 +223,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
             type="button"
             onClick={onCancelEdit}
             className="p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-            title="Cancel edit"
+            title="Hủy chỉnh sửa"
           >
             <X className="w-4 h-4" />
           </button>
@@ -236,7 +236,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
           <div className="flex items-center gap-3">
             <div className="w-3 h-3 rounded-full bg-rose-500 animate-ping" />
             <span className="text-sm font-semibold text-rose-600 dark:text-rose-400">
-              Recording Voice Note...
+              Đang ghi âm...
             </span>
             <span className="text-xs font-mono text-slate-600 dark:text-slate-400">
               {voiceSeconds}s
@@ -249,7 +249,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
               onClick={handleCancelVoiceRecording}
               className="px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl"
             >
-              Cancel
+              Hủy
             </button>
             <button
               type="button"
@@ -257,7 +257,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
               className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs"
             >
               <StopCircle className="w-4 h-4" />
-              Send Audio
+              Gửi ghi âm
             </button>
           </div>
         </div>
@@ -272,7 +272,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                 setShowAttachmentMenu((prev) => !prev);
                 setShowEmojiPicker(false);
               }}
-              title="Attach files"
+              title="Đính kèm tệp"
               className="p-2 sm:p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-sky-500 transition-colors"
             >
               <Paperclip className="w-5 h-5" />
@@ -289,7 +289,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                   <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-500 flex items-center justify-center">
                     <FileText className="w-4 h-4" />
                   </div>
-                  Upload Document
+                  Tải lên tài liệu
                 </button>
 
                 <button
@@ -300,7 +300,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                   <div className="w-7 h-7 rounded-lg bg-sky-50 dark:bg-sky-950/60 text-sky-500 flex items-center justify-center">
                     <ImageIcon className="w-4 h-4" />
                   </div>
-                  Upload Photo
+                  Tải lên hình ảnh
                 </button>
 
                 <div className="border-t border-slate-100 dark:border-slate-700/60 my-1" />
@@ -311,7 +311,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                   className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 text-left transition-colors"
                 >
                   <Sparkles className="w-4 h-4 text-amber-500" />
-                  Sample PDF Spec
+                  Mẫu PDF Spec
                 </button>
 
                 <button
@@ -324,7 +324,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                   className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 text-left transition-colors"
                 >
                   <Sparkles className="w-4 h-4 text-emerald-500" />
-                  Sample UI Mockup
+                  Mẫu UI Mockup
                 </button>
               </div>
             )}
@@ -334,7 +334,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
           <button
             type="button"
             onClick={() => imageInputRef.current?.click()}
-            title="Send photo"
+            title="Gửi hình ảnh"
             className="hidden sm:inline-flex p-2 sm:p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-sky-500 transition-colors"
           >
             <ImageIcon className="w-5 h-5" />
@@ -354,10 +354,10 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
               onKeyDown={handleKeyDown}
               placeholder={
                 editingMessage
-                  ? 'Edit message and press Enter...'
+                  ? 'Chỉnh sửa tin nhắn và nhấn Enter...'
                   : isGroup
-                  ? 'Message group...'
-                  : 'Type a message...'
+                  ? 'Nhập tin nhắn nhóm...'
+                  : 'Nhập tin nhắn...'
               }
               className="w-full max-h-32 px-3.5 py-2.5 bg-transparent border-none text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-hidden resize-none leading-relaxed"
             />
@@ -371,7 +371,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                 setShowEmojiPicker((prev) => !prev);
                 setShowAttachmentMenu(false);
               }}
-              title="Add emoji"
+              title="Thêm biểu tượng cảm xúc"
               className="p-2 sm:p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-sky-500 transition-colors"
             >
               <Smile className="w-5 h-5" />
@@ -392,7 +392,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
             <button
               type="button"
               onClick={handleSend}
-              title={editingMessage ? 'Save changes' : 'Send message (Enter)'}
+              title={editingMessage ? 'Lưu thay đổi' : 'Gửi tin nhắn (Enter)'}
               className="p-2.5 rounded-2xl bg-sky-600 hover:bg-sky-500 text-white shadow-md shadow-sky-600/30 transition-all hover:scale-105 active:scale-95"
             >
               <Send className="w-5 h-5 ml-0.5" />
@@ -401,7 +401,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
             <button
               type="button"
               onClick={() => setIsRecordingVoice(true)}
-              title="Record voice message"
+              title="Ghi âm tin nhắn"
               className="p-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-sky-50 dark:hover:bg-sky-950/60 text-slate-600 dark:text-slate-300 hover:text-sky-500 transition-colors"
             >
               <Mic className="w-5 h-5" />

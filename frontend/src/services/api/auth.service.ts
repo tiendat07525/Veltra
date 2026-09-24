@@ -1,26 +1,46 @@
-import { CURRENT_USER } from '@/data/mock/users';
-import { CurrentUserProfile, User } from '@/types/user';
+import api from './api';
+import { CurrentUserProfile } from '@/types/user';
 
 export const authService = {
+  /**
+   * Lấy profile user hiện tại
+   * GET /users/profile
+   */
   async getCurrentUser(): Promise<CurrentUserProfile> {
-    return CURRENT_USER;
+    const res = await api.get('/users/profile');
+    return res.data;
   },
 
-  async login(credentials: { email: string; password?: string }): Promise<{ user: User; token: string }> {
-    return {
-      user: CURRENT_USER,
-      token: 'mock-jwt-token-veltra-v1',
-    };
+  /**
+   * Đăng nhập
+   * POST /auth/login
+   * Body: { username: string, password: string }
+   * Response: { message: string, accessToken: string }
+   */
+  async login(credentials: { username: string; password: string }): Promise<{ message: string; accessToken: string }> {
+    const res = await api.post('/auth/login', credentials);
+    if (res.data.accessToken) {
+      localStorage.setItem('accessToken', res.data.accessToken);
+    }
+    return res.data;
   },
 
-  async register(data: { fullName: string; email: string; password?: string }): Promise<{ user: User; token: string }> {
-    return {
-      user: CURRENT_USER,
-      token: 'mock-jwt-token-veltra-v1',
-    };
+  /**
+   * Đăng ký
+   * POST /auth/register
+   * Body: { username: string, email: string, password: string }
+   * Response: { message: string, data: User }
+   */
+  async register(data: { username: string; email: string; password: string }): Promise<{ message: string; data: any }> {
+    const res = await api.post('/auth/register', data);
+    // Backend register does NOT return accessToken - user must login after registering
+    return res.data;
   },
 
-  async logout(): Promise<void> {
-    // Clean auth state
+  /**
+   * Đăng xuất (client-side only)
+   */
+  logout(): void {
+    localStorage.removeItem('accessToken');
   },
 };

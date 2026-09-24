@@ -1,19 +1,18 @@
+'use client';
+
 import React, { useState } from 'react';
 import {
   Search,
   Plus,
   Inbox,
-  Star,
   Users,
   MessageCircle,
   X,
   Filter,
 } from 'lucide-react';
-import { Conversation } from '@/types/conversation';
-import { ConversationFilter } from '@/hooks/use-conversations';
+import { Conversation, ConversationFilter } from '@/types/conversation';
 import { ConversationItem } from './ConversationItem';
 import { NewConversationModal } from './NewConversationModal';
-import { User } from '@/types/user';
 
 interface ConversationSidebarProps {
   conversations: Conversation[];
@@ -23,13 +22,11 @@ interface ConversationSidebarProps {
   onSearchChange: (val: string) => void;
   filter: ConversationFilter;
   onFilterChange: (filter: ConversationFilter) => void;
-  participantsMap: Map<string, User>;
-  onTogglePin: (id: string, e?: React.MouseEvent) => void;
-  onToggleMute: (id: string, e?: React.MouseEvent) => void;
+  currentUserId: string;
   onCreateNewConversation: (params: {
     type: 'direct' | 'group';
-    name: string;
     participants: string[];
+    groupName?: string;
   }) => void;
 }
 
@@ -41,28 +38,25 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
   onSearchChange,
   filter,
   onFilterChange,
-  participantsMap,
-  onTogglePin,
-  onToggleMute,
+  currentUserId,
   onCreateNewConversation,
 }) => {
   const [showNewModal, setShowNewModal] = useState(false);
 
   const filterTabs: { id: ConversationFilter; label: string; icon: any }[] = [
-    { id: 'all', label: 'All', icon: Inbox },
-    { id: 'direct', label: 'Direct', icon: MessageCircle },
-    { id: 'groups', label: 'Groups', icon: Users },
-    { id: 'favorites', label: 'Pinned', icon: Star },
-    { id: 'unread', label: 'Unread', icon: Filter },
+    { id: 'all', label: 'Tất cả', icon: Inbox },
+    { id: 'direct', label: 'Cá nhân', icon: MessageCircle },
+    { id: 'groups', label: 'Nhóm', icon: Users },
+    { id: 'unread', label: 'Chưa đọc', icon: Filter },
   ];
 
   return (
     <aside className="w-full md:w-80 lg:w-92 h-full flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200/80 dark:border-slate-800 shrink-0 select-none">
-      {/* Top Header with Title and New Chat Button */}
+      {/* Top Header */}
       <div className="h-16 px-4 flex items-center justify-between border-b border-slate-200/60 dark:border-slate-800/80 shrink-0">
         <div className="flex items-center gap-2">
           <h2 className="text-lg font-bold text-slate-950 dark:text-white tracking-tight">
-            Messages
+            Tin nhắn
           </h2>
           <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-500">
             {conversations.length}
@@ -72,11 +66,11 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         <button
           type="button"
           onClick={() => setShowNewModal(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold shadow-sm shadow-sky-600/30 transition-all hover:scale-102 active:scale-98"
-          title="New conversation"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold shadow-sm shadow-sky-600/30 transition-all"
+          title="Tin nhắn mới"
         >
           <Plus className="w-4 h-4" />
-          <span className="hidden sm:inline">New Chat</span>
+          <span className="hidden sm:inline">Nhắn tin</span>
         </button>
       </div>
 
@@ -86,7 +80,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
-            placeholder="Search conversations, messages..."
+            placeholder="Tìm kiếm cuộc trò chuyện..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             className="w-full pl-9 pr-8 py-2 bg-slate-100/90 dark:bg-slate-800/80 border border-transparent focus:border-sky-500/50 rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-sky-500/20 transition-all"
@@ -133,37 +127,24 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         {conversations.length === 0 ? (
           <div className="h-48 flex flex-col items-center justify-center p-4 text-center text-slate-400 text-xs">
             <p className="font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              No conversations found
+              Không tìm thấy cuộc trò chuyện nào
             </p>
             <p className="text-slate-400 text-[11px]">
               {searchQuery
-                ? `No chats match "${searchQuery}"`
-                : 'Try choosing another filter tab or create a new conversation.'}
+                ? `Không có kết quả cho "${searchQuery}"`
+                : 'Tạo cuộc trò chuyện mới để bắt đầu nhắn tin.'}
             </p>
           </div>
         ) : (
-          conversations.map((conv) => {
-            // Find partner status if direct
-            let partnerStatus = undefined;
-            if (conv.type === 'direct') {
-              const partnerId = conv.participants.find((id) => id !== 'user-me');
-              if (partnerId) {
-                partnerStatus = participantsMap.get(partnerId)?.status;
-              }
-            }
-
-            return (
-              <ConversationItem
-                key={conv.id}
-                conversation={conv}
-                isActive={activeConversationId === conv.id}
-                status={partnerStatus}
-                onSelect={() => onSelectConversation(conv.id)}
-                onTogglePin={(e) => onTogglePin(conv.id, e)}
-                onToggleMute={(e) => onToggleMute(conv.id, e)}
-              />
-            );
-          })
+          conversations.map((conv) => (
+            <ConversationItem
+              key={conv._id}
+              conversation={conv}
+              isActive={activeConversationId === conv._id}
+              currentUserId={currentUserId}
+              onSelect={() => onSelectConversation(conv._id)}
+            />
+          ))
         )}
       </div>
 
