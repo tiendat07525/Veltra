@@ -12,15 +12,28 @@ import { ConfigService } from '@nestjs/config';
 import { UsersService } from 'src/users/users.service';
 import { RealtimeService } from './realtime.service';
 
-@WebSocketGateway({
-  cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-    credentials: true,
-  },
-})
-export class RealtimeGateway
-  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
-{
+const allowedOrigins = [
+    'http://localhost:3000',
+    'https://tiendat75.id.vn',
+    'http://tiendat75.id.vn',
+    process.env.FRONTEND_URL,
+  ].filter(Boolean) as string[];
+
+  @WebSocketGateway({
+    cors: {
+      origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error(`WebSocket CORS blocked for origin: ${origin}`));
+        }
+      },
+      credentials: true,
+    },
+  })
+  export class RealtimeGateway
+    implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+  {
   @WebSocketServer()
   server: Server;
 
