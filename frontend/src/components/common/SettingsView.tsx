@@ -183,40 +183,46 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="space-y-3">
                 <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
                   <div>
-                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Hiệu ứng âm thanh</h4>
+                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                      Hiệu ứng âm thanh <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500">Chưa hỗ trợ</span>
+                    </h4>
                     <p className="text-[11px] text-slate-500">Phát âm thanh dễ chịu cho tin nhắn và cảm xúc mới</p>
                   </div>
                   <input
                     type="checkbox"
                     checked={soundEnabled}
-                    onChange={(e) => setSoundEnabled(e.target.checked)}
-                    className="w-5 h-5 accent-sky-500 rounded cursor-pointer"
+                    disabled
+                    className="w-5 h-5 accent-sky-500 rounded cursor-not-allowed opacity-50"
                   />
                 </div>
 
                 <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
                   <div>
-                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Xem trước tin nhắn</h4>
+                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                      Xem trước tin nhắn <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500">Chưa hỗ trợ</span>
+                    </h4>
                     <p className="text-[11px] text-slate-500">Hiển thị xem trước văn bản tin nhắn trong thông báo pop-up trên máy tính</p>
                   </div>
                   <input
                     type="checkbox"
                     checked={previewEnabled}
-                    onChange={(e) => setPreviewEnabled(e.target.checked)}
-                    className="w-5 h-5 accent-sky-500 rounded cursor-pointer"
+                    disabled
+                    className="w-5 h-5 accent-sky-500 rounded cursor-not-allowed opacity-50"
                   />
                 </div>
 
                 <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
                   <div>
-                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Không làm phiền</h4>
+                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                      Không làm phiền <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500">Chưa hỗ trợ</span>
+                    </h4>
                     <p className="text-[11px] text-slate-500">Tạm thời tắt tất cả âm thanh thông báo và huy hiệu thông báo</p>
                   </div>
                   <input
                     type="checkbox"
                     checked={dndEnabled}
-                    onChange={(e) => setDndEnabled(e.target.checked)}
-                    className="w-5 h-5 accent-sky-500 rounded cursor-pointer"
+                    disabled
+                    className="w-5 h-5 accent-sky-500 rounded cursor-not-allowed opacity-50"
                   />
                 </div>
               </div>
@@ -236,27 +242,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="space-y-3">
                 <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
                   <div>
-                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Gửi thông báo đã đọc</h4>
+                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                      Gửi thông báo đã đọc <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500">Chưa hỗ trợ</span>
+                    </h4>
                     <p className="text-[11px] text-slate-500">Cho phép người khác biết khi bạn đã đọc tin nhắn của họ</p>
                   </div>
                   <input
                     type="checkbox"
                     checked={readReceipts}
-                    onChange={(e) => setReadReceipts(e.target.checked)}
-                    className="w-5 h-5 accent-sky-500 rounded cursor-pointer"
+                    disabled
+                    className="w-5 h-5 accent-sky-500 rounded cursor-not-allowed opacity-50"
                   />
                 </div>
 
                 <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
                   <div>
-                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Hiển thị thời gian hoạt động gần nhất</h4>
+                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                      Hiển thị thời gian hoạt động gần nhất <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500">Chưa hỗ trợ</span>
+                    </h4>
                     <p className="text-[11px] text-slate-500">Chia sẻ thời gian hoạt động gần nhất của bạn với các thành viên trong nhóm</p>
                   </div>
                   <input
                     type="checkbox"
                     checked={lastSeenPublic}
-                    onChange={(e) => setLastSeenPublic(e.target.checked)}
-                    className="w-5 h-5 accent-sky-500 rounded cursor-pointer"
+                    disabled
+                    className="w-5 h-5 accent-sky-500 rounded cursor-not-allowed opacity-50"
                   />
                 </div>
               </div>
@@ -276,27 +286,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="space-y-3">
                 <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
                   <div>
-                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Nhấn Enter để gửi</h4>
+                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                      Nhấn Enter để gửi <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500">Chưa hỗ trợ</span>
+                    </h4>
                     <p className="text-[11px] text-slate-500">Nhấn Enter để gửi tin nhắn ngay lập tức; Shift+Enter để tạo dòng mới</p>
                   </div>
                   <input
                     type="checkbox"
                     checked={enterToSend}
-                    onChange={(e) => setEnterToSend(e.target.checked)}
-                    className="w-5 h-5 accent-sky-500 rounded cursor-pointer"
+                    disabled
+                    className="w-5 h-5 accent-sky-500 rounded cursor-not-allowed opacity-50"
                   />
                 </div>
 
                 <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
                   <div>
-                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Tự động tải ảnh được chia sẻ</h4>
+                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                      Tự động tải ảnh được chia sẻ <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500">Chưa hỗ trợ</span>
+                    </h4>
                     <p className="text-[11px] text-slate-500">Tự động lưu trữ phương tiện vào bộ nhớ đệm trên các kết nối nhanh</p>
                   </div>
                   <input
                     type="checkbox"
                     checked={autoDownload}
-                    onChange={(e) => setAutoDownload(e.target.checked)}
-                    className="w-5 h-5 accent-sky-500 rounded cursor-pointer"
+                    disabled
+                    className="w-5 h-5 accent-sky-500 rounded cursor-not-allowed opacity-50"
                   />
                 </div>
               </div>
@@ -315,14 +329,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
               <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between">
                 <div>
-                  <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Xác thực hai yếu tố (2FA)</h4>
+                  <h4 className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                    Xác thực hai yếu tố (2FA) <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500">Chưa hỗ trợ</span>
+                  </h4>
                   <p className="text-[11px] text-slate-500">Yêu cầu mã ứng dụng xác thực khi đăng nhập mới</p>
                 </div>
                 <input
                   type="checkbox"
                   checked={twoFactor}
-                  onChange={(e) => setTwoFactor(e.target.checked)}
-                  className="w-5 h-5 accent-sky-500 rounded cursor-pointer"
+                  disabled
+                  className="w-5 h-5 accent-sky-500 rounded cursor-not-allowed opacity-50"
                 />
               </div>
 

@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Delete,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 
 import { ConversationService } from './conversation.service';
@@ -10,18 +21,13 @@ import { AddParticipantDto } from './dto/add.participant.dto';
 @Controller('conversation')
 @UseGuards(JwtAuthGuard)
 export class ConversationController {
-  constructor(
-    private readonly conversationsService: ConversationService,
-  ) {}
+  constructor(private readonly conversationsService: ConversationService) {}
 
   @Post()
-  async create( @Body() dto: CreateConversationDto, @Req() req: any,) {
+  async create(@Body() dto: CreateConversationDto, @Req() req: any) {
     const userId = req.user._id.toString();
 
-    const conversation = await this.conversationsService.create(
-        dto,
-        userId,
-      );
+    const conversation = await this.conversationsService.create(dto, userId);
 
     return {
       conversation,
@@ -41,15 +47,9 @@ export class ConversationController {
 
   @Get(':conversationId/messages')
   async getMessages(
-    @Param('conversationId')
-    conversationId: string,
-
-    @Query('limit')
-    limit?: string,
-
-    @Query('cursor')
-    cursor?: string,
-
+    @Param('conversationId') conversationId: string,
+    @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
     @Req() req?: any,
   ) {
     const userId = req.user._id.toString();
@@ -64,9 +64,7 @@ export class ConversationController {
 
   @Patch(':conversationId/seen')
   async markAsSeen(
-    @Param('conversationId')
-    conversationId: string,
-
+    @Param('conversationId') conversationId: string,
     @Req() req: any,
   ) {
     const userId = req.user._id.toString();
@@ -76,29 +74,19 @@ export class ConversationController {
 
   @Patch(':conversationId')
   async update(
-    @Param('conversationId')
-    conversationId: string,
-
+    @Param('conversationId') conversationId: string,
     @Body() dto: UpdateConversationDto,
-
     @Req() req: any,
   ) {
     const userId = req.user._id.toString();
 
-    return this.conversationsService.update(
-      conversationId,
-      dto,
-      userId,
-    );
+    return this.conversationsService.update(conversationId, dto, userId);
   }
 
   @Post(':conversationId/participants')
   async addParticipants(
-    @Param('conversationId')
-    conversationId: string,
-
+    @Param('conversationId') conversationId: string,
     @Body() dto: AddParticipantDto,
-
     @Req() req: any,
   ) {
     const userId = req.user._id.toString();
@@ -108,5 +96,15 @@ export class ConversationController {
       dto,
       userId,
     );
+  }
+
+  @Delete(':conversationId')
+  async remove(
+    @Param('conversationId') conversationId: string,
+    @Req() req: any,
+  ) {
+    const userId = req.user._id.toString();
+
+    return this.conversationsService.remove(conversationId, userId);
   }
 }

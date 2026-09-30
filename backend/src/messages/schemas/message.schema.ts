@@ -4,15 +4,13 @@ import { HydratedDocument, Types } from 'mongoose';
 export type MessageDocument = HydratedDocument<Message>;
 
 @Schema({
-    timestamps: true
+  timestamps: true,
 })
-
 export class Message {
   @Prop({
     type: Types.ObjectId,
     ref: 'Conversation',
     required: true,
-    index: true,
   })
   conversationId: Types.ObjectId;
 
@@ -34,7 +32,17 @@ export class Message {
   })
   imgUrl?: string;
 
-  isPinned: Boolean;
+  @Prop({
+    type: Boolean,
+    default: false,
+  })
+  isPinned: boolean;
+
+  @Prop({
+    type: Boolean,
+    default: false,
+  })
+  isRevoked: boolean;
 
   createdAt: Date;
   updatedAt: Date;
@@ -43,6 +51,6 @@ export class Message {
 export const MessageSchema = SchemaFactory.createForClass(Message);
 
 MessageSchema.index({
-    conversationId: 1,
-    createdAt: -1
+  conversationId: 1,
+  createdAt: -1,
 });

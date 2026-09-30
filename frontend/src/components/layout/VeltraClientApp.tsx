@@ -43,23 +43,23 @@ export function VeltraClientApp() {
   const [mobileViewChat, setMobileViewChat] = useState<boolean>(false);
 
   // Authentication state
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return !!localStorage.getItem('accessToken');
-    }
-    return false;
-  });
+  const [isInitializing, setIsInitializing] = useState<boolean>(true);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
     if (!token) {
       setIsAuthenticated(false);
+      if (pathname !== '/auth/login' && pathname !== '/auth/register') {
+        router.replace('/auth/login');
+      }
     } else {
       setIsAuthenticated(true);
       if (pathname === '/' || pathname.startsWith('/auth') || pathname.startsWith('/register')) {
-        router.push('/chat');
+        router.replace('/chat');
       }
     }
+    setIsInitializing(false);
   }, [pathname, router]);
 
   // Toast state
@@ -120,18 +120,30 @@ export function VeltraClientApp() {
   // Handle logout
   const handleLogout = () => {
     localStorage.removeItem('accessToken');
-    setIsAuthenticated(false);
-    router.push('/auth/login');
-    showToast('Đã đăng xuất khỏi Veltra', 'info');
+    // Force a full page reload to clear all React state, hooks, and old user data
+    window.location.replace('/auth/login');
   };
+
+  // Initializing state (hydration safe)
+  if (isInitializing) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-slate-950">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-8 h-8 animate-spin text-sky-500" />
+          <p className="text-xs text-slate-400">Đang khởi tạo...</p>
+        </div>
+      </div>
+    );
+  }
 
   // If not authenticated
   if (!isAuthenticated) {
     return (
       <AuthView
+        initialMode={pathname === '/auth/register' ? 'register' : 'login'}
         onLoginSuccess={() => {
           setIsAuthenticated(true);
-          router.push('/chat');
+          router.replace('/chat');
           showToast('Chào mừng trở lại Veltra!', 'success');
         }}
       />
@@ -188,9 +200,23 @@ export function VeltraClientApp() {
                     if (isMobile) {
                       setMobileViewChat(true);
                     }
-                    showToast('Đã tạo cuộc trò chuyện mới', 'success');
+                    showToast('Đã tạo/mở cuộc trò chuyện', 'success');
                   } catch (err: any) {
                     showToast(err?.response?.data?.message || 'Lỗi tạo cuộc trò chuyện', 'error');
+                  }
+                }}
+                onDeleteConversation={async (convId) => {
+                  try {
+                    await chat.deleteConversation(convId);
+                    if (chat.activeConversationId === convId) {
+                      chat.setActiveConversationId(null);
+                      if (isMobile) {
+                        setMobileViewChat(false);
+                      }
+                    }
+                    showToast('Đã xóa cuộc trò chuyện', 'success');
+                  } catch (err: any) {
+                    showToast(err?.response?.data?.message || 'Lỗi khi xóa', 'error');
                   }
                 }}
               />
@@ -215,6 +241,7 @@ export function VeltraClientApp() {
                 currentUserId={chat.currentUser?._id || ''}
                 messagesError={chat.messagesHook.error}
                 onRefreshMessages={chat.messagesHook.refetch}
+                onRevokeMessage={(id) => chat.messagesHook.revokeMessage(id).catch(err => showToast(err?.response?.data?.message || 'Lỗi thu hồi tin nhắn', 'error'))}
               />
             </div>
           </div>

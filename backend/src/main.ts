@@ -1,22 +1,31 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
+import helmet from 'helmet';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  // Enhance security with HTTP headers
+  app.use(helmet());
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       forbidNonWhitelisted: true,
-      transform: true
-    }));
+      transform: true,
+    }),
+  );
 
-  const allowedOrigins = ["http://localhost:3000", "https://tiendat75.id.vn", "http://tiendat75.id.vn"] 
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'https://tiendat75.id.vn',
+    'http://tiendat75.id.vn',
+  ];
   app.enableCors({
-    origin: (origin, callback)=>{
-      if(!origin || allowedOrigins.includes(origin)){
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
-      } else{
+      } else {
         callback(new Error('Blocked by CORS'));
       }
     },
@@ -27,6 +36,6 @@ async function bootstrap() {
 
   const port = process.env.PORT ?? 4000;
   await app.listen(port, '0.0.0.0');
-  console.log(`Server đang chạy trên: http://0.0.0.0:${port}`)
+  console.log(`Server đang chạy trên: http://0.0.0.0:${port}`);
 }
 bootstrap();

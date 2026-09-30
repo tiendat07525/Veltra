@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { UsersModule } from 'src/users/users.module';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Message } from './schemas/message.schema';
 import { MessageSchema } from './schemas/message.schema';
@@ -12,13 +13,14 @@ import { RealtimeModule } from 'src/realtime/realtime.module';
   imports: [
     MongooseModule.forFeature([
       { name: Conversation.name, schema: ConversationSchema },
-      { name: Message.name, schema: MessageSchema }
+      { name: Message.name, schema: MessageSchema },
     ]),
-    RealtimeModule
+    RealtimeModule,
+    UsersModule,
   ],
 
   controllers: [MessageController],
   providers: [MessageService],
-  exports: [MessageService]
+  exports: [MessageService],
 })
-export class MessageModule { }
+export class MessageModule {}

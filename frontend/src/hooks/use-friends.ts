@@ -9,7 +9,7 @@ export function useFriends() {
   const [receivedRequests, setReceivedRequests] = useState<FriendRequest[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [actionLoading, setActionLoading] = useState<string | null>(null); // track which action is in progress
+  const [actionLoading, setActionLoading] = useState<string | null>(null); 
 
   const fetchFriends = useCallback(async () => {
     try {
@@ -42,22 +42,16 @@ export function useFriends() {
     fetchAll();
   }, [fetchAll]);
 
-  /**
-   * Xác định trạng thái relationship giữa current user và target user
-   */
   const getFriendshipStatus = useCallback(
     (targetUserId: string, currentUserId: string): { status: FriendshipStatus; requestId?: string } => {
       if (targetUserId === currentUserId) {
         return { status: 'self' };
       }
 
-      // Check if already friends
       const isFriend = friends.some((f) => f._id === targetUserId);
       if (isFriend) {
         return { status: 'friends' };
       }
-
-      // Check sent requests
       const sentReq = sentRequests.find((r) => {
         const toId = typeof r.to === 'string' ? r.to : r.to._id;
         return toId === targetUserId;
@@ -66,7 +60,6 @@ export function useFriends() {
         return { status: 'request_sent', requestId: sentReq._id };
       }
 
-      // Check received requests
       const receivedReq = receivedRequests.find((r) => {
         const fromId = typeof r.from === 'string' ? r.from : r.from._id;
         return fromId === targetUserId;
@@ -86,7 +79,7 @@ export function useFriends() {
       setActionLoading(`send-${toUserId}`);
       try {
         await friendService.sendFriendRequest(toUserId, message);
-        await fetchFriendRequests(); // Refresh to get updated data
+        await fetchFriendRequests();
       } catch (err: any) {
         const msg = err?.response?.data?.message || 'Không thể gửi lời mời kết bạn';
         throw new Error(msg);
@@ -103,7 +96,7 @@ export function useFriends() {
       setActionLoading(`accept-${requestId}`);
       try {
         await friendService.acceptFriendRequest(requestId);
-        await fetchAll(); // Refresh both friends and requests
+        await fetchAll();
       } catch (err: any) {
         const msg = err?.response?.data?.message || 'Không thể chấp nhận lời mời';
         throw new Error(msg);
@@ -120,7 +113,7 @@ export function useFriends() {
       setActionLoading(`decline-${requestId}`);
       try {
         await friendService.declineFriendRequest(requestId);
-        await fetchFriendRequests(); // Refresh requests
+        await fetchFriendRequests();
       } catch (err: any) {
         const msg = err?.response?.data?.message || 'Không thể từ chối lời mời';
         throw new Error(msg);
@@ -137,10 +130,8 @@ export function useFriends() {
       setActionLoading(`remove-${friendId}`);
       try {
         await friendService.removeFriend(friendId);
-        // Optimistic update - remove from local state
         setFriends((prev) => prev.filter((f) => f._id !== friendId));
       } catch (err: any) {
-        // Rollback on failure - refetch
         await fetchFriends();
         const msg = err?.response?.data?.message || 'Không thể xóa bạn';
         throw new Error(msg);

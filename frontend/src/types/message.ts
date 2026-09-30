@@ -15,7 +15,6 @@ export interface ReplyPreviewData {
   type?: MessageType;
 }
 
-// Matches backend Message schema with UI compatibility
 export interface Message {
   _id: string;
   id?: string;
@@ -38,6 +37,7 @@ export interface Message {
   reactions?: MessageReaction[];
   isPinned?: boolean;
   isDeleted?: boolean;
+  isRevoked?: boolean;
   isEdited?: boolean;
   createdAt: string;
   updatedAt?: string;

@@ -66,14 +66,19 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
   return (
     <div className="flex-1 h-full flex flex-col bg-slate-50 dark:bg-slate-950 overflow-hidden">
       {/* Header */}
-      <header className="h-16 px-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white">Thông báo</h1>
-          {unreadCount > 0 && (
-            <span className="px-2.5 py-0.5 rounded-full bg-sky-500 text-white text-xs font-bold">
-              {unreadCount} mới
-            </span>
-          )}
+      <header className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-bold text-slate-900 dark:text-white">Thông báo</h1>
+            {unreadCount > 0 && (
+              <span className="px-2.5 py-0.5 rounded-full bg-sky-500 text-white text-xs font-bold">
+                {unreadCount} mới
+              </span>
+            )}
+          </div>
+          <span className="text-xs font-medium px-2 py-0.5 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 rounded-md inline-block w-max mt-1">
+            Chức năng đang được phát triển
+          </span>
         </div>
 
         <div className="flex items-center gap-2">

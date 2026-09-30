@@ -4,7 +4,6 @@ export type ConversationType = 'direct' | 'group';
 
 export type ConversationFilter = 'all' | 'direct' | 'groups' | 'unread';
 
-// Matches backend Conversation schema after formatting
 export interface ConversationParticipant extends UserBasicInfo {
   joinedAt?: string;
 }

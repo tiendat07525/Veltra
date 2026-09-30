@@ -5,11 +5,12 @@ import { Radio, Mail, Lock, User, ArrowRight, ShieldCheck, Loader2 } from 'lucid
 import { authService } from '@/services/api/auth.service';
 
 interface AuthViewProps {
+  initialMode?: 'login' | 'register';
   onLoginSuccess: () => void;
 }
 
-export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess }) => {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLoginSuccess }) => {
+  const [mode, setMode] = useState<'login' | 'register'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');

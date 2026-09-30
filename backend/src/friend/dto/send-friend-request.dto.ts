@@ -1,4 +1,10 @@
-import {IsMongoId,IsNotEmpty,IsOptional,IsString,MaxLength,} from 'class-validator';
+import {
+  IsMongoId,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 
 export class SendFriendRequestDto {
   @IsMongoId()
