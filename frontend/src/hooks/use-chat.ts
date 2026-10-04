@@ -28,7 +28,11 @@ export function useChat(initialConversationId?: string) {
     loadCurrentUser();
   }, []);
 
-  const messagesHook = useMessages(activeConversationId);
+  const messagesHook = useMessages(activeConversationId, (convId) => {
+    if (currentUser?._id) {
+      conversationsHook.markAsSeen(convId, currentUser._id);
+    }
+  });
 
   const activeConversation = useMemo(() => {
     return (
@@ -38,13 +42,11 @@ export function useChat(initialConversationId?: string) {
     );
   }, [conversationsHook.allConversations, activeConversationId]);
 
-  // Get display name for active conversation
   const activeConversationName = useMemo(() => {
     if (!activeConversation || !currentUser) return '';
     return conversationsHook.getConversationDisplayName(activeConversation, currentUser._id);
   }, [activeConversation, currentUser, conversationsHook.getConversationDisplayName]);
 
-  // Find the partner in a direct conversation
   const conversationPartner = useMemo((): ConversationParticipant | null => {
     if (!activeConversation || activeConversation.type !== 'direct' || !currentUser) return null;
     const partner = activeConversation.participants.find(
@@ -53,7 +55,6 @@ export function useChat(initialConversationId?: string) {
     return partner || null;
   }, [activeConversation, currentUser]);
 
-  // Compute total unread count for all conversations
   const totalUnreadCount = useMemo(() => {
     if (!currentUser) return 0;
     return conversationsHook.allConversations.reduce((sum, c) => {

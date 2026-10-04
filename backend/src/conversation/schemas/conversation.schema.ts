@@ -4,9 +4,8 @@ import { HydratedDocument, Types } from 'mongoose';
 export type ConversationDocument = HydratedDocument<Conversation>;
 
 @Schema({
-    _id: false 
+  _id: false,
 })
-
 export class Participant {
   @Prop({
     type: Types.ObjectId,
@@ -22,18 +21,17 @@ export class Participant {
   joinedAt: Date;
 
   @Prop({
-    enum: ['admin', 'member']
+    enum: ['admin', 'member'],
   })
-  role: string
+  role: string;
 }
 
 //========================================================================================
 
 export const ParticipantSchema = SchemaFactory.createForClass(Participant);
 @Schema({
-    _id: false
+  _id: false,
 })
-
 export class Group {
   @Prop({
     type: String,
@@ -52,9 +50,8 @@ export class Group {
 
 export const GroupSchema = SchemaFactory.createForClass(Group);
 @Schema({
-    _id: false
+  _id: false,
 })
-
 export class LastMessage {
   @Prop({
     type: Types.ObjectId,
@@ -85,7 +82,7 @@ export class LastMessage {
 
 export const LastMessageSchema = SchemaFactory.createForClass(LastMessage);
 @Schema({
-    timestamps: true
+  timestamps: true,
 })
 export class Conversation {
   @Prop({
@@ -134,4 +131,4 @@ export class Conversation {
 
 export const ConversationSchema = SchemaFactory.createForClass(Conversation);
 
-ConversationSchema.index({ 'participants.userId': 1, lastMessageAt: -1, });
+ConversationSchema.index({ 'participants.userId': 1, lastMessageAt: -1 });

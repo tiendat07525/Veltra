@@ -3,7 +3,7 @@ import {
   IsOptional,
   IsString,
   MaxLength,
-  Matches
+  Matches,
 } from 'class-validator';
 
 export class UpdateUserDto {

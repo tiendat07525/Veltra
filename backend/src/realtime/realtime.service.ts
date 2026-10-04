@@ -14,12 +14,11 @@ export class RealtimeService {
     return this.server;
   }
 
-  /**
-   * Emit an event to a specific user's private room
-   */
   emitToUser(userId: string, event: string, data: any): void {
     if (!this.server) {
-      this.logger.warn(`Cannot emit event '${event}': WebSocket server not initialized`);
+      this.logger.warn(
+        `Không thể phát sự kiện '${event}': WebSocket server chưa được khởi tạo`,
+      );
       return;
     }
     this.server.to(`user:${userId}`).emit(event, data);

@@ -17,7 +17,7 @@ export default function RootLayout({
       <head>
         <meta charSet="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-        <title>Veltra – Realtime Chat Platform</title>
+        <title>Veltra – Ứng dụng chat realtime</title>
         <meta name="description" content="A modern, hyper-responsive realtime messaging and collaboration platform." />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />

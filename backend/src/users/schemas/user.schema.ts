@@ -1,59 +1,65 @@
-import { Schema, Prop, SchemaFactory } from "@nestjs/mongoose";
-import { trace } from "console";
-import { HydratedDocument } from "mongoose";
+import { Schema, Prop, SchemaFactory } from '@nestjs/mongoose';
+import { trace } from 'console';
+import { HydratedDocument } from 'mongoose';
 
 export type UserDocument = HydratedDocument<User>;
 
 @Schema({
-    timestamps: true
+  timestamps: true,
 })
-
 export class User {
-    @Prop({
-        require: true,
-        unique: true,
-        trim: true,
-        lowercase: true
-    })
-    username: string
+  @Prop({
+    require: true,
+    unique: true,
+    trim: true,
+    lowercase: true,
+  })
+  username: string;
 
-    @Prop({
-        required: true,
-        unique: true,
-        trim: true
-    })
-    password: string
+  @Prop({
+    required: true,
+    unique: true,
+    trim: true,
+  })
+  password: string;
 
-    @Prop({
-        require: true,
-        unique: true,
-        trim: true,
-        lowercase: true
-    })
-    email: string
+  @Prop({
+    require: true,
+    unique: true,
+    trim: true,
+    lowercase: true,
+  })
+  email: string;
 
-    @Prop({
-        trim: true
-    })
-    displayName: string
+  @Prop({
+    trim: true,
+  })
+  displayName: string;
 
-    avatarUrl: string
-    avatarId: string
-    bio: string
+  @Prop({
+    trim: true,
+  })
+  avatarUrl: string;
+  avatarId: string;
 
-    @Prop({
-        trim: true,
-        sparse: true
-    })
-    phone: string
+  @Prop({
+    trim: true,
+  })
+  bio: string;
 
-    @Prop({
-        default: 'Offline',
-        enum: ['Online', 'Offline', 'Unvailable']
-    })
-    onlineStatus: string
+  @Prop({
+    trim: true,
+    sparse: true,
+  })
+  phone: string;
 
-    lastSeen: Date;
+  @Prop({
+    default: 'Offline',
+    enum: ['Online', 'Offline', 'Unvailable'],
+  })
+  onlineStatus: string;
+
+  lastSeen: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

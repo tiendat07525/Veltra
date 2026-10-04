@@ -4,7 +4,10 @@ import { messageService } from '@/services/api/message.service';
 import { conversationService } from '@/services/api/conversation.service';
 import { socketService } from '@/services/socket/socket.service';
 
-export function useMessages(conversationId: string | null) {
+export function useMessages(
+  conversationId: string | null,
+  onMarkAsSeen?: (convId: string) => void
+) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -14,6 +17,8 @@ export function useMessages(conversationId: string | null) {
 
   const activeConvIdRef = useRef<string | null>(conversationId);
   activeConvIdRef.current = conversationId;
+  const onMarkAsSeenRef = useRef(onMarkAsSeen);
+  onMarkAsSeenRef.current = onMarkAsSeen;
 
   const fetchMessages = useCallback(async () => {
     if (!conversationId) {
@@ -30,11 +35,14 @@ export function useMessages(conversationId: string | null) {
       setMessages(data.messages);
       setNextCursor(data.nextCursor);
 
-      // Mark as seen khi mở conversation
       try {
-        await conversationService.markAsSeen(conversationId);
+        if (onMarkAsSeenRef.current) {
+          onMarkAsSeenRef.current(conversationId);
+        } else {
+          await conversationService.markAsSeen(conversationId);
+        }
       } catch {
-        // Ignore - non-critical
+
       }
     } catch (err: any) {
       console.error('Lỗi khi lấy tin nhắn:', err);
@@ -48,34 +56,49 @@ export function useMessages(conversationId: string | null) {
     fetchMessages();
   }, [fetchMessages]);
 
-  // Realtime Socket listener for incoming new messages
   useEffect(() => {
     const handleNewMessage = (payload: { message: Message; conversation?: any }) => {
       const newMsg = payload?.message;
       if (!newMsg) return;
 
       const currentConvId = activeConvIdRef.current;
-      // Only append if the message belongs to the currently active conversation
       if (currentConvId && String(newMsg.conversationId) === String(currentConvId)) {
         setMessages((prev) => {
-          // Check for duplicate by _id
           const exists = prev.some((m) => String(m._id) === String(newMsg._id));
           if (exists) return prev;
           return [...prev, newMsg];
         });
 
-        // Mark as seen on arrival
         try {
-          conversationService.markAsSeen(currentConvId);
+          if (onMarkAsSeenRef.current) {
+            onMarkAsSeenRef.current(currentConvId);
+          } else {
+            conversationService.markAsSeen(currentConvId);
+          }
         } catch {
           // Ignore
         }
       }
     };
 
+    const handleRevokeMessageEvent = (payload: { messageId: string; conversationId: string; content: string; isRevoked: boolean }) => {
+      const currentConvId = activeConvIdRef.current;
+      if (currentConvId && String(payload.conversationId) === String(currentConvId)) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            String(m._id) === String(payload.messageId)
+              ? { ...m, isRevoked: true, content: payload.content || 'Tin nhắn đã thu hồi' }
+              : m
+          )
+        );
+      }
+    };
+
     socketService.on('message:new', handleNewMessage);
+    socketService.on('message:revoked', handleRevokeMessageEvent);
     return () => {
       socketService.off('message:new', handleNewMessage);
+      socketService.off('message:revoked', handleRevokeMessageEvent);
     };
   }, []);
 
@@ -85,7 +108,6 @@ export function useMessages(conversationId: string | null) {
     setLoadingMore(true);
     try {
       const data = await messageService.getMessages(conversationId, 50, nextCursor);
-      // Prepend older messages with deduplication
       setMessages((prev) => {
         const existingIds = new Set(prev.map((m) => String(m._id)));
         const newOlder = data.messages.filter((m) => !existingIds.has(String(m._id)));
@@ -110,7 +132,6 @@ export function useMessages(conversationId: string | null) {
           content: content.trim(),
         });
 
-        // If backend returned the created message, append it immediately with deduplication
         if (res.data) {
           const sentMsg = res.data;
           setMessages((prev) => {
@@ -119,7 +140,6 @@ export function useMessages(conversationId: string | null) {
             return [...prev, sentMsg];
           });
         } else {
-          // Fallback: fetch messages if data not returned
           await fetchMessages();
         }
       } catch (err: any) {
@@ -132,6 +152,22 @@ export function useMessages(conversationId: string | null) {
     [conversationId, sending, fetchMessages]
   );
 
+  const handleRevokeMessage = useCallback(async (messageId: string) => {
+    try {
+      await messageService.revokeMessage(messageId);
+      setMessages((prev) =>
+        prev.map((m) =>
+          String(m._id) === messageId
+            ? { ...m, isRevoked: true, content: 'Tin nhắn đã thu hồi' }
+            : m
+        )
+      );
+    } catch (err: any) {
+      console.error('Lỗi khi thu hồi tin nhắn:', err);
+      throw err;
+    }
+  }, []);
+
   return {
     messages,
     loading,
@@ -143,5 +179,6 @@ export function useMessages(conversationId: string | null) {
     loadMore,
     refetch: fetchMessages,
     setMessages,
+    revokeMessage: handleRevokeMessage,
   };
 }

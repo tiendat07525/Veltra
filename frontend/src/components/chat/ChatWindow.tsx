@@ -10,6 +10,7 @@ import {
   Loader2,
   AlertCircle,
   RefreshCw,
+  RotateCcw,
 } from 'lucide-react';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { formatTime, formatDate } from '@/lib/utils';
@@ -27,6 +28,7 @@ interface ChatWindowProps {
   currentUserId: string;
   messagesError: string | null;
   onRefreshMessages: () => void;
+  onRevokeMessage?: (id: string) => void;
 }
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
@@ -42,10 +44,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   currentUserId,
   messagesError,
   onRefreshMessages,
+  onRevokeMessage,
 }) => {
   const [inputValue, setInputValue] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -75,16 +78,28 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // Empty state
   if (!conversation) {
     return (
-      <div className="flex-1 h-full flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950 p-8 text-center text-slate-400">
-        <div className="w-16 h-16 rounded-3xl bg-sky-500/10 text-sky-500 flex items-center justify-center mb-4">
-          <MessageSquare className="w-8 h-8 stroke-[1.75]" />
+      <div className="flex-1 h-full flex flex-col bg-slate-50 dark:bg-slate-950">
+        <header className="h-16 px-4 md:px-6 border-b border-slate-200/80 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 backdrop-blur-md flex items-center shrink-0 md:hidden">
+          <button
+            type="button"
+            onClick={onBackMobile}
+            className="p-2 -ml-2 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-xl transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <span className="ml-2 font-bold text-slate-800 dark:text-white">Tin nhắn</span>
+        </header>
+        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400">
+          <div className="w-16 h-16 rounded-3xl bg-sky-500/10 text-sky-500 flex items-center justify-center mb-4">
+            <MessageSquare className="w-8 h-8 stroke-[1.75]" />
+          </div>
+          <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-1">
+            Chưa chọn cuộc trò chuyện nào
+          </h3>
+          <p className="text-xs max-w-sm text-slate-500 leading-relaxed">
+            Chọn một cuộc trò chuyện từ danh sách hoặc bắt đầu tin nhắn mới.
+          </p>
         </div>
-        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-1">
-          Chưa chọn cuộc trò chuyện nào
-        </h3>
-        <p className="text-xs max-w-sm text-slate-500 leading-relaxed">
-          Chọn một cuộc trò chuyện từ danh sách hoặc bắt đầu tin nhắn mới.
-        </p>
       </div>
     );
   }
@@ -169,27 +184,48 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
                 {/* Messages */}
                 {group.messages.map((msg) => {
-                  const msgSenderId =
-                    typeof msg.senderId === 'object' && msg.senderId !== null
-                      ? (msg.senderId as any)._id || (msg.senderId as any).id
-                      : String(msg.senderId);
+                  let msgSenderId = String(msg.senderId);
+                  if (typeof msg.senderId === 'object' && msg.senderId !== null) {
+                    const senderObj = msg.senderId as any;
+                    msgSenderId = String(senderObj._id || senderObj.id || senderObj.$oid || msg.senderId);
 
-                  const isOwn = String(msgSenderId) === String(currentUserId);
+                    // Fallback if serialization resulted in an empty object
+                    if (msgSenderId === '[object Object]') {
+                      msgSenderId = ''; // Prevent false positives
+                    }
+                  }
+
+                  const isOwn = msgSenderId.toLowerCase() === String(currentUserId).toLowerCase();
 
                   return (
                     <div
                       key={msg._id || msg.id}
-                      className={`flex mb-2.5 ${isOwn ? 'justify-end' : 'justify-start'}`}
+                      className={`flex mb-2.5 group ${isOwn ? 'justify-end' : 'justify-start'}`}
                     >
+                      {/* Revoke button (only for own messages and not revoked) */}
+                      {isOwn && !msg.isRevoked && (
+                        <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity mr-2">
+                          <button
+                            type="button"
+                            onClick={() => onRevokeMessage?.(msg._id || msg.id as string)}
+                            className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-full transition-colors"
+                            title="Thu hồi tin nhắn"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+
                       <div
-                        className={`max-w-[75%] sm:max-w-[70%] md:max-w-[65%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed shadow-xs ${
-                          isOwn
+                        className={`max-w-[75%] sm:max-w-[70%] md:max-w-[65%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed shadow-xs ${msg.isRevoked
+                          ? 'bg-transparent border border-slate-200 dark:border-slate-800 text-slate-400 italic rounded-br-xs'
+                          : isOwn
                             ? 'bg-sky-600 hover:bg-sky-500 text-white rounded-br-xs'
                             : 'bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-bl-xs'
-                        }`}
+                          }`}
                       >
                         {/* Show sender name in groups */}
-                        {!isOwn && conversation.type === 'group' && (
+                        {!isOwn && conversation.type === 'group' && !msg.isRevoked && (
                           <p className="text-[11px] font-semibold text-sky-500 dark:text-sky-400 mb-0.5">
                             {conversation.participants.find((p) => String(p._id) === String(msgSenderId))
                               ?.displayName || 'Người dùng'}
@@ -197,9 +233,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                         )}
                         <p className="whitespace-pre-wrap break-words text-[13px]">{msg.content}</p>
                         <p
-                          className={`text-[10px] mt-1 text-right select-none ${
-                            isOwn ? 'text-sky-200' : 'text-slate-500 dark:text-slate-400'
-                          }`}
+                          className={`text-[10px] mt-1 text-right select-none ${msg.isRevoked ? 'text-slate-400' : isOwn ? 'text-sky-200' : 'text-slate-500 dark:text-slate-400'
+                            }`}
                         >
                           {formatTime(msg.createdAt)}
                         </p>
@@ -217,15 +252,29 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       {/* Message Input */}
       <div className="px-4 py-3 border-t border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
         <div className="flex items-center gap-2">
-          <input
+          <textarea
             ref={inputRef}
-            type="text"
             value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={handleKeyDown}
+            onChange={(e) => {
+              setInputValue(e.target.value);
+              // Auto-resize textarea
+              e.target.style.height = 'auto';
+              e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+                if (inputRef.current) {
+                  inputRef.current.style.height = 'auto';
+                }
+              }
+            }}
             placeholder="Nhập tin nhắn..."
             disabled={sendingMessage}
-            className="flex-1 px-4 py-2.5 bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-sky-500/50 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-sky-500/20 transition-all disabled:opacity-60"
+            rows={1}
+            className="flex-1 px-4 py-2.5 bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-sky-500/50 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-sky-500/20 transition-all disabled:opacity-60 resize-none overflow-y-auto"
+            style={{ minHeight: '40px', maxHeight: '120px' }}
           />
           <button
             type="button"

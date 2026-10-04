@@ -4,12 +4,14 @@ import React from 'react';
 import { Conversation } from '@/types/conversation';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { formatTime } from '@/lib/utils';
+import { Trash2 } from 'lucide-react';
 
 interface ConversationItemProps {
   conversation: Conversation;
   isActive: boolean;
   currentUserId: string;
   onSelect: () => void;
+  onDelete?: () => void;
 }
 
 export const ConversationItem: React.FC<ConversationItemProps> = ({
@@ -17,6 +19,7 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
   isActive,
   currentUserId,
   onSelect,
+  onDelete,
 }) => {
   const isGroup = conversation.type === 'group';
 
@@ -102,6 +105,21 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
           )}
         </div>
       </div>
+
+      {/* Delete Button */}
+      {onDelete && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50 opacity-0 group-hover:opacity-100 transition-all"
+          title="Xóa cuộc trò chuyện"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      )}
     </div>
   );
 };

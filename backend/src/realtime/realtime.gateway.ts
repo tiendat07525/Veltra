@@ -13,27 +13,27 @@ import { UsersService } from 'src/users/users.service';
 import { RealtimeService } from './realtime.service';
 
 const allowedOrigins = [
-    'http://localhost:3000',
-    'https://tiendat75.id.vn',
-    'http://tiendat75.id.vn',
-    process.env.FRONTEND_URL,
-  ].filter(Boolean) as string[];
+  'http://localhost:3000',
+  'https://tiendat75.id.vn',
+  'http://tiendat75.id.vn',
+  process.env.FRONTEND_URL,
+].filter(Boolean) as string[];
 
-  @WebSocketGateway({
-    cors: {
-      origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin)) {
-          callback(null, true);
-        } else {
-          callback(new Error(`WebSocket CORS blocked for origin: ${origin}`));
-        }
-      },
-      credentials: true,
+@WebSocketGateway({
+  cors: {
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`WebSocket CORS blocked for origin: ${origin}`));
+      }
     },
-  })
-  export class RealtimeGateway
-    implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
-  {
+    credentials: true,
+  },
+})
+export class RealtimeGateway
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
   server: Server;
 
@@ -49,7 +49,6 @@ const allowedOrigins = [
   afterInit(server: Server) {
     this.realtimeService.setServer(server);
 
-    // Socket.IO pre-connection middleware for strict JWT authentication
     server.use(async (socket: Socket, next) => {
       try {
         const token =
@@ -58,7 +57,7 @@ const allowedOrigins = [
           socket.handshake.query?.token;
 
         if (!token || typeof token !== 'string') {
-          return next(new Error('Authentication failed: No auth token provided'));
+          return next(new Error('Không có quyền truy cập'));
         }
 
         const jwtSecret = this.configService.getOrThrow<string>('JWT_SECRET');
@@ -67,12 +66,12 @@ const allowedOrigins = [
         });
 
         if (!payload || !payload.id) {
-          return next(new Error('Authentication failed: Invalid token payload'));
+          return next(new Error('Không có quyền truy cập'));
         }
 
         const user = await this.usersService.findOne(payload.id);
         if (!user) {
-          return next(new Error('Authentication failed: User not found'));
+          return next(new Error('Không có quyền truy cập'));
         }
 
         const userId = user._id.toString();
@@ -85,11 +84,11 @@ const allowedOrigins = [
 
         next();
       } catch (err: any) {
-        next(new Error(`Authentication failed: ${err.message}`));
+        next(new Error(`Không có quyền truy cập: ${err.message}`));
       }
     });
 
-    this.logger.log('Socket.IO Gateway initialized with auth middleware');
+    this.logger.log('Socket.IO Gateway đã được khởi tạo');
   }
 
   async handleConnection(client: Socket) {
@@ -104,11 +103,11 @@ const allowedOrigins = [
       const userRoom = `user:${userId}`;
       await client.join(userRoom);
 
-      this.logger.log(`[Socket] Client connected: socketId=${client.id}`);
-      this.logger.log(`[Socket] User authenticated: userId=${userId}`);
-      this.logger.log(`[Socket] User joined room: ${userRoom}`);
+      this.logger.log(`[Socket] Client đã kết nối: socketId=${client.id}`);
+      this.logger.log(`[Socket] User đã xác thực: userId=${userId}`);
+      this.logger.log(`[Socket] User đã vào phòng: ${userRoom}`);
     } catch (err: any) {
-      this.logger.warn(`[Socket] Error joining user room: ${err.message}`);
+      this.logger.warn(`[Socket] Có lỗi khi vào phòng: ${err.message}`);
       client.disconnect(true);
     }
   }
@@ -116,7 +115,7 @@ const allowedOrigins = [
   handleDisconnect(client: Socket) {
     const userId = client.data?.user?._id;
     this.logger.log(
-      `[Socket] Client disconnected: socketId=${client.id}${userId ? ` (userId: ${userId})` : ''}`,
+      `[Socket] Client đã ngắt kết nối: socketId=${client.id}${userId ? ` (userId: ${userId})` : ''}`,
     );
   }
 }

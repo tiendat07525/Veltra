@@ -1,4 +1,6 @@
 import { ConflictException, Module } from '@nestjs/common';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
@@ -11,6 +13,12 @@ import { RealtimeModule } from './realtime/realtime.module';
 
 @Module({
   imports: [
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000,
+        limit: 100, // 100 requests per minute
+      },
+    ]),
     ConfigModule.forRoot({
       isGlobal: true,
     }),
@@ -20,8 +28,14 @@ import { RealtimeModule } from './realtime/realtime.module';
     ConversationModule,
     MessageModule,
     FriendModule,
-    RealtimeModule
+    RealtimeModule,
   ],
   controllers: [AppController],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
-export class AppModule { }
+export class AppModule {}

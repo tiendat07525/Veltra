@@ -19,24 +19,47 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onShowToast }) => {
 
   useEffect(() => {
     authService.getCurrentUser().then((u) => {
-        if (u) {
-            setDisplayName(u.displayName || '');
-            setUsername(u.username || '');
-            setBio(u.bio || '');
-            setEmail(u.email || '');
-            setPhoneNumber(u.phone || '');
-            setAvatar(u.avatarUrl || '');
-        }
+      if (u) {
+        setDisplayName(u.displayName || '');
+        setUsername(u.username || '');
+        setBio(u.bio || '');
+        setEmail(u.email || '');
+        setPhoneNumber(u.phone || '');
+        setAvatar(u.avatarUrl || '');
+      }
     });
   }, []);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Normalize phone number: remove all non-digit characters
+    const normalizedPhone = phoneNumber.replace(/\D/g, '');
+
+    if (normalizedPhone && normalizedPhone.length > 11) {
+      onShowToast('Số điện thoại không hợp lệ (tối đa 11 số)', 'error');
+      return;
+    }
+
     try {
-        await userService.updateProfile({ displayName, bio, phone: phoneNumber } as any);
-        onShowToast('Lưu cài đặt hồ sơ thành công!', 'success');
-    } catch (err) {
-        onShowToast('Lưu cài đặt hồ sơ thất bại.', 'error');
+      await userService.updateProfile({
+        displayName,
+        bio,
+        phone: normalizedPhone,
+        avatarUrl: avatar
+      } as any);
+      onShowToast('Lưu cài đặt hồ sơ thành công!', 'success');
+    } catch (err: any) {
+      const errorMsg = err?.response?.data?.message;
+      let uiMessage = 'Lưu cài đặt hồ sơ thất bại. Vui lòng kiểm tra lại thông tin.';
+
+      if (Array.isArray(errorMsg) && errorMsg.length > 0) {
+        uiMessage = errorMsg[0];
+      } else if (typeof errorMsg === 'string') {
+        uiMessage = errorMsg;
+      }
+
+      onShowToast(uiMessage, 'error');
     }
   };
 

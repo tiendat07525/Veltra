@@ -1,4 +1,13 @@
-import { IsArray, IsEnum, IsMongoId, IsNotEmpty, IsString, MaxLength, MinLength, ValidateIf } from 'class-validator';
+import {
+  IsArray,
+  IsEnum,
+  IsMongoId,
+  IsNotEmpty,
+  IsString,
+  MaxLength,
+  MinLength,
+  ValidateIf,
+} from 'class-validator';
 
 export class CreateConversationDto {
   @IsEnum(['direct', 'group'])

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Conversation, ConversationFilter } from '@/types/conversation';
+import { Message } from '@/types/message';
 import { conversationService } from '@/services/api/conversation.service';
-
 import { socketService } from '@/services/socket/socket.service';
 
 export function useConversations() {
@@ -29,9 +29,8 @@ export function useConversations() {
     fetchConversations();
   }, [fetchConversations]);
 
-  // Realtime Socket listener for updating conversations on new message
   useEffect(() => {
-    const handleNewMessage = (payload: { message: any; conversation?: any }) => {
+    const handleNewMessage = (payload: { message: Message; conversation?: any }) => {
       const newMsg = payload?.message;
       if (!newMsg) return;
 
@@ -39,7 +38,6 @@ export function useConversations() {
         const convIndex = prev.findIndex((c) => String(c._id) === String(newMsg.conversationId));
 
         if (convIndex === -1) {
-          // If conversation doesn't exist yet in the local list, refetch
           fetchConversations();
           return prev;
         }
@@ -54,6 +52,7 @@ export function useConversations() {
             createdAt: newMsg.createdAt,
           },
           lastMessageAt: newMsg.createdAt,
+          unreadCounts: payload.conversation?.unreadCounts || targetConv.unreadCounts,
         };
 
         // Move the updated conversation to the top
@@ -62,30 +61,52 @@ export function useConversations() {
       });
     };
 
-    socketService.on('message:new', handleNewMessage);
-    return () => {
-      socketService.off('message:new', handleNewMessage);
-    };
-  }, [fetchConversations]);
-
-  const handleMarkAsSeen = async (conversationId: string) => {
-    try {
-      await conversationService.markAsSeen(conversationId);
-      // Update local state: reset unreadCount for this conversation
+    const handleRevokeMessageEvent = (payload: { messageId: string; conversationId: string; content: string; isRevoked: boolean }) => {
       setConversations((prev) =>
         prev.map((c) => {
-          if (c._id === conversationId) {
-            const newUnreadCounts = { ...c.unreadCounts };
-            // We don't have currentUserId here, so we just refetch
-            return c;
+          if (String(c._id) === String(payload.conversationId)) {
+            if (c.lastMessage && String(c.lastMessage._id) === String(payload.messageId)) {
+              return {
+                ...c,
+                lastMessage: {
+                  ...c.lastMessage,
+                  content: payload.content || 'Tin nhắn đã thu hồi',
+                }
+              };
+            }
           }
           return c;
         })
       );
+    };
+
+    socketService.on('message:new', handleNewMessage);
+    socketService.on('message:revoked', handleRevokeMessageEvent);
+    return () => {
+      socketService.off('message:new', handleNewMessage);
+      socketService.off('message:revoked', handleRevokeMessageEvent);
+    };
+  }, [fetchConversations]);
+
+  const handleMarkAsSeen = useCallback(async (conversationId: string, currentUserId?: string) => {
+    try {
+      await conversationService.markAsSeen(conversationId);
+      if (currentUserId) {
+        setConversations((prev) =>
+          prev.map((c) => {
+            if (c._id === conversationId) {
+              const newUnreadCounts = { ...c.unreadCounts };
+              newUnreadCounts[currentUserId] = 0;
+              return { ...c, unreadCounts: newUnreadCounts };
+            }
+            return c;
+          })
+        );
+      }
     } catch (err) {
       console.error('Lỗi đánh dấu đã xem:', err);
     }
-  };
+  }, []);
 
   const createNewConversation = async (params: {
     type: 'direct' | 'group';
@@ -93,8 +114,18 @@ export function useConversations() {
     groupName?: string;
   }) => {
     const newConv = await conversationService.createConversation(params);
-    setConversations((prev) => [newConv, ...prev]);
+    setConversations((prev) => {
+      if (prev.some((c) => c._id === newConv._id)) {
+        return prev;
+      }
+      return [newConv, ...prev];
+    });
     return newConv;
+  };
+
+  const deleteConversation = async (conversationId: string) => {
+    await conversationService.deleteConversation(conversationId);
+    setConversations((prev) => prev.filter((c) => c._id !== conversationId));
   };
 
   // Helper to get display name for a conversation
@@ -148,6 +179,7 @@ export function useConversations() {
     refetch: fetchConversations,
     markAsSeen: handleMarkAsSeen,
     createNewConversation,
+    deleteConversation,
     getConversationDisplayName,
     setConversations,
   };

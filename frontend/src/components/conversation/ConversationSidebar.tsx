@@ -28,6 +28,7 @@ interface ConversationSidebarProps {
     participants: string[];
     groupName?: string;
   }) => void;
+  onDeleteConversation: (id: string) => void;
 }
 
 export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
@@ -40,6 +41,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
   onFilterChange,
   currentUserId,
   onCreateNewConversation,
+  onDeleteConversation,
 }) => {
   const [showNewModal, setShowNewModal] = useState(false);
 
@@ -143,6 +145,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
               isActive={activeConversationId === conv._id}
               currentUserId={currentUserId}
               onSelect={() => onSelectConversation(conv._id)}
+              onDelete={() => onDeleteConversation(conv._id)}
             />
           ))
         )}

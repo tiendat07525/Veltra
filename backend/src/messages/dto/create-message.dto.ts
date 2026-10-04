@@ -1,16 +1,22 @@
-import { IsMongoId, IsNotEmpty, IsOptional, IsString, MaxLength } from "class-validator";
+import {
+  IsMongoId,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 
-export class CreateMessageDto{
-    @IsOptional()
-    @IsMongoId()
-    conversationId?: string;
+export class CreateMessageDto {
+  @IsOptional()
+  @IsMongoId()
+  conversationId?: string;
 
-    @IsMongoId()
-    @IsOptional()
-    receiverId?: string;
+  @IsMongoId()
+  @IsOptional()
+  receiverId?: string;
 
-    @IsString()
-    @IsNotEmpty()
-    @MaxLength(500)
-    content: string;
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(500)
+  content: string;
 }
