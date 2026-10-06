@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -340,6 +341,10 @@ export class ConversationService {
       );
     }
 
+    if (conversation.group?.createdBy?.toString() !== userId) {
+      throw new ForbiddenException('Chỉ trưởng nhóm mới có quyền đổi tên nhóm');
+    }
+
     conversation.group!.name = dto.groupName.trim();
 
     await conversation.save();
@@ -362,6 +367,10 @@ export class ConversationService {
       throw new NotFoundException(
         'Group không tồn tại hoặc bạn không có quyền',
       );
+    }
+
+    if (conversation.group?.createdBy?.toString() !== userId) {
+      throw new ForbiddenException('Chỉ trưởng nhóm mới có quyền thêm thành viên');
     }
 
     const existingIds = conversation.participants.map((participant) =>
@@ -449,6 +458,10 @@ export class ConversationService {
       throw new NotFoundException(
         'Conversation không tồn tại hoặc bạn không có quyền',
       );
+    }
+
+    if (conversation.type === 'group' && conversation.group?.createdBy?.toString() !== userId) {
+      throw new ForbiddenException('Chỉ trưởng nhóm mới có quyền xóa nhóm');
     }
 
     await this.conversationModel.findByIdAndDelete(conversationId);
