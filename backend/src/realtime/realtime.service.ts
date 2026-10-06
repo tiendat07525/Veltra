@@ -29,4 +29,10 @@ export class RealtimeService {
       this.server.in(`session:${sessionId}`).disconnectSockets(true);
     }
   }
+
+  disconnectUser(userId: string): void {
+    if (this.server) {
+      this.server.in(`user:${userId}`).disconnectSockets(true);
+    }
+  }
 }

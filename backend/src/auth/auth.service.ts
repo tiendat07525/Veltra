@@ -142,14 +142,20 @@ export class AuthService {
   }
 
   private async createSessionAndTokens(user: any, userAgent?: string, ipAddress?: string) {
+    const userId = user._id.toString();
+    
+    // ENFORCE SINGLE ACTIVE SESSION: Revoke all existing sessions for this user
+    await this.sessionService.revokeAllUserSessions(userId);
+    this.realtimeService.disconnectUser(userId);
+
     const sessionId = crypto.randomUUID();
     const rawToken = crypto.randomBytes(32).toString('hex');
     const refreshTokenHash = await bcrypt.hash(rawToken, 10);
 
-    const refreshTokenString = `${user._id.toString()}.${sessionId}.${rawToken}`;
+    const refreshTokenString = `${userId}.${sessionId}.${rawToken}`;
 
     const payload = {
-      id: user._id.toString(),
+      id: userId,
       email: user.email,
       username: user.username,
       phone: user.phone,
