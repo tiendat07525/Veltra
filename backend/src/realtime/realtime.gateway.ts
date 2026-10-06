@@ -32,8 +32,7 @@ const allowedOrigins = [
   },
 })
 export class RealtimeGateway
-  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
-{
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
@@ -44,7 +43,7 @@ export class RealtimeGateway
     private readonly configService: ConfigService,
     private readonly usersService: UsersService,
     private readonly realtimeService: RealtimeService,
-  ) {}
+  ) { }
 
   afterInit(server: Server) {
     this.realtimeService.setServer(server);
@@ -81,6 +80,8 @@ export class RealtimeGateway
           username: user.username,
           email: user.email,
         };
+        socket.data.sessionId = payload.sessionId;
+        socket.data.jwtExp = payload.exp;
 
         next();
       } catch (err: any) {
@@ -100,8 +101,30 @@ export class RealtimeGateway
       }
 
       const userId = user._id;
+      const sessionId = client.data.sessionId;
+      const jwtExp = client.data.jwtExp;
+
+      const delay = jwtExp * 1000 - Date.now();
+      if (delay <= 0) {
+        this.logger.warn(`[Socket] Token đã hết hạn khi kết nối: socketId=${client.id}`);
+        client.disconnect(true);
+        return;
+      }
+
+      // Schedule disconnect on token expiration
+      client.data.expTimer = setTimeout(() => {
+        this.logger.log(`[Socket] Ngắt kết nối do token hết hạn: socketId=${client.id}`);
+        client.disconnect(true);
+      }, delay);
+
       const userRoom = `user:${userId}`;
       await client.join(userRoom);
+
+      if (sessionId) {
+        const sessionRoom = `session:${sessionId}`;
+        await client.join(sessionRoom);
+        this.logger.log(`[Socket] User đã vào phòng session: ${sessionRoom}`);
+      }
 
       this.logger.log(`[Socket] Client đã kết nối: socketId=${client.id}`);
       this.logger.log(`[Socket] User đã xác thực: userId=${userId}`);
@@ -113,6 +136,9 @@ export class RealtimeGateway
   }
 
   handleDisconnect(client: Socket) {
+    if (client.data?.expTimer) {
+      clearTimeout(client.data.expTimer);
+    }
     const userId = client.data?.user?._id;
     this.logger.log(
       `[Socket] Client đã ngắt kết nối: socketId=${client.id}${userId ? ` (userId: ${userId})` : ''}`,

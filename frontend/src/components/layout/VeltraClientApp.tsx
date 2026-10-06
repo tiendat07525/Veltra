@@ -17,14 +17,14 @@ import { AuthView } from '@/components/common/AuthView';
 import { Toast } from '@/components/ui/Toast';
 import { UserBasicInfo } from '@/types/user';
 import { Loader2 } from 'lucide-react';
+import { getToken } from '@/services/api/api';
+import { authService } from '@/services/api/auth.service';
 
 export function VeltraClientApp() {
   const router = useRouter();
   const pathname = usePathname();
   const { theme, toggleTheme, setTheme } = useTheme();
   const { isMobile } = useMobile();
-  const chat = useChat();
-
   // Socket.IO infrastructure - tied directly to authentication lifecycle
   useSocket();
 
@@ -46,20 +46,36 @@ export function VeltraClientApp() {
   const [isInitializing, setIsInitializing] = useState<boolean>(true);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
+  const authReady = !isInitializing && isAuthenticated;
+  const chat = useChat(authReady);
+
   useEffect(() => {
-    const token = localStorage.getItem('accessToken');
-    if (!token) {
-      setIsAuthenticated(false);
-      if (pathname !== '/auth/login' && pathname !== '/auth/register') {
-        router.replace('/auth/login');
+    const initAuth = async () => {
+      let token = getToken();
+      if (!token) {
+        try {
+          await authService.refreshSilent();
+          token = getToken();
+        } catch (e) {
+          // Silent refresh failed
+        }
       }
-    } else {
-      setIsAuthenticated(true);
-      if (pathname === '/' || pathname.startsWith('/auth') || pathname.startsWith('/register')) {
-        router.replace('/chat');
+
+      if (!token) {
+        setIsAuthenticated(false);
+        if (pathname !== '/auth/login' && pathname !== '/auth/register') {
+          router.replace('/auth/login');
+        }
+      } else {
+        setIsAuthenticated(true);
+        if (pathname === '/' || pathname.startsWith('/auth') || pathname.startsWith('/register')) {
+          router.replace('/chat');
+        }
       }
-    }
-    setIsInitializing(false);
+      setIsInitializing(false);
+    };
+
+    initAuth();
   }, [pathname, router]);
 
   // Toast state
@@ -118,10 +134,8 @@ export function VeltraClientApp() {
   };
 
   // Handle logout
-  const handleLogout = () => {
-    localStorage.removeItem('accessToken');
-    // Force a full page reload to clear all React state, hooks, and old user data
-    window.location.replace('/auth/login');
+  const handleLogout = async () => {
+    await authService.logout();
   };
 
   // Initializing state (hydration safe)

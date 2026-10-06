@@ -4,7 +4,7 @@ import { Message } from '@/types/message';
 import { conversationService } from '@/services/api/conversation.service';
 import { socketService } from '@/services/socket/socket.service';
 
-export function useConversations() {
+export function useConversations(enabled: boolean = true) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,8 +26,10 @@ export function useConversations() {
   }, []);
 
   useEffect(() => {
-    fetchConversations();
-  }, [fetchConversations]);
+    if (enabled) {
+      fetchConversations();
+    }
+  }, [fetchConversations, enabled]);
 
   useEffect(() => {
     const handleNewMessage = (payload: { message: Message; conversation?: any }) => {

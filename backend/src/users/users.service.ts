@@ -19,9 +19,11 @@ export class UsersService {
 
   async create(dto: CreateUserDto) {
     const user = await this.userModel.create(dto);
+    const userObject = user.toObject();
+    delete (userObject as any).password;
     return {
       message: 'Tạo user thành công',
-      data: user,
+      data: userObject,
     };
   }
 
@@ -78,8 +80,6 @@ export class UsersService {
   }
 
   async update(id: string, dto: UpdateUserDto, currentUserId?: string) {
-    // Prevent BOLA: only the authenticated owner can modify this user resource.
-    // Applied at the Users API authorization boundary.
     if (currentUserId && id !== currentUserId) {
       throw new ForbiddenException(
         'Bạn không có quyền chỉnh sửa tài khoản này',
@@ -104,8 +104,6 @@ export class UsersService {
   }
 
   async remove(id: string, currentUserId?: string) {
-    // Prevent BOLA: only the authenticated owner can delete this user resource.
-    // Applied at the Users API authorization boundary.
     if (currentUserId && id !== currentUserId) {
       throw new ForbiddenException('Bạn không có quyền xóa tài khoản này');
     }

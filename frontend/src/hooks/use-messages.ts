@@ -6,7 +6,8 @@ import { socketService } from '@/services/socket/socket.service';
 
 export function useMessages(
   conversationId: string | null,
-  onMarkAsSeen?: (convId: string) => void
+  onMarkAsSeen?: (convId: string) => void,
+  enabled: boolean = true
 ) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -21,7 +22,7 @@ export function useMessages(
   onMarkAsSeenRef.current = onMarkAsSeen;
 
   const fetchMessages = useCallback(async () => {
-    if (!conversationId) {
+    if (!enabled || !conversationId) {
       setMessages([]);
       setLoading(false);
       setNextCursor(null);
@@ -50,11 +51,13 @@ export function useMessages(
     } finally {
       setLoading(false);
     }
-  }, [conversationId]);
+  }, [conversationId, enabled]);
 
   useEffect(() => {
-    fetchMessages();
-  }, [fetchMessages]);
+    if (enabled) {
+      fetchMessages();
+    }
+  }, [fetchMessages, enabled]);
 
   useEffect(() => {
     const handleNewMessage = (payload: { message: Message; conversation?: any }) => {

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { socketService } from '@/services/socket/socket.service';
+import { getToken } from '@/services/api/api';
+import { authService } from '@/services/api/auth.service';
 
 export function useSocket(token?: string | null) {
   const [isConnected, setIsConnected] = useState<boolean>(false);
@@ -9,7 +11,7 @@ export function useSocket(token?: string | null) {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const authToken = token || localStorage.getItem('accessToken');
+    const authToken = token || getToken();
 
     if (!authToken) {
       socketService.disconnect();
@@ -21,7 +23,20 @@ export function useSocket(token?: string | null) {
 
     if (socket) {
       const handleConnect = () => setIsConnected(true);
-      const handleDisconnect = () => setIsConnected(false);
+      const handleDisconnect = async (reason: string) => {
+        setIsConnected(false);
+        if (reason === 'io server disconnect') {
+          try {
+            await authService.refreshSilent();
+            const newToken = getToken();
+            if (newToken) {
+              socketService.connect(undefined, newToken);
+            }
+          } catch (e) {
+            // Let the application handle the auth drop
+          }
+        }
+      };
 
       if (socket.connected) {
         setIsConnected(true);

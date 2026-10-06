@@ -1,4 +1,5 @@
 import { io, Socket } from 'socket.io-client';
+import { getToken } from '../api/api';
 
 type SocketEventHandler = (...args: any[]) => void;
 
@@ -9,7 +10,7 @@ class SocketService {
   connect(url?: string, token?: string): Socket | null {
     if (typeof window === 'undefined') return null;
 
-    const authToken = token || localStorage.getItem('accessToken');
+    const authToken = token || getToken();
     if (!authToken) {
       return null;
     }

@@ -5,8 +5,8 @@ import { User, CurrentUserProfile } from '@/types/user';
 import { ConversationParticipant } from '@/types/conversation';
 import { authService } from '@/services/api/auth.service';
 
-export function useChat(initialConversationId?: string) {
-  const conversationsHook = useConversations();
+export function useChat(enabled: boolean = true, initialConversationId?: string) {
+  const conversationsHook = useConversations(enabled);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
     initialConversationId || null
   );
@@ -15,6 +15,7 @@ export function useChat(initialConversationId?: string) {
   const [currentUserLoading, setCurrentUserLoading] = useState<boolean>(true);
 
   useEffect(() => {
+    if (!enabled) return;
     async function loadCurrentUser() {
       try {
         const me = await authService.getCurrentUser();
@@ -26,13 +27,13 @@ export function useChat(initialConversationId?: string) {
       }
     }
     loadCurrentUser();
-  }, []);
+  }, [enabled]);
 
   const messagesHook = useMessages(activeConversationId, (convId) => {
     if (currentUser?._id) {
       conversationsHook.markAsSeen(convId, currentUser._id);
     }
-  });
+  }, enabled);
 
   const activeConversation = useMemo(() => {
     return (
