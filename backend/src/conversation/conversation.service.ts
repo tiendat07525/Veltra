@@ -13,7 +13,7 @@ import {
 import { Model, Types } from 'mongoose';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { Message, MessageDocument } from '../messages/schemas/message.schema';
-import { AddParticipantDto } from './dto/add.participant.dto';
+import { AddParticipantDto } from './dto/add-participant.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
 
 @Injectable()
@@ -345,7 +345,7 @@ export class ConversationService {
       throw new ForbiddenException('Chỉ trưởng nhóm mới có quyền đổi tên nhóm');
     }
 
-    conversation.group!.name = dto.groupName.trim();
+    conversation.group.name = dto.groupName.trim();
 
     await conversation.save();
 
@@ -370,7 +370,9 @@ export class ConversationService {
     }
 
     if (conversation.group?.createdBy?.toString() !== userId) {
-      throw new ForbiddenException('Chỉ trưởng nhóm mới có quyền thêm thành viên');
+      throw new ForbiddenException(
+        'Chỉ trưởng nhóm mới có quyền thêm thành viên',
+      );
     }
 
     const existingIds = conversation.participants.map((participant) =>
@@ -460,7 +462,10 @@ export class ConversationService {
       );
     }
 
-    if (conversation.type === 'group' && conversation.group?.createdBy?.toString() !== userId) {
+    if (
+      conversation.type === 'group' &&
+      conversation.group?.createdBy?.toString() !== userId
+    ) {
       throw new ForbiddenException('Chỉ trưởng nhóm mới có quyền xóa nhóm');
     }
 

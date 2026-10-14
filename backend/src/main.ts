@@ -1,11 +1,15 @@
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import cookieParser = require('cookie-parser');
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Set trust proxy to 1 for correct IP resolution behind reverse proxy (Nginx/Cloudflare)
+  app.set('trust proxy', 1);
   // Enhance security with HTTP headers
   app.use(helmet());
   app.use(cookieParser());
@@ -37,7 +41,8 @@ async function bootstrap() {
   });
 
   const port = process.env.PORT ?? 4000;
-  await app.listen(port, '0.0.0.0');
-  console.log(`Server đang chạy trên: http://0.0.0.0:${port}`);
+  // Bind to localhost (127.0.0.1) to prevent direct external access bypassing the proxy
+  await app.listen(port, '127.0.0.1');
+  console.log(`Server đang chạy trên: http://127.0.0.1:${port}`);
 }
 bootstrap();

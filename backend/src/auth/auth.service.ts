@@ -22,7 +22,7 @@ export class AuthService {
     private readonly sessionService: SessionService,
     @Inject(forwardRef(() => RealtimeService))
     private readonly realtimeService: RealtimeService,
-  ) { }
+  ) {}
 
   async register(registerDto: RegisterDto) {
     const existedUser = await this.usersService.findByEmail(registerDto.email);
@@ -60,7 +60,11 @@ export class AuthService {
     return this.createSessionAndTokens(user, userAgent, ipAddress);
   }
 
-  async refresh(refreshTokenString: string, userAgent?: string, ipAddress?: string) {
+  async refresh(
+    refreshTokenString: string,
+    userAgent?: string,
+    ipAddress?: string,
+  ) {
     if (!refreshTokenString) {
       throw new UnauthorizedException('Token không hợp lệ');
     }
@@ -73,7 +77,9 @@ export class AuthService {
 
     const session = await this.sessionService.getSession(userId, sessionId);
     if (!session) {
-      throw new UnauthorizedException('Phiên đăng nhập không tồn tại hoặc đã hết hạn');
+      throw new UnauthorizedException(
+        'Phiên đăng nhập không tồn tại hoặc đã hết hạn',
+      );
     }
 
     const isMatch = await bcrypt.compare(rawToken, session.refreshTokenHash);
@@ -82,18 +88,26 @@ export class AuthService {
     if (!isMatch && session.previousRefreshTokenHash && session.rotatedAt) {
       const rotatedAtTime = new Date(session.rotatedAt).getTime();
       const now = Date.now();
-      if (now - rotatedAtTime <= 15000) { // 15 seconds grace period
-        isPreviousMatch = await bcrypt.compare(rawToken, session.previousRefreshTokenHash);
+      if (now - rotatedAtTime <= 15000) {
+        // 15 seconds grace period
+        isPreviousMatch = await bcrypt.compare(
+          rawToken,
+          session.previousRefreshTokenHash,
+        );
       }
     }
 
     if (!isMatch && !isPreviousMatch) {
       // Token theft detected! Revoke all sessions for this user.
       await this.sessionService.revokeAllUserSessions(userId);
-      throw new UnauthorizedException('Phát hiện đánh cắp token, tất cả phiên bị hủy');
+      throw new UnauthorizedException(
+        'Phát hiện đánh cắp token, tất cả phiên bị hủy',
+      );
     }
 
-    const matchedHash = isMatch ? session.refreshTokenHash : session.previousRefreshTokenHash;
+    const matchedHash = isMatch
+      ? session.refreshTokenHash
+      : session.previousRefreshTokenHash;
 
     // Generate new token for rotation
     const newRawToken = crypto.randomBytes(32).toString('hex');
@@ -141,9 +155,13 @@ export class AuthService {
     this.realtimeService.disconnectSession(sessionId);
   }
 
-  private async createSessionAndTokens(user: any, userAgent?: string, ipAddress?: string) {
+  private async createSessionAndTokens(
+    user: any,
+    userAgent?: string,
+    ipAddress?: string,
+  ) {
     const userId = user._id.toString();
-    
+
     // ENFORCE SINGLE ACTIVE SESSION: Revoke all existing sessions for this user
     await this.sessionService.revokeAllUserSessions(userId);
     this.realtimeService.disconnectUser(userId);

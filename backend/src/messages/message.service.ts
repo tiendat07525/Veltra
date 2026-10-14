@@ -161,7 +161,9 @@ export class MessageService {
       throw new BadRequestException('Tin nhắn này đã bị thu hồi');
     }
 
-    const conversation = await this.conversationModel.findById(message.conversationId);
+    const conversation = await this.conversationModel.findById(
+      message.conversationId,
+    );
     if (!conversation) {
       throw new NotFoundException('Hội thoại không tồn tại');
     }
@@ -170,10 +172,13 @@ export class MessageService {
     message.content = 'Tin nhắn đã thu hồi';
     await message.save();
 
-    if (conversation.lastMessage && conversation.lastMessage._id?.toString() === messageId) {
-       await this.conversationModel.findByIdAndUpdate(conversation._id, {
-         $set: { 'lastMessage.content': 'Tin nhắn đã thu hồi' }
-       });
+    if (
+      conversation.lastMessage &&
+      conversation.lastMessage._id?.toString() === messageId
+    ) {
+      await this.conversationModel.findByIdAndUpdate(conversation._id, {
+        $set: { 'lastMessage.content': 'Tin nhắn đã thu hồi' },
+      });
     }
 
     const payload = {
@@ -182,11 +187,11 @@ export class MessageService {
       content: message.content,
       isRevoked: true,
     };
-    conversation.participants?.forEach(p => {
-       const memberId = p.userId?.toString();
-       if (memberId) {
-         this.realtimeService.emitToUser(memberId, 'message:revoked', payload);
-       }
+    conversation.participants?.forEach((p) => {
+      const memberId = p.userId?.toString();
+      if (memberId) {
+        this.realtimeService.emitToUser(memberId, 'message:revoked', payload);
+      }
     });
 
     return { success: true, message: 'Thu hồi thành công', data: payload };

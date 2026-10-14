@@ -1,4 +1,9 @@
-import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  OnModuleDestroy,
+  Logger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient } from 'redis';
 
@@ -22,27 +27,39 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
   constructor(private configService: ConfigService) {}
 
   async onModuleInit() {
-    const url = this.configService.get<string>('REDIS_URL') || 'redis://localhost:6379';
+    const url =
+      this.configService.get<string>('REDIS_URL') || 'redis://localhost:6379';
     this.client = createClient({ url });
 
-    this.client.on('error', (err: any) => this.logger.error('Redis Client Error', err));
-    
+    this.client.on('error', (err: any) =>
+      this.logger.error('Redis Client Error', err),
+    );
+
     await this.client.connect();
     this.logger.log('Connected to Redis');
   }
 
   async onModuleDestroy() {
+    //close redis when finished using a connection
     if (this.client) {
       await this.client.quit();
     }
   }
 
-  async createSession(userId: string, sessionId: string, data: SessionData, ttlSeconds: number): Promise<void> {
+  async createSession(
+    userId: string,
+    sessionId: string,
+    data: SessionData,
+    ttlSeconds: number,
+  ): Promise<void> {
     const key = `session:${userId}:${sessionId}`;
     await this.client.set(key, JSON.stringify(data), { EX: ttlSeconds });
   }
 
-  async getSession(userId: string, sessionId: string): Promise<SessionData | null> {
+  async getSession(
+    userId: string,
+    sessionId: string,
+  ): Promise<SessionData | null> {
     const key = `session:${userId}:${sessionId}`;
     const data = await this.client.get(key);
     if (!data) return null;
@@ -70,7 +87,7 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
     rotatedAt: string,
   ): Promise<boolean> {
     const key = `session:${userId}:${sessionId}`;
-    
+
     // Lua script for atomic rotation
     const luaScript = `
       local data = redis.call('GET', KEYS[1])

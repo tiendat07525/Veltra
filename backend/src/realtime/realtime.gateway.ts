@@ -32,7 +32,8 @@ const allowedOrigins = [
   },
 })
 export class RealtimeGateway
-  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
   server: Server;
 
@@ -43,7 +44,7 @@ export class RealtimeGateway
     private readonly configService: ConfigService,
     private readonly usersService: UsersService,
     private readonly realtimeService: RealtimeService,
-  ) { }
+  ) {}
 
   afterInit(server: Server) {
     this.realtimeService.setServer(server);
@@ -106,14 +107,18 @@ export class RealtimeGateway
 
       const delay = jwtExp * 1000 - Date.now();
       if (delay <= 0) {
-        this.logger.warn(`[Socket] Token đã hết hạn khi kết nối: socketId=${client.id}`);
+        this.logger.warn(
+          `[Socket] Token đã hết hạn khi kết nối: socketId=${client.id}`,
+        );
         client.disconnect(true);
         return;
       }
 
       // Schedule disconnect on token expiration
       client.data.expTimer = setTimeout(() => {
-        this.logger.log(`[Socket] Ngắt kết nối do token hết hạn: socketId=${client.id}`);
+        this.logger.log(
+          `[Socket] Ngắt kết nối do token hết hạn: socketId=${client.id}`,
+        );
         client.disconnect(true);
       }, delay);
 

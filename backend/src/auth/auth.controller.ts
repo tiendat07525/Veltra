@@ -1,4 +1,13 @@
-import { Body, Controller, Post, Req, Res, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Post,
+  Req,
+  Res,
+  HttpCode,
+  HttpStatus,
+  UseGuards,
+} from '@nestjs/common';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { AuthService } from './auth.service';
@@ -8,7 +17,7 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) { }
+  constructor(private readonly authService: AuthService) {}
 
   @Post('register')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
@@ -27,11 +36,8 @@ export class AuthController {
     const userAgent = req.headers['user-agent'];
     const ipAddress = req.ip;
 
-    const { message, accessToken, refreshTokenString } = await this.authService.login(
-      loginDto,
-      userAgent,
-      ipAddress,
-    );
+    const { message, accessToken, refreshTokenString } =
+      await this.authService.login(loginDto, userAgent, ipAddress);
 
     this.setRefreshCookie(res, refreshTokenString);
 
@@ -40,16 +46,16 @@ export class AuthController {
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+  async refresh(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const refreshTokenString = req.cookies?.refreshToken;
     const userAgent = req.headers['user-agent'];
     const ipAddress = req.ip;
 
-    const { accessToken, refreshTokenString: newRefreshToken } = await this.authService.refresh(
-      refreshTokenString,
-      userAgent,
-      ipAddress,
-    );
+    const { accessToken, refreshTokenString: newRefreshToken } =
+      await this.authService.refresh(refreshTokenString, userAgent, ipAddress);
 
     this.setRefreshCookie(res, newRefreshToken);
 
