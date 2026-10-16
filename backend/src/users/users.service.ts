@@ -35,11 +35,53 @@ export class UsersService {
     };
   }
 
-  async findAll() {
-    return this.userModel
-      .find()
-      .select('_id username displayName avatarUrl bio onlineStatus lastSeen')
-      .lean();
+  async findAll(query?: { page?: number; limit?: number; search?: string }) {
+    const rawPage = Number(query?.page);
+    const rawLimit = Number(query?.limit);
+
+    // Enforce safe normalization: page >= 1, limit between 1 and 50, default 20
+    const page = !isNaN(rawPage) && rawPage > 0 ? Math.floor(rawPage) : 1;
+    const defaultLimit = 20;
+    const maxLimit = 50;
+    const limit =
+      !isNaN(rawLimit) && rawLimit > 0
+        ? Math.min(Math.floor(rawLimit), maxLimit)
+        : defaultLimit;
+
+    const skip = (page - 1) * limit;
+
+    const filter: Record<string, any> = {};
+    if (query?.search && typeof query.search === 'string') {
+      const trimmed = query.search.trim().slice(0, 100);
+      if (trimmed.length > 0) {
+        const safePattern = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const searchRegex = new RegExp(safePattern, 'i');
+        filter.$or = [
+          { username: searchRegex },
+          { displayName: searchRegex },
+          { email: searchRegex },
+        ];
+      }
+    }
+
+    const [users, total] = await Promise.all([
+      this.userModel
+        .find(filter)
+        .select('_id username displayName avatarUrl bio onlineStatus lastSeen')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      this.userModel.countDocuments(filter),
+    ]);
+
+    return {
+      data: users,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 1,
+    };
   }
 
   async findOne(id: string) {

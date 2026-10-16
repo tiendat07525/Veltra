@@ -33,8 +33,16 @@ describe('AuthController (Security & Rate Limiting)', () => {
 
   describe('FULLAUDIT-001 Remediation: Registration Security & Rate Limiting', () => {
     it('should have rate limiting metadata applied to register endpoint (5 requests per 60s)', () => {
-      const ttl = Reflect.getMetadata('THROTTLER:TTLdefault', AuthController.prototype.register) as number;
-      const limit = Reflect.getMetadata('THROTTLER:LIMITdefault', AuthController.prototype.register) as number;
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      const targetMethod = AuthController.prototype.register;
+      const ttl = Reflect.getMetadata(
+        'THROTTLER:TTLdefault',
+        targetMethod,
+      ) as number;
+      const limit = Reflect.getMetadata(
+        'THROTTLER:LIMITdefault',
+        targetMethod,
+      ) as number;
 
       expect(ttl).toBe(60000);
       expect(limit).toBe(5);
@@ -63,6 +71,62 @@ describe('AuthController (Security & Rate Limiting)', () => {
       expect(result).toEqual(serviceResponse);
       const dataRecord = result.data as Record<string, unknown>;
       expect(dataRecord.password).toBeUndefined();
+    });
+  });
+
+  describe('FULLAUDIT-008 Remediation: Rate Limiting on /auth/refresh', () => {
+    it('should have targeted rate limiting metadata applied to refresh endpoint (15 requests per 60s)', () => {
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      const targetMethod = AuthController.prototype.refresh;
+      const ttl = Reflect.getMetadata(
+        'THROTTLER:TTLdefault',
+        targetMethod,
+      ) as number;
+      const limit = Reflect.getMetadata(
+        'THROTTLER:LIMITdefault',
+        targetMethod,
+      ) as number;
+
+      expect(ttl).toBe(60000);
+      expect(limit).toBe(15);
+    });
+
+    it('should delegate refresh to AuthService.refresh and update cookie', async () => {
+      const mockReq: any = {
+        cookies: {
+          refreshToken: 'user1.sess1.rawTokenHex',
+        },
+        headers: {
+          'user-agent': 'Jest-Agent',
+        },
+        ip: '127.0.0.1',
+      };
+
+      const mockRes: any = {
+        cookie: jest.fn(),
+      };
+
+      mockAuthService.refresh.mockResolvedValue({
+        accessToken: 'new-mock-access-token',
+        refreshTokenString: 'user1.sess1.newRotatedTokenHex',
+      });
+
+      const result = await controller.refresh(mockReq, mockRes);
+
+      expect(mockAuthService.refresh).toHaveBeenCalledWith(
+        'user1.sess1.rawTokenHex',
+        'Jest-Agent',
+        '127.0.0.1',
+      );
+      expect(mockRes.cookie).toHaveBeenCalledWith(
+        'refreshToken',
+        'user1.sess1.newRotatedTokenHex',
+        expect.objectContaining({
+          httpOnly: true,
+          sameSite: 'lax',
+        }),
+      );
+      expect(result).toEqual({ accessToken: 'new-mock-access-token' });
     });
   });
 });

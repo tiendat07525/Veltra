@@ -82,7 +82,10 @@ export class AuthService {
       );
     }
 
-    const isMatch = await bcrypt.compare(rawToken, session.refreshTokenHash);
+    const isMatch = await this.verifyTokenHash(
+      rawToken,
+      session.refreshTokenHash,
+    );
     let isPreviousMatch = false;
 
     if (!isMatch && session.previousRefreshTokenHash && session.rotatedAt) {
@@ -90,7 +93,7 @@ export class AuthService {
       const now = Date.now();
       if (now - rotatedAtTime <= 15000) {
         // 15 seconds grace period
-        isPreviousMatch = await bcrypt.compare(
+        isPreviousMatch = await this.verifyTokenHash(
           rawToken,
           session.previousRefreshTokenHash,
         );
@@ -109,9 +112,9 @@ export class AuthService {
       ? session.refreshTokenHash
       : session.previousRefreshTokenHash;
 
-    // Generate new token for rotation
+    // Generate new token for rotation using SHA-256 digest
     const newRawToken = crypto.randomBytes(32).toString('hex');
-    const newRefreshTokenHash = await bcrypt.hash(newRawToken, 10);
+    const newRefreshTokenHash = this.hashRefreshToken(newRawToken);
     const newRefreshTokenString = `${userId}.${sessionId}.${newRawToken}`;
 
     const rotated = await this.sessionService.rotateSessionToken(
@@ -155,6 +158,50 @@ export class AuthService {
     this.realtimeService.disconnectSession(sessionId);
   }
 
+  /**
+   * Computes SHA-256 hex digest for high-entropy refresh tokens.
+   */
+  hashRefreshToken(token: string): string {
+    return crypto.createHash('sha256').update(token, 'utf8').digest('hex');
+  }
+
+  /**
+   * Verifies refresh token against stored digest using constant-time comparison.
+   * Seamlessly supports legacy bcrypt hashes for zero-downtime migration.
+   */
+  async verifyTokenHash(
+    rawToken: string,
+    storedHash?: string,
+  ): Promise<boolean> {
+    if (!storedHash || !rawToken) {
+      return false;
+    }
+
+    // Transitional migration support: Check if storedHash is legacy bcrypt ($2a$, $2b$, $2y$)
+    if (
+      storedHash.startsWith('$2a$') ||
+      storedHash.startsWith('$2b$') ||
+      storedHash.startsWith('$2y$')
+    ) {
+      try {
+        return await bcrypt.compare(rawToken, storedHash);
+      } catch {
+        return false;
+      }
+    }
+
+    // High-entropy token: SHA-256 digest comparison using constant-time comparison
+    const computedHash = this.hashRefreshToken(rawToken);
+    const computedBuffer = Buffer.from(computedHash, 'utf8');
+    const storedBuffer = Buffer.from(storedHash, 'utf8');
+
+    if (computedBuffer.length !== storedBuffer.length) {
+      return false;
+    }
+
+    return crypto.timingSafeEqual(computedBuffer, storedBuffer);
+  }
+
   private async createSessionAndTokens(
     user: any,
     userAgent?: string,
@@ -168,7 +215,7 @@ export class AuthService {
 
     const sessionId = crypto.randomUUID();
     const rawToken = crypto.randomBytes(32).toString('hex');
-    const refreshTokenHash = await bcrypt.hash(rawToken, 10);
+    const refreshTokenHash = this.hashRefreshToken(rawToken);
 
     const refreshTokenString = `${userId}.${sessionId}.${rawToken}`;
 

@@ -5,11 +5,13 @@ import {
   Get,
   Param,
   Patch,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { QueryUsersDto } from './dto/query-users.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 
 @Controller('users')
@@ -30,8 +32,8 @@ export class UsersController {
 
   @Get()
   @UseGuards(JwtAuthGuard)
-  findAll() {
-    return this.userService.findAll();
+  findAll(@Query() query?: QueryUsersDto) {
+    return this.userService.findAll(query);
   }
 
   @Get(':id')

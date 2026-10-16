@@ -28,6 +28,14 @@ export class FriendService {
 
   async sendFriendRequest(dto: SendFriendRequestDto, userId: string) {
     const { to, message } = dto;
+
+    if (!to || !Types.ObjectId.isValid(to)) {
+      throw new BadRequestException('ID người nhận không hợp lệ');
+    }
+    if (!userId || !Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('ID người dùng không hợp lệ');
+    }
+
     const currentUserId = new Types.ObjectId(userId);
     const receiverId = new Types.ObjectId(to);
 
@@ -37,8 +45,10 @@ export class FriendService {
       );
     }
 
-    if (!receiverId._id) {
-      throw new BadRequestException('Người nhận không tồn tại');
+    // Verify that recipient actually exists in the database (FULLAUDIT-007)
+    const recipient = await this.userModel.findById(receiverId);
+    if (!recipient) {
+      throw new NotFoundException('Người nhận không tồn tại');
     }
 
     const [userA, userB] = this.normalizeUsers(currentUserId, receiverId);
@@ -82,6 +92,13 @@ export class FriendService {
   }
 
   async acceptFriendRequest(requestId: string, userId: string) {
+    if (!requestId || !Types.ObjectId.isValid(requestId)) {
+      throw new BadRequestException('ID lời mời không hợp lệ');
+    }
+    if (!userId || !Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('ID người dùng không hợp lệ');
+    }
+
     const currentUserId = new Types.ObjectId(userId);
     const request = await this.friendRequestModel.findById(requestId);
 
@@ -115,6 +132,13 @@ export class FriendService {
   }
 
   async declineFriendRequest(requestId: string, userId: string) {
+    if (!requestId || !Types.ObjectId.isValid(requestId)) {
+      throw new BadRequestException('ID lời mời không hợp lệ');
+    }
+    if (!userId || !Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('ID người dùng không hợp lệ');
+    }
+
     const currentUserId = new Types.ObjectId(userId);
     const request = await this.friendRequestModel.findById(requestId);
 
@@ -135,6 +159,13 @@ export class FriendService {
   }
 
   async removeFriend(friendId: string, userId: string) {
+    if (!friendId || !Types.ObjectId.isValid(friendId)) {
+      throw new BadRequestException('ID người dùng không hợp lệ');
+    }
+    if (!userId || !Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('ID người dùng không hợp lệ');
+    }
+
     const currentUserId = new Types.ObjectId(userId);
     const friendUserId = new Types.ObjectId(friendId);
 
@@ -158,6 +189,9 @@ export class FriendService {
   }
 
   async getAllFriend(userId: string) {
+    if (!userId || !Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('ID người dùng không hợp lệ');
+    }
     const currentUserId = new Types.ObjectId(userId);
 
     const friendships = await this.friendModel

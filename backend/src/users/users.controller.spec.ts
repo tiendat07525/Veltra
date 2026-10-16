@@ -40,7 +40,10 @@ describe('UsersController (Security & Functionality)', () => {
   describe('FULLAUDIT-001 Remediation: Removal of POST /users', () => {
     it('should NOT define a create method or POST route for unauthenticated account creation', () => {
       const controllerRecord = controller as unknown as Record<string, unknown>;
-      const prototypeRecord = UsersController.prototype as unknown as Record<string, unknown>;
+      const prototypeRecord = UsersController.prototype as unknown as Record<
+        string,
+        unknown
+      >;
       expect(controllerRecord.create).toBeUndefined();
       expect(prototypeRecord.create).toBeUndefined();
     });
@@ -48,7 +51,11 @@ describe('UsersController (Security & Functionality)', () => {
 
   describe('Legitimate User Functionality', () => {
     it('should get own profile via getProfile', async () => {
-      const mockUser = { _id: 'user1', username: 'testuser', email: 'test@example.com' };
+      const mockUser = {
+        _id: 'user1',
+        username: 'testuser',
+        email: 'test@example.com',
+      };
       mockUsersService.findOne.mockResolvedValue(mockUser);
 
       const result = await controller.getProfile({ user: { id: 'user1' } });
@@ -58,25 +65,43 @@ describe('UsersController (Security & Functionality)', () => {
 
     it('should update own profile via updateProfile', async () => {
       const updateDto = { bio: 'New bio' };
-      const updatedUser = { _id: 'user1', username: 'testuser', bio: 'New bio' };
+      const updatedUser = {
+        _id: 'user1',
+        username: 'testuser',
+        bio: 'New bio',
+      };
       mockUsersService.update.mockResolvedValue(updatedUser);
 
-      const result = await controller.updateProfile({ user: { id: 'user1' } }, updateDto);
+      const result = await controller.updateProfile(
+        { user: { id: 'user1' } },
+        updateDto,
+      );
       expect(result).toEqual(updatedUser);
       expect(mockUsersService.update).toHaveBeenCalledWith('user1', updateDto);
     });
 
-    it('should find all users via findAll', async () => {
-      const userList = [{ _id: 'user1', username: 'user1' }];
-      mockUsersService.findAll.mockResolvedValue(userList);
+    it('should find users via findAll with bounded pagination query', async () => {
+      const paginatedResult = {
+        data: [{ _id: 'user1', username: 'user1' }],
+        total: 1,
+        page: 1,
+        limit: 20,
+        totalPages: 1,
+      };
+      mockUsersService.findAll.mockResolvedValue(paginatedResult);
 
-      const result = await controller.findAll();
-      expect(result).toEqual(userList);
-      expect(mockUsersService.findAll).toHaveBeenCalled();
+      const queryDto = { page: 1, limit: 20, search: 'test' };
+      const result = await controller.findAll(queryDto);
+      expect(result).toEqual(paginatedResult);
+      expect(mockUsersService.findAll).toHaveBeenCalledWith(queryDto);
     });
 
     it('should find public profile via findOne', async () => {
-      const publicUser = { _id: 'user2', username: 'user2', displayName: 'User Two' };
+      const publicUser = {
+        _id: 'user2',
+        username: 'user2',
+        displayName: 'User Two',
+      };
       mockUsersService.findPublicProfile.mockResolvedValue(publicUser);
 
       const result = await controller.findOne('user2');
@@ -88,15 +113,25 @@ describe('UsersController (Security & Functionality)', () => {
       const updateDto = { displayName: 'Updated' };
       mockUsersService.update.mockResolvedValue({ _id: 'user1', ...updateDto });
 
-      const result = await controller.update('user1', updateDto, { user: { id: 'user1' } });
+      const result = await controller.update('user1', updateDto, {
+        user: { id: 'user1' },
+      });
       expect(result).toEqual({ _id: 'user1', ...updateDto });
-      expect(mockUsersService.update).toHaveBeenCalledWith('user1', updateDto, 'user1');
+      expect(mockUsersService.update).toHaveBeenCalledWith(
+        'user1',
+        updateDto,
+        'user1',
+      );
     });
 
     it('should delete user via remove with currentUserId', async () => {
-      mockUsersService.remove.mockResolvedValue({ message: 'Xóa user thành công' });
+      mockUsersService.remove.mockResolvedValue({
+        message: 'Xóa user thành công',
+      });
 
-      const result = await controller.remove('user1', { user: { id: 'user1' } });
+      const result = await controller.remove('user1', {
+        user: { id: 'user1' },
+      });
       expect(result).toEqual({ message: 'Xóa user thành công' });
       expect(mockUsersService.remove).toHaveBeenCalledWith('user1', 'user1');
     });

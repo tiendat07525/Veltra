@@ -3,9 +3,12 @@ import { User, CurrentUserProfile } from '@/types/user';
 
 export const userService = {
 
-  async getUsers(): Promise<User[]> {
-    const res = await api.get('/users');
-    return res.data;
+  async getUsers(params?: { page?: number; limit?: number; search?: string }): Promise<User[]> {
+    const res = await api.get('/users', { params });
+    if (Array.isArray(res.data)) {
+      return res.data;
+    }
+    return res.data?.data ?? [];
   },
 
   async getUserById(id: string): Promise<User> {

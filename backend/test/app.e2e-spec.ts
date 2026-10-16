@@ -7,14 +7,14 @@ import { AppModule } from './../src/app.module';
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
 
     app = moduleFixture.createNestApplication();
     await app.init();
-  });
+  }, 30000);
 
   it('POST /users should return 404 Not Found (FULLAUDIT-001 route removed)', () => {
     return request(app.getHttpServer())
@@ -27,7 +27,17 @@ describe('AppController (e2e)', () => {
       .expect(404);
   });
 
-  afterEach(async () => {
-    await app.close();
+  it('GET /users without JWT should return 401 Unauthorized', () => {
+    return request(app.getHttpServer()).get('/users').expect(401);
   });
+
+  it('GET /users/profile without JWT should return 401 Unauthorized', () => {
+    return request(app.getHttpServer()).get('/users/profile').expect(401);
+  });
+
+  afterAll(async () => {
+    if (app) {
+      await app.close();
+    }
+  }, 30000);
 });

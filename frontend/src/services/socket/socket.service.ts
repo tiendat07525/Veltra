@@ -1,5 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { getToken } from '../api/api';
+import { getSocketUrl } from '@/config/env';
 
 type SocketEventHandler = (...args: any[]) => void;
 
@@ -15,12 +16,7 @@ class SocketService {
       return null;
     }
 
-    const socketUrl =
-      url ||
-      process.env.NEXT_PUBLIC_SOCKET_URL ||
-      process.env.NEXT_PUBLIC_API_URL ||
-      process.env.NEXT_PUBLIC_API ||
-      'http://localhost:4000';
+    const socketUrl = url || getSocketUrl();
     if (this.socket && this.currentToken === authToken) {
       if (this.socket.connected) {
         return this.socket;

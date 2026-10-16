@@ -1,7 +1,8 @@
 import axios from "axios";
+import { getApiBaseUrl } from "@/config/env";
 
 export const api = axios.create({
-    baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000",
+    baseURL: getApiBaseUrl(),
     headers: {
         "Content-Type": "application/json",
     },
@@ -9,7 +10,7 @@ export const api = axios.create({
 });
 
 export const refreshClient = axios.create({
-    baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000",
+    baseURL: getApiBaseUrl(),
     headers: {
         "Content-Type": "application/json",
     },
