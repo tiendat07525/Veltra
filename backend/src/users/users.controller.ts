@@ -5,12 +5,10 @@ import {
   Get,
   Param,
   Patch,
-  Post,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
-import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 
@@ -40,11 +38,6 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   findOne(@Param('id') id: string) {
     return this.userService.findPublicProfile(id);
-  }
-
-  @Post()
-  create(@Body() dto: CreateUserDto) {
-    return this.userService.create(dto);
   }
 
   @Patch(':id')

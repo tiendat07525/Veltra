@@ -4,8 +4,6 @@ import {
   MinLength,
   MaxLength,
   Matches,
-  IsOptional,
-  IsIn,
 } from 'class-validator';
 
 export class CreateUserDto {
@@ -15,7 +13,7 @@ export class CreateUserDto {
 
   @IsNotEmpty()
   @MinLength(6)
-  @MaxLength(30)
+  @MaxLength(100)
   password: string;
 
   @IsNotEmpty()

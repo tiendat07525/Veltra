@@ -16,11 +16,15 @@ describe('AppController (e2e)', () => {
     await app.init();
   });
 
-  it('/ (GET)', () => {
+  it('POST /users should return 404 Not Found (FULLAUDIT-001 route removed)', () => {
     return request(app.getHttpServer())
-      .get('/')
-      .expect(200)
-      .expect('Hello World!');
+      .post('/users')
+      .send({
+        username: 'malicious',
+        email: 'malicious@example.com',
+        password: 'plaintextpassword',
+      })
+      .expect(404);
   });
 
   afterEach(async () => {

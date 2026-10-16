@@ -9,6 +9,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { UserDocument, User } from './schemas/user.schema';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UsersService {
@@ -18,9 +19,16 @@ export class UsersService {
   ) {}
 
   async create(dto: CreateUserDto) {
-    const user = await this.userModel.create(dto);
-    const userObject = user.toObject();
-    delete (userObject as any).password;
+    let password = dto.password;
+    if (!password.startsWith('$2a$') && !password.startsWith('$2b$')) {
+      password = await bcrypt.hash(password, 10);
+    }
+    const user = await this.userModel.create({
+      ...dto,
+      password,
+    });
+    const userObject = user.toObject() as Record<string, any>;
+    delete userObject.password;
     return {
       message: 'Tạo user thành công',
       data: userObject,
