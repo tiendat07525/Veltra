@@ -15,7 +15,9 @@ export function useSocket(token?: string | null) {
 
     if (!authToken) {
       socketService.disconnect();
-      setIsConnected(false);
+      queueMicrotask(() => {
+        setIsConnected(false);
+      });
       return;
     }
 
@@ -32,14 +34,16 @@ export function useSocket(token?: string | null) {
             if (newToken) {
               socketService.connect(undefined, newToken);
             }
-          } catch (e) {
+          } catch {
             // Let the application handle the auth drop
           }
         }
       };
 
       if (socket.connected) {
-        setIsConnected(true);
+        queueMicrotask(() => {
+          setIsConnected(true);
+        });
       }
 
       socket.on('connect', handleConnect);

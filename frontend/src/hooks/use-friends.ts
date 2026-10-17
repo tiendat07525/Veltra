@@ -1,7 +1,16 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { friendService } from '@/services/api/friend.service';
 import { FriendRequest, FriendshipStatus } from '@/types/friend';
 import { UserBasicInfo } from '@/types/user';
+
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (err && typeof err === 'object' && 'response' in err) {
+    const res = (err as { response?: { data?: { message?: string } } }).response;
+    if (res?.data?.message) return res.data.message;
+  }
+  if (err instanceof Error) return err.message;
+  return fallback;
+}
 
 export function useFriends() {
   const [friends, setFriends] = useState<UserBasicInfo[]>([]);
@@ -15,9 +24,9 @@ export function useFriends() {
     try {
       const data = await friendService.getFriends();
       setFriends(data);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Lỗi khi lấy danh sách bạn bè:', err);
-      setError(err?.response?.data?.message || 'Không thể tải danh sách bạn bè');
+      setError(getErrorMessage(err, 'Không thể tải danh sách bạn bè'));
     }
   }, []);
 
@@ -26,7 +35,7 @@ export function useFriends() {
       const data = await friendService.getFriendRequests();
       setSentRequests(data.sent || []);
       setReceivedRequests(data.received || []);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Lỗi khi lấy lời mời kết bạn:', err);
     }
   }, []);
@@ -39,7 +48,9 @@ export function useFriends() {
   }, [fetchFriends, fetchFriendRequests]);
 
   useEffect(() => {
-    fetchAll();
+    void Promise.resolve().then(() => {
+      fetchAll();
+    });
   }, [fetchAll]);
 
   const getFriendshipStatus = useCallback(
@@ -80,9 +91,8 @@ export function useFriends() {
       try {
         await friendService.sendFriendRequest(toUserId, message);
         await fetchFriendRequests();
-      } catch (err: any) {
-        const msg = err?.response?.data?.message || 'Không thể gửi lời mời kết bạn';
-        throw new Error(msg);
+      } catch (err: unknown) {
+        throw new Error(getErrorMessage(err, 'Không thể gửi lời mời kết bạn'));
       } finally {
         setActionLoading(null);
       }
@@ -97,9 +107,8 @@ export function useFriends() {
       try {
         await friendService.acceptFriendRequest(requestId);
         await fetchAll();
-      } catch (err: any) {
-        const msg = err?.response?.data?.message || 'Không thể chấp nhận lời mời';
-        throw new Error(msg);
+      } catch (err: unknown) {
+        throw new Error(getErrorMessage(err, 'Không thể chấp nhận lời mời'));
       } finally {
         setActionLoading(null);
       }
@@ -114,9 +123,8 @@ export function useFriends() {
       try {
         await friendService.declineFriendRequest(requestId);
         await fetchFriendRequests();
-      } catch (err: any) {
-        const msg = err?.response?.data?.message || 'Không thể từ chối lời mời';
-        throw new Error(msg);
+      } catch (err: unknown) {
+        throw new Error(getErrorMessage(err, 'Không thể từ chối lời mời'));
       } finally {
         setActionLoading(null);
       }
@@ -131,10 +139,9 @@ export function useFriends() {
       try {
         await friendService.removeFriend(friendId);
         setFriends((prev) => prev.filter((f) => f._id !== friendId));
-      } catch (err: any) {
+      } catch (err: unknown) {
         await fetchFriends();
-        const msg = err?.response?.data?.message || 'Không thể xóa bạn';
-        throw new Error(msg);
+        throw new Error(getErrorMessage(err, 'Không thể xóa bạn'));
       } finally {
         setActionLoading(null);
       }

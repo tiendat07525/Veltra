@@ -75,8 +75,8 @@ describe('Direct Conversation Database Integration & Concurrency (Real MongoDB)'
 
     const fulfilled = attempts.filter((a) => a.status === 'fulfilled');
     const rejected = attempts.filter(
-      (a) => a.status === 'rejected',
-    ) as PromiseRejectedResult[];
+      (a): a is PromiseRejectedResult => a.status === 'rejected',
+    );
 
     // Exactly 1 insert must succeed; all 9 others must be rejected by MongoDB
     expect(fulfilled.length).toBe(1);
@@ -97,7 +97,10 @@ describe('Direct Conversation Database Integration & Concurrency (Real MongoDB)'
     const directKey = getDirectKey(userA, userB);
 
     // Simulation of ConversationService / MessageService find-or-create logic
-    const createWithRecovery = async (callerA: Types.ObjectId, callerB: Types.ObjectId) => {
+    const createWithRecovery = async (
+      callerA: Types.ObjectId,
+      callerB: Types.ObjectId,
+    ) => {
       let conversation = await conversationModel.findOne({
         type: 'direct',
         $or: [

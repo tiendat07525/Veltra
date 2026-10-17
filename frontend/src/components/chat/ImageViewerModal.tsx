@@ -1,5 +1,6 @@
 import React from 'react';
-import { X, Download, ZoomIn, ZoomOut, Share2 } from 'lucide-react';
+import Image from 'next/image';
+import { X, Download, ZoomIn, ZoomOut } from 'lucide-react';
 
 interface ImageViewerModalProps {
   isOpen: boolean;
@@ -75,12 +76,14 @@ export const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
         className="relative max-w-4xl max-h-[80vh] flex items-center justify-center overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <img
+        <Image
           src={imageUrl}
           alt={caption || 'Xem trước'}
+          width={1200}
+          height={800}
+          unoptimized
           style={{ transform: `scale(${scale})` }}
           className="rounded-2xl object-contain max-h-[75vh] w-auto shadow-2xl transition-transform duration-150 cursor-grab"
-          referrerPolicy="no-referrer"
         />
       </div>
     </div>

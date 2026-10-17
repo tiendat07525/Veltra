@@ -60,6 +60,7 @@ export class RealtimeGateway
     this.server = server;
     this.realtimeService.setServer(server);
 
+    // eslint-disable-next-line @typescript-eslint/no-misused-promises
     server.use(async (socket: Socket, next) => {
       try {
         const token =

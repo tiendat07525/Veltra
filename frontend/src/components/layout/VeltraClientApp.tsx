@@ -56,7 +56,7 @@ export function VeltraClientApp() {
         try {
           await authService.refreshSilent();
           token = getToken();
-        } catch (e) {
+        } catch {
           // Silent refresh failed
         }
       }
@@ -128,8 +128,9 @@ export function VeltraClientApp() {
         setMobileViewChat(true);
       }
       showToast(`Đã mở cuộc trò chuyện với ${contact.displayName || contact.username}`, 'info');
-    } catch (err: any) {
-      showToast(err?.response?.data?.message || 'Lỗi khi tạo cuộc trò chuyện', 'error');
+    } catch (err: unknown) {
+      const apiErr = err as { response?: { data?: { message?: string } } };
+      showToast(apiErr?.response?.data?.message || 'Lỗi khi tạo cuộc trò chuyện', 'error');
     }
   };
 
@@ -215,8 +216,9 @@ export function VeltraClientApp() {
                       setMobileViewChat(true);
                     }
                     showToast('Đã tạo/mở cuộc trò chuyện', 'success');
-                  } catch (err: any) {
-                    showToast(err?.response?.data?.message || 'Lỗi tạo cuộc trò chuyện', 'error');
+                  } catch (err: unknown) {
+                    const apiErr = err as { response?: { data?: { message?: string } } };
+                    showToast(apiErr?.response?.data?.message || 'Lỗi tạo cuộc trò chuyện', 'error');
                   }
                 }}
                 onDeleteConversation={async (convId) => {
@@ -229,8 +231,9 @@ export function VeltraClientApp() {
                       }
                     }
                     showToast('Đã xóa cuộc trò chuyện', 'success');
-                  } catch (err: any) {
-                    showToast(err?.response?.data?.message || 'Lỗi khi xóa', 'error');
+                  } catch (err: unknown) {
+                    const apiErr = err as { response?: { data?: { message?: string } } };
+                    showToast(apiErr?.response?.data?.message || 'Lỗi khi xóa', 'error');
                   }
                 }}
               />

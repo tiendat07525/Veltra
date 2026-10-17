@@ -93,8 +93,9 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
     }).compile();
 
     conversationService = module.get<ConversationService>(ConversationService);
-    conversationController =
-      module.get<ConversationController>(ConversationController);
+    conversationController = module.get<ConversationController>(
+      ConversationController,
+    );
     messageService = module.get<MessageService>(MessageService);
     jest.clearAllMocks();
   });
@@ -391,7 +392,9 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
             { groupName: 'New Group Name' },
             creatorUserId,
           ),
-        ).rejects.toThrow(new BadRequestException('Conversation ID không hợp lệ'));
+        ).rejects.toThrow(
+          new BadRequestException('Conversation ID không hợp lệ'),
+        );
 
         expect(mockConversationModel.findOne).not.toHaveBeenCalled();
       });
@@ -404,7 +407,9 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
             { groupName: 'New Group Name' },
             mockReq,
           ),
-        ).rejects.toThrow(new BadRequestException('Conversation ID không hợp lệ'));
+        ).rejects.toThrow(
+          new BadRequestException('Conversation ID không hợp lệ'),
+        );
 
         expect(mockConversationModel.findOne).not.toHaveBeenCalled();
       });
@@ -416,7 +421,9 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
             { userIds: [memberUserId] },
             creatorUserId,
           ),
-        ).rejects.toThrow(new BadRequestException('Conversation ID không hợp lệ'));
+        ).rejects.toThrow(
+          new BadRequestException('Conversation ID không hợp lệ'),
+        );
 
         expect(mockConversationModel.findOne).not.toHaveBeenCalled();
       });
@@ -429,7 +436,9 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
             { userIds: [memberUserId] },
             mockReq,
           ),
-        ).rejects.toThrow(new BadRequestException('Conversation ID không hợp lệ'));
+        ).rejects.toThrow(
+          new BadRequestException('Conversation ID không hợp lệ'),
+        );
 
         expect(mockConversationModel.findOne).not.toHaveBeenCalled();
       });
@@ -437,7 +446,9 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
       it('should reject malformed conversationId in ConversationService.remove without querying DB', async () => {
         await expect(
           conversationService.remove(malformedId, creatorUserId),
-        ).rejects.toThrow(new BadRequestException('Conversation ID không hợp lệ'));
+        ).rejects.toThrow(
+          new BadRequestException('Conversation ID không hợp lệ'),
+        );
 
         expect(mockConversationModel.findOne).not.toHaveBeenCalled();
       });
@@ -445,7 +456,9 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
       it('should reject malformed conversationId in ConversationService.getMessages without querying DB', async () => {
         await expect(
           conversationService.getMessages(malformedId, memberUserId),
-        ).rejects.toThrow(new BadRequestException('Conversation ID không hợp lệ'));
+        ).rejects.toThrow(
+          new BadRequestException('Conversation ID không hợp lệ'),
+        );
 
         expect(mockConversationModel.findOne).not.toHaveBeenCalled();
       });
@@ -453,7 +466,9 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
       it('should reject malformed conversationId in ConversationService.markAsSeen without querying DB', async () => {
         await expect(
           conversationService.markAsSeen(malformedId, memberUserId),
-        ).rejects.toThrow(new BadRequestException('Conversation ID không hợp lệ'));
+        ).rejects.toThrow(
+          new BadRequestException('Conversation ID không hợp lệ'),
+        );
 
         expect(mockConversationModel.findOne).not.toHaveBeenCalled();
       });
@@ -464,7 +479,9 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
             { conversationId: malformedId, content: 'Test Message' },
             creatorUserId,
           ),
-        ).rejects.toThrow(new BadRequestException('Conversation ID không hợp lệ'));
+        ).rejects.toThrow(
+          new BadRequestException('Conversation ID không hợp lệ'),
+        );
 
         expect(mockConversationModel.findById).not.toHaveBeenCalled();
       });
@@ -527,7 +544,9 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
             { receiverId: malformedId, content: 'Hello' },
             creatorUserId,
           ),
-        ).rejects.toThrow(new BadRequestException('ID người nhận không hợp lệ'));
+        ).rejects.toThrow(
+          new BadRequestException('ID người nhận không hợp lệ'),
+        );
 
         expect(mockUsersService.findOne).not.toHaveBeenCalled();
       });
@@ -617,7 +636,9 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
         await expect(
           conversationService.remove(nonexistentValidObjectId, creatorUserId),
         ).rejects.toThrow(
-          new NotFoundException('Conversation không tồn tại hoặc bạn không có quyền'),
+          new NotFoundException(
+            'Conversation không tồn tại hoặc bạn không có quyền',
+          ),
         );
       });
 
@@ -625,7 +646,10 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
         mockConversationModel.findOne.mockResolvedValue(null);
 
         await expect(
-          conversationService.getMessages(nonexistentValidObjectId, creatorUserId),
+          conversationService.getMessages(
+            nonexistentValidObjectId,
+            creatorUserId,
+          ),
         ).rejects.toThrow(
           new NotFoundException(
             'Conversation không tồn tại hoặc bạn không có quyền truy cập',
@@ -639,9 +663,14 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
         });
 
         await expect(
-          conversationService.markAsSeen(nonexistentValidObjectId, creatorUserId),
+          conversationService.markAsSeen(
+            nonexistentValidObjectId,
+            creatorUserId,
+          ),
         ).rejects.toThrow(
-          new NotFoundException('Conversation không tồn tại hoặc bạn không có quyền'),
+          new NotFoundException(
+            'Conversation không tồn tại hoặc bạn không có quyền',
+          ),
         );
       });
     });
@@ -657,7 +686,10 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
             createdBy: new Types.ObjectId(creatorUserId),
           },
           participants: [
-            { userId: { _id: creatorUserId, displayName: 'Creator' }, joinedAt: new Date() },
+            {
+              userId: { _id: creatorUserId, displayName: 'Creator' },
+              joinedAt: new Date(),
+            },
           ],
           save: mockSave,
           toObject: () => ({
@@ -665,7 +697,10 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
             type: 'group',
             group: { name: 'Updated Name', createdBy: creatorUserId },
             participants: [
-              { userId: { _id: creatorUserId, displayName: 'Creator' }, joinedAt: new Date() },
+              {
+                userId: { _id: creatorUserId, displayName: 'Creator' },
+                joinedAt: new Date(),
+              },
             ],
           }),
         };
@@ -681,7 +716,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
         expect(groupConversation.group.name).toBe('Updated Name');
         expect(mockSave).toHaveBeenCalled();
         expect(result).toBeDefined();
-        expect(result.group.name).toBe('Updated Name');
+        expect(result.group?.name).toBe('Updated Name');
       });
 
       it('should allow group creator to add new valid participants', async () => {
@@ -703,8 +738,14 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
             type: 'group',
             group: { name: 'Team Group', createdBy: creatorUserId },
             participants: [
-              { userId: { _id: creatorUserId, displayName: 'Creator' }, joinedAt: new Date() },
-              { userId: { _id: newUserId, displayName: 'New Member' }, joinedAt: new Date() },
+              {
+                userId: { _id: creatorUserId, displayName: 'Creator' },
+                joinedAt: new Date(),
+              },
+              {
+                userId: { _id: newUserId, displayName: 'New Member' },
+                joinedAt: new Date(),
+              },
             ],
           }),
         };
@@ -769,7 +810,9 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
             memberUserId,
           ),
         ).rejects.toThrow(
-          new ForbiddenException('Chỉ trưởng nhóm mới có quyền thêm thành viên'),
+          new ForbiddenException(
+            'Chỉ trưởng nhóm mới có quyền thêm thành viên',
+          ),
         );
       });
 
@@ -891,9 +934,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
             name: 'Old Name',
             createdBy: new Types.ObjectId(creatorUserId),
           },
-          participants: [
-            { userId: new Types.ObjectId(creatorUserId) },
-          ],
+          participants: [{ userId: new Types.ObjectId(creatorUserId) }],
           save: mockSave,
           toObject: () => ({
             _id: new Types.ObjectId(validConversationId),
@@ -918,9 +959,9 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
 
     describe('7. Other affected routes & user context validation', () => {
       it('should reject malformed userId in ConversationService.findAll', async () => {
-        await expect(
-          conversationService.findAll(malformedId),
-        ).rejects.toThrow(new BadRequestException('User ID không hợp lệ'));
+        await expect(conversationService.findAll(malformedId)).rejects.toThrow(
+          new BadRequestException('User ID không hợp lệ'),
+        );
       });
 
       it('should reject malformed userId in ConversationService.update', async () => {

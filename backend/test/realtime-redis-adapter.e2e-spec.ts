@@ -43,8 +43,9 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
 
     // 2. Load socket.io-client if present
     try {
-      const clientPkg = require('../../frontend/node_modules/socket.io-client');
-      ioClientConstructor = clientPkg.io || clientPkg;
+      const clientPath = '../../frontend/node_modules/socket.io-client';
+      const clientPkg = (await import(clientPath)) as Record<string, any>;
+      ioClientConstructor = clientPkg.io || clientPkg.default || clientPkg;
     } catch {
       ioClientConstructor = null;
     }
@@ -58,16 +59,32 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
       await gateway2.onModuleDestroy();
     }
     if (ioServer1) {
-      await new Promise<void>((resolve) => ioServer1.close(() => resolve()));
+      await new Promise<void>((resolve) => {
+        void ioServer1.close(() => {
+          resolve();
+        });
+      });
     }
     if (ioServer2) {
-      await new Promise<void>((resolve) => ioServer2.close(() => resolve()));
+      await new Promise<void>((resolve) => {
+        void ioServer2.close(() => {
+          resolve();
+        });
+      });
     }
     if (httpServer1 && httpServer1.listening) {
-      await new Promise<void>((resolve) => httpServer1.close(() => resolve()));
+      await new Promise<void>((resolve) => {
+        httpServer1.close(() => {
+          resolve();
+        });
+      });
     }
     if (httpServer2 && httpServer2.listening) {
-      await new Promise<void>((resolve) => httpServer2.close(() => resolve()));
+      await new Promise<void>((resolve) => {
+        httpServer2.close(() => {
+          resolve();
+        });
+      });
     }
   });
 
@@ -160,8 +177,12 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
       }),
     };
     const mockConfigService: Partial<ConfigService> = {
-      get: jest.fn((key: string) => (key === 'REDIS_URL' ? REDIS_URL : undefined)),
-      getOrThrow: jest.fn((key: string) => (key === 'JWT_SECRET' ? 'test-secret' : undefined)),
+      get: jest.fn((key: string) =>
+        key === 'REDIS_URL' ? REDIS_URL : undefined,
+      ),
+      getOrThrow: jest.fn((key: string) =>
+        key === 'JWT_SECRET' ? 'test-secret' : undefined,
+      ),
     };
     const mockUsersService: Partial<UsersService> = {
       findOne: jest.fn().mockResolvedValue({
@@ -196,10 +217,13 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
     await gateway1.afterInit(ioServer1);
     await gateway2.afterInit(ioServer2);
 
-    await new Promise<void>((resolve) => httpServer1.listen(0, () => resolve()));
-    await new Promise<void>((resolve) => httpServer2.listen(0, () => resolve()));
+    await new Promise<void>((resolve) =>
+      httpServer1.listen(0, () => resolve()),
+    );
+    await new Promise<void>((resolve) =>
+      httpServer2.listen(0, () => resolve()),
+    );
 
-    const port1 = (httpServer1.address() as any).port;
     const port2 = (httpServer2.address() as any).port;
 
     // Node 2 accepts connection and executes handleConnection (which joins user & session rooms)
@@ -222,13 +246,14 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
     await node2ConnectedPromise;
 
     // Listen for event on Client connected to Node 2
-    const messagePromise = new Promise<{ conversationId: string; content: string }>(
-      (resolve) => {
-        clientOnNode2.on('message:new', (payload: any) => {
-          resolve(payload);
-        });
-      },
-    );
+    const messagePromise = new Promise<{
+      conversationId: string;
+      content: string;
+    }>((resolve) => {
+      clientOnNode2.on('message:new', (payload: any) => {
+        resolve(payload);
+      });
+    });
 
     // Node 1 emits message to target user room via RealtimeService
     realtimeService1.emitToUser(targetUserId, 'message:new', {
@@ -262,8 +287,12 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
       }),
     };
     const mockConfigService: Partial<ConfigService> = {
-      get: jest.fn((key: string) => (key === 'REDIS_URL' ? REDIS_URL : undefined)),
-      getOrThrow: jest.fn((key: string) => (key === 'JWT_SECRET' ? 'test-secret' : undefined)),
+      get: jest.fn((key: string) =>
+        key === 'REDIS_URL' ? REDIS_URL : undefined,
+      ),
+      getOrThrow: jest.fn((key: string) =>
+        key === 'JWT_SECRET' ? 'test-secret' : undefined,
+      ),
     };
     const mockUsersService: Partial<UsersService> = {
       findOne: jest.fn().mockResolvedValue({
@@ -298,8 +327,12 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
     await gateway1.afterInit(ioServer1);
     await gateway2.afterInit(ioServer2);
 
-    await new Promise<void>((resolve) => httpServer1.listen(0, () => resolve()));
-    await new Promise<void>((resolve) => httpServer2.listen(0, () => resolve()));
+    await new Promise<void>((resolve) =>
+      httpServer1.listen(0, () => resolve()),
+    );
+    await new Promise<void>((resolve) =>
+      httpServer2.listen(0, () => resolve()),
+    );
 
     const port2 = (httpServer2.address() as any).port;
 

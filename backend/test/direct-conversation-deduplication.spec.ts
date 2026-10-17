@@ -105,7 +105,10 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
   });
 
   describe('3. ConversationService.create (Direct Conversations)', () => {
-    const mockPopulatedConversation = (id: Types.ObjectId, directKey: string) => ({
+    const mockPopulatedConversation = (
+      id: Types.ObjectId,
+      directKey: string,
+    ) => ({
       _id: id,
       type: 'direct',
       directKey,
@@ -353,7 +356,10 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
       const existingConv = mockExistingConversation(convId);
       const savedMsg = mockMessageDoc(msgId, convId);
 
-      mockUsersService.findOne.mockResolvedValue({ _id: userBId, username: 'userB' });
+      mockUsersService.findOne.mockResolvedValue({
+        _id: userBId,
+        username: 'userB',
+      });
       mockConversationModel.findOne.mockReturnValue({
         sort: jest.fn().mockResolvedValue(existingConv),
       });
@@ -402,7 +408,10 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
         }),
       };
 
-      mockUsersService.findOne.mockResolvedValue({ _id: userAId, username: 'userA' });
+      mockUsersService.findOne.mockResolvedValue({
+        _id: userAId,
+        username: 'userA',
+      });
       mockConversationModel.findOne.mockReturnValue({
         sort: jest.fn().mockResolvedValue(existingConv),
       });
@@ -428,7 +437,10 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
       const savedMsg = mockMessageDoc(msgId, convId);
       const expectedKey = getDirectKey(userAId, userBId);
 
-      mockUsersService.findOne.mockResolvedValue({ _id: userBId, username: 'userB' });
+      mockUsersService.findOne.mockResolvedValue({
+        _id: userBId,
+        username: 'userB',
+      });
       // findOne returns null -> none exists
       mockConversationModel.findOne.mockReturnValue({
         sort: jest.fn().mockResolvedValue(null),
@@ -460,7 +472,10 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
       const winningConv = mockExistingConversation(convId);
       const savedMsg = mockMessageDoc(msgId, convId);
 
-      mockUsersService.findOne.mockResolvedValue({ _id: userBId, username: 'userB' });
+      mockUsersService.findOne.mockResolvedValue({
+        _id: userBId,
+        username: 'userB',
+      });
 
       // First findOne returns null, second findOne (after E11000 catch) returns winning conversation
       mockConversationModel.findOne

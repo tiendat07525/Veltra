@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { JwtStrategy } from '../src/auth/jwt.strategy';
+import { JwtStrategy, JwtPayload } from '../src/auth/jwt.strategy';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from 'src/users/users.service';
 import { SessionService } from '../src/auth/session.service';
@@ -92,16 +92,18 @@ describe('JwtStrategy (Token Validation & Session Revocation - FULLAUDIT-005)', 
     });
 
     it('should throw UnauthorizedException when payload is missing or lacks sessionId', async () => {
-      await expect(strategy.validate(null)).rejects.toThrow(
-        new UnauthorizedException('Token payload không hợp lệ'),
-      );
       await expect(
-        strategy.validate({ id: 'user123' }),
+        strategy.validate(null as unknown as JwtPayload),
       ).rejects.toThrow(
         new UnauthorizedException('Token payload không hợp lệ'),
       );
       await expect(
-        strategy.validate({ sessionId: 'sess123' }),
+        strategy.validate({ id: 'user123' } as unknown as JwtPayload),
+      ).rejects.toThrow(
+        new UnauthorizedException('Token payload không hợp lệ'),
+      );
+      await expect(
+        strategy.validate({ sessionId: 'sess123' } as unknown as JwtPayload),
       ).rejects.toThrow(
         new UnauthorizedException('Token payload không hợp lệ'),
       );
@@ -176,4 +178,3 @@ describe('JwtStrategy (Token Validation & Session Revocation - FULLAUDIT-005)', 
     });
   });
 });
-

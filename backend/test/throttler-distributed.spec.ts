@@ -102,19 +102,37 @@ describe('Distributed Rate Limiting (FULLAUDIT-008)', () => {
     it('should share rate limits across multiple instances communicating with same Redis', async () => {
       // Simulate Instance A making request 1
       mockClient.eval.mockResolvedValueOnce([1, 60000]);
-      const resA = await service.increment('shared_key', 60000, 2, 0, 'default');
+      const resA = await service.increment(
+        'shared_key',
+        60000,
+        2,
+        0,
+        'default',
+      );
       expect(resA.totalHits).toBe(1);
       expect(resA.isBlocked).toBe(false);
 
       // Simulate Instance B making request 2 against same shared key
       mockClient.eval.mockResolvedValueOnce([2, 59000]);
-      const resB = await service.increment('shared_key', 60000, 2, 0, 'default');
+      const resB = await service.increment(
+        'shared_key',
+        60000,
+        2,
+        0,
+        'default',
+      );
       expect(resB.totalHits).toBe(2);
       expect(resB.isBlocked).toBe(false);
 
       // Simulate Instance A or B making request 3 (exceeded)
       mockClient.eval.mockResolvedValueOnce([3, 58000]);
-      const resC = await service.increment('shared_key', 60000, 2, 0, 'default');
+      const resC = await service.increment(
+        'shared_key',
+        60000,
+        2,
+        0,
+        'default',
+      );
       expect(resC.totalHits).toBe(3);
       expect(resC.isBlocked).toBe(true);
     });
@@ -123,10 +141,10 @@ describe('Distributed Rate Limiting (FULLAUDIT-008)', () => {
   describe('AppThrottlerGuard (Tracker & Privacy Keying Strategy)', () => {
     let guard: AppThrottlerGuard;
 
-    beforeEach(async () => {
+    beforeEach(() => {
       guard = new AppThrottlerGuard(
         { throttlers: [{ limit: 15, ttl: 60000 }] },
-        { increment: jest.fn() } as any,
+        { increment: jest.fn() },
         new Reflector(),
       );
     });

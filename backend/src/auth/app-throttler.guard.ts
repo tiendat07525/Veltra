@@ -1,4 +1,4 @@
-import { ExecutionContext, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import * as crypto from 'crypto';
 
@@ -10,7 +10,7 @@ export class AppThrottlerGuard extends ThrottlerGuard {
    * - For /auth/refresh: incorporates a truncated SHA-256 hash of the sessionId or malformed token
    *   Raw tokens, cookies, and authentication secrets are NEVER used as keys or logged.
    */
-  protected async getTracker(req: Record<string, any>): Promise<string> {
+  protected getTracker(req: Record<string, any>): Promise<string> {
     const rawIp = req.ips?.length ? req.ips[0] : req.ip || '127.0.0.1';
     // Clean and normalize IP
     const ip = typeof rawIp === 'string' ? rawIp.trim() : '127.0.0.1';
@@ -28,7 +28,7 @@ export class AppThrottlerGuard extends ThrottlerGuard {
             .update(parts[1], 'utf8')
             .digest('hex')
             .slice(0, 16);
-          return `${ip}:sess_${sessionHash}`;
+          return Promise.resolve(`${ip}:sess_${sessionHash}`);
         } else {
           // Malformed or invalid refresh token:
           // Hash the entire malformed value to throttle repeated abusive payload attempts
@@ -38,11 +38,11 @@ export class AppThrottlerGuard extends ThrottlerGuard {
             .update(refreshToken, 'utf8')
             .digest('hex')
             .slice(0, 16);
-          return `${ip}:invalid_${invalidPayloadHash}`;
+          return Promise.resolve(`${ip}:invalid_${invalidPayloadHash}`);
         }
       }
     }
 
-    return ip;
+    return Promise.resolve(ip);
   }
 }

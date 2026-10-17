@@ -1,7 +1,6 @@
 import {
   ConflictException,
   Injectable,
-  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { RegisterDto } from './dto/register.dto';
@@ -62,8 +61,8 @@ export class AuthService {
 
   async refresh(
     refreshTokenString: string,
-    userAgent?: string,
-    ipAddress?: string,
+    _userAgent?: string,
+    _ipAddress?: string,
   ) {
     if (!refreshTokenString) {
       throw new UnauthorizedException('Token không hợp lệ');
@@ -133,7 +132,7 @@ export class AuthService {
     let user;
     try {
       user = await this.usersService.findOne(userId);
-    } catch (e) {
+    } catch {
       throw new UnauthorizedException('Người dùng không tồn tại');
     }
 

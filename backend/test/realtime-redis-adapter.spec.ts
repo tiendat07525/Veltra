@@ -63,7 +63,9 @@ describe('RealtimeGateway - Socket.IO Redis Adapter (Unit Tests)', () => {
 
   describe('1. Adapter Initialization when Redis is Configured', () => {
     it('should initialize Redis adapter and connect both pub and sub clients when REDIS_URL is set', async () => {
-      (configService.get as jest.Mock).mockReturnValue('redis://127.0.0.1:6379');
+      (configService.get as jest.Mock).mockReturnValue(
+        'redis://127.0.0.1:6379',
+      );
 
       const mockSubClient = {
         on: jest.fn(),
@@ -94,10 +96,7 @@ describe('RealtimeGateway - Socket.IO Redis Adapter (Unit Tests)', () => {
       expect(mockPubClient.duplicate).toHaveBeenCalled();
       expect(mockPubClient.connect).toHaveBeenCalled();
       expect(mockSubClient.connect).toHaveBeenCalled();
-      expect(createAdapter).toHaveBeenCalledWith(
-        mockPubClient,
-        mockSubClient,
-      );
+      expect(createAdapter).toHaveBeenCalledWith(mockPubClient, mockSubClient);
       expect(mockServer.adapter).toHaveBeenCalledTimes(1);
       expect(gateway.getIsRedisAdapterActive()).toBe(true);
       expect(gateway.getRedisClients()).toEqual({
@@ -166,7 +165,9 @@ describe('RealtimeGateway - Socket.IO Redis Adapter (Unit Tests)', () => {
 
   describe('3. Redis Connection or Initialization Failures', () => {
     it('should handle pubClient connection failure gracefully, clean up resources, and fall back to in-memory adapter', async () => {
-      (configService.get as jest.Mock).mockReturnValue('redis://127.0.0.1:6379');
+      (configService.get as jest.Mock).mockReturnValue(
+        'redis://127.0.0.1:6379',
+      );
 
       const mockSubClient = {
         on: jest.fn(),
@@ -203,7 +204,9 @@ describe('RealtimeGateway - Socket.IO Redis Adapter (Unit Tests)', () => {
     });
 
     it('should handle subClient connection failure gracefully when pubClient connects first', async () => {
-      (configService.get as jest.Mock).mockReturnValue('redis://127.0.0.1:6379');
+      (configService.get as jest.Mock).mockReturnValue(
+        'redis://127.0.0.1:6379',
+      );
 
       const mockSubClient = {
         on: jest.fn(),
@@ -236,10 +239,12 @@ describe('RealtimeGateway - Socket.IO Redis Adapter (Unit Tests)', () => {
     });
 
     it('should attach error handlers to both clients to catch background Redis errors', async () => {
-      (configService.get as jest.Mock).mockReturnValue('redis://127.0.0.1:6379');
+      (configService.get as jest.Mock).mockReturnValue(
+        'redis://127.0.0.1:6379',
+      );
 
-      const pubListeners: Record<string, Function> = {};
-      const subListeners: Record<string, Function> = {};
+      const pubListeners: Record<string, (...args: any[]) => void> = {};
+      const subListeners: Record<string, (...args: any[]) => void> = {};
 
       const mockSubClient = {
         on: jest.fn((event, cb) => {
@@ -279,7 +284,9 @@ describe('RealtimeGateway - Socket.IO Redis Adapter (Unit Tests)', () => {
 
   describe('4. Publisher/Subscriber Client Lifecycle and Cleanup', () => {
     it('should cleanly quit clients on onModuleDestroy() when connected', async () => {
-      (configService.get as jest.Mock).mockReturnValue('redis://127.0.0.1:6379');
+      (configService.get as jest.Mock).mockReturnValue(
+        'redis://127.0.0.1:6379',
+      );
 
       const mockSubClient = {
         on: jest.fn(),
@@ -317,7 +324,9 @@ describe('RealtimeGateway - Socket.IO Redis Adapter (Unit Tests)', () => {
     });
 
     it('should use disconnect() if client is not open during cleanup and ignore closed client errors', async () => {
-      (configService.get as jest.Mock).mockReturnValue('redis://127.0.0.1:6379');
+      (configService.get as jest.Mock).mockReturnValue(
+        'redis://127.0.0.1:6379',
+      );
 
       const mockSubClient = {
         on: jest.fn(),
@@ -363,7 +372,10 @@ describe('RealtimeGateway - Socket.IO Redis Adapter (Unit Tests)', () => {
   });
 
   describe('6. Existing Socket Authentication and Authorization Behavior', () => {
-    let authMiddleware: (socket: any, next: (err?: any) => void) => Promise<void>;
+    let authMiddleware: (
+      socket: any,
+      next: (err?: any) => void,
+    ) => Promise<void>;
 
     beforeEach(async () => {
       (configService.get as jest.Mock).mockReturnValue(undefined);
@@ -440,7 +452,9 @@ describe('RealtimeGateway - Socket.IO Redis Adapter (Unit Tests)', () => {
       await authMiddleware(mockSocket, next);
 
       expect(next).toHaveBeenCalledWith(expect.any(Error));
-      expect(next.mock.calls[0][0].message).toContain('Không có quyền truy cập');
+      expect(next.mock.calls[0][0].message).toContain(
+        'Không có quyền truy cập',
+      );
     });
 
     it('should reject socket connection if user does not exist in database', async () => {
@@ -521,7 +535,9 @@ describe('RealtimeGateway - Socket.IO Redis Adapter (Unit Tests)', () => {
 
   describe('7. Race Conditions and Repeated Initialization', () => {
     it('should be idempotent and not create duplicate clients if initRedisAdapter is called twice', async () => {
-      (configService.get as jest.Mock).mockReturnValue('redis://127.0.0.1:6379');
+      (configService.get as jest.Mock).mockReturnValue(
+        'redis://127.0.0.1:6379',
+      );
 
       const mockSubClient = {
         on: jest.fn(),

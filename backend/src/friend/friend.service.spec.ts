@@ -134,9 +134,7 @@ describe('FriendService (FULLAUDIT-007: Recipient Existence & Authorization)', (
 
       await expect(
         service.sendFriendRequest({ to: recipientId }, senderId),
-      ).rejects.toThrow(
-        new BadRequestException('Bạn đã là bạn với người này'),
-      );
+      ).rejects.toThrow(new BadRequestException('Bạn đã là bạn với người này'));
     });
 
     it('should throw BadRequestException when friend request is already pending', async () => {

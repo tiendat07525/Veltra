@@ -4,7 +4,6 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, UserPlus, MessageCircle, UserMinus, Check, X, Clock, Loader2, Users } from 'lucide-react';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { User, CurrentUserProfile, UserBasicInfo } from '@/types/user';
-import { FriendshipStatus } from '@/types/friend';
 import { useFriends } from '@/hooks/use-friends';
 import { authService } from '@/services/api/auth.service';
 import { userService } from '@/services/api/user.service';
@@ -78,8 +77,9 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
     try {
       await friendsHook.sendFriendRequest(userId);
       showToast('Đã gửi lời mời kết bạn', 'success');
-    } catch (err: any) {
-      showToast(err.message || 'Lỗi gửi lời mời', 'error');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Lỗi gửi lời mời';
+      showToast(msg, 'error');
     }
   };
 
@@ -87,8 +87,9 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
     try {
       await friendsHook.acceptFriendRequest(requestId);
       showToast('Đã chấp nhận lời mời kết bạn', 'success');
-    } catch (err: any) {
-      showToast(err.message || 'Lỗi chấp nhận', 'error');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Lỗi chấp nhận';
+      showToast(msg, 'error');
     }
   };
 
@@ -96,8 +97,9 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
     try {
       await friendsHook.declineFriendRequest(requestId);
       showToast('Đã từ chối lời mời kết bạn', 'info');
-    } catch (err: any) {
-      showToast(err.message || 'Lỗi từ chối', 'error');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Lỗi từ chối';
+      showToast(msg, 'error');
     }
   };
 
@@ -110,8 +112,9 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
     try {
       await friendsHook.removeFriend(removingFriendId);
       showToast('Đã xóa bạn', 'info');
-    } catch (err: any) {
-      showToast(err.message || 'Lỗi xóa bạn', 'error');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Lỗi xóa bạn';
+      showToast(msg, 'error');
     } finally {
       setRemovingFriendId(null);
     }

@@ -51,12 +51,11 @@ export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLog
         setMode('login');
         setPassword('');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const apiErr = err as { response?: { data?: { message?: string | string[] } } };
+      const rawMsg = apiErr?.response?.data?.message;
       const msg =
-        err?.response?.data?.message ||
-        (Array.isArray(err?.response?.data?.message)
-          ? err.response.data.message[0]
-          : null) ||
+        (Array.isArray(rawMsg) ? rawMsg[0] : rawMsg) ||
         'Đã xảy ra lỗi. Vui lòng thử lại.';
       setErrorMsg(typeof msg === 'string' ? msg : 'Đã xảy ra lỗi. Vui lòng thử lại.');
     } finally {

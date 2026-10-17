@@ -7,8 +7,6 @@ import {
   Send,
   X,
   FileText,
-  Camera,
-  Film,
   Sparkles,
   StopCircle,
 } from 'lucide-react';
@@ -48,12 +46,14 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
-  const recordingTimerRef = useRef<any>(null);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Sync editing text
   useEffect(() => {
     if (editingMessage) {
-      setText(editingMessage.content || '');
+      void Promise.resolve().then(() => {
+        setText(editingMessage.content || '');
+      });
       if (textareaRef.current) {
         textareaRef.current.focus();
       }
@@ -63,7 +63,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   // Voice recording timer simulation
   useEffect(() => {
     if (isRecordingVoice) {
-      setVoiceSeconds(0);
+      void Promise.resolve().then(() => {
+        setVoiceSeconds(0);
+      });
       recordingTimerRef.current = setInterval(() => {
         setVoiceSeconds((s) => s + 1);
       }, 1000);

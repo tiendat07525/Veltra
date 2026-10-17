@@ -300,7 +300,7 @@ describe('AuthService (Security & Registration)', () => {
       expect(loginResult.refreshTokenString).toBeDefined();
       const parts = loginResult.refreshTokenString.split('.');
       expect(parts.length).toBe(3);
-      const [userId, sessionId, rawToken] = parts;
+      const [, , rawToken] = parts;
 
       expect(mockSessionService.createSession).toHaveBeenCalled();
       const createSessionCall = mockSessionService.createSession.mock.calls[0];

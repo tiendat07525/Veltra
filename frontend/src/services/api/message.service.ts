@@ -19,7 +19,7 @@ export const messageService = {
     return res.data;
   },
 
-  async revokeMessage(messageId: string): Promise<{ success: boolean; message: string; data?: any }> {
+  async revokeMessage(messageId: string): Promise<{ success: boolean; message: string; data?: { messageId: string; conversationId: string } }> {
     const res = await api.patch(`/message/${messageId}/revoke`);
     return res.data;
   },

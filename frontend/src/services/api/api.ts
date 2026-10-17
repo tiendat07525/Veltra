@@ -25,10 +25,15 @@ export const setToken = (token: string | null) => {
 
 export const getToken = () => inMemoryToken;
 
-let refreshPromise: Promise<string> | null = null;
-let failedQueue: any[] = [];
+interface FailedQueueItem {
+    resolve: (token: string | null) => void;
+    reject: (error: unknown) => void;
+}
 
-const processQueue = (error: any, token: string | null = null) => {
+let refreshPromise: Promise<string> | null = null;
+let failedQueue: FailedQueueItem[] = [];
+
+const processQueue = (error: unknown, token: string | null = null) => {
     failedQueue.forEach(prom => {
         if (error) {
             prom.reject(error);
@@ -101,8 +106,7 @@ api.interceptors.response.use(
                 processQueue(err, null);
                 
                 if (typeof window !== "undefined" && !window.location.pathname.includes('/auth/login')) {
-                    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-                    window.location.href = "/auth/login";
+                    window.location.replace("/auth/login");
                 }
                 return Promise.reject(err);
             }

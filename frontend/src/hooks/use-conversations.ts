@@ -17,9 +17,13 @@ export function useConversations(enabled: boolean = true) {
     try {
       const data = await conversationService.getConversations();
       setConversations(data);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Lỗi khi lấy danh sách hội thoại:', err);
-      setError(err?.response?.data?.message || 'Không thể tải danh sách hội thoại');
+      const errMsg =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
+      setError(errMsg || 'Không thể tải danh sách hội thoại');
     } finally {
       setLoading(false);
     }
@@ -27,12 +31,14 @@ export function useConversations(enabled: boolean = true) {
 
   useEffect(() => {
     if (enabled) {
-      fetchConversations();
+      void Promise.resolve().then(() => {
+        fetchConversations();
+      });
     }
   }, [fetchConversations, enabled]);
 
   useEffect(() => {
-    const handleNewMessage = (payload: { message: Message; conversation?: any }) => {
+    const handleNewMessage = (payload: { message: Message; conversation?: Partial<Conversation> }) => {
       const newMsg = payload?.message;
       if (!newMsg) return;
 

@@ -3,7 +3,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
-import cookieParser = require('cookie-parser');
+import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -45,4 +45,4 @@ async function bootstrap() {
   await app.listen(port, '127.0.0.1');
   console.log(`Server đang chạy trên: http://127.0.0.1:${port}`);
 }
-bootstrap();
+void bootstrap();

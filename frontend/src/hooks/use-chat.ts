@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useConversations } from './use-conversations';
 import { useMessages } from './use-messages';
-import { User, CurrentUserProfile } from '@/types/user';
+import { CurrentUserProfile } from '@/types/user';
 import { ConversationParticipant } from '@/types/conversation';
 import { authService } from '@/services/api/auth.service';
 
@@ -43,10 +43,11 @@ export function useChat(enabled: boolean = true, initialConversationId?: string)
     );
   }, [conversationsHook.allConversations, activeConversationId]);
 
+  const { getConversationDisplayName } = conversationsHook;
   const activeConversationName = useMemo(() => {
     if (!activeConversation || !currentUser) return '';
-    return conversationsHook.getConversationDisplayName(activeConversation, currentUser._id);
-  }, [activeConversation, currentUser, conversationsHook.getConversationDisplayName]);
+    return getConversationDisplayName(activeConversation, currentUser._id);
+  }, [activeConversation, currentUser, getConversationDisplayName]);
 
   const conversationPartner = useMemo((): ConversationParticipant | null => {
     if (!activeConversation || activeConversation.type !== 'direct' || !currentUser) return null;

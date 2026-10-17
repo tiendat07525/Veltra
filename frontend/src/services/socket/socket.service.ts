@@ -2,7 +2,7 @@ import { io, Socket } from 'socket.io-client';
 import { getToken } from '../api/api';
 import { getSocketUrl } from '@/config/env';
 
-type SocketEventHandler = (...args: any[]) => void;
+type SocketEventHandler<T = unknown> = (payload: T) => void;
 
 class SocketService {
   private socket: Socket | null = null;
@@ -56,20 +56,19 @@ class SocketService {
     return Boolean(this.socket?.connected);
   }
 
-
-  on(event: string, handler: SocketEventHandler): void {
-    this.socket?.on(event, handler);
+  on<T = unknown>(event: string, handler: SocketEventHandler<T>): void {
+    this.socket?.on(event, handler as (...args: unknown[]) => void);
   }
 
-  off(event: string, handler?: SocketEventHandler): void {
+  off<T = unknown>(event: string, handler?: SocketEventHandler<T>): void {
     if (handler) {
-      this.socket?.off(event, handler);
+      this.socket?.off(event, handler as (...args: unknown[]) => void);
     } else {
       this.socket?.off(event);
     }
   }
 
-  emit(event: string, ...args: any[]): void {
+  emit(event: string, ...args: unknown[]): void {
     this.socket?.emit(event, ...args);
   }
 

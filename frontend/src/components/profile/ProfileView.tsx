@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Camera, Check, User, Mail, Phone, MapPin, Sparkles } from 'lucide-react';
+import { Camera, Check, User, Mail, Phone, MapPin } from 'lucide-react';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { authService } from '@/services/api/auth.service';
 import { userService } from '@/services/api/user.service';
@@ -46,11 +46,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onShowToast }) => {
         displayName,
         bio,
         phone: normalizedPhone,
-        avatarUrl: avatar
-      } as any);
+        avatarUrl: avatar,
+      });
       onShowToast('Lưu cài đặt hồ sơ thành công!', 'success');
-    } catch (err: any) {
-      const errorMsg = err?.response?.data?.message;
+    } catch (err: unknown) {
+      const apiErr = err as { response?: { data?: { message?: string | string[] } } };
+      const errorMsg = apiErr?.response?.data?.message;
       let uiMessage = 'Lưu cài đặt hồ sơ thất bại. Vui lòng kiểm tra lại thông tin.';
 
       if (Array.isArray(errorMsg) && errorMsg.length > 0) {
