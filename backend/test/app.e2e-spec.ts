@@ -35,8 +35,48 @@ describe('AppController (e2e)', () => {
     return request(app.getHttpServer()).get('/users/profile').expect(401);
   });
 
+  it('PATCH /conversation/:conversationId without JWT should return 401 Unauthorized', () => {
+    return request(app.getHttpServer())
+      .patch('/conversation/malformed-id')
+      .send({ groupName: 'Renamed' })
+      .expect(401);
+  });
+
+  it('POST /conversation/:conversationId/participants without JWT should return 401 Unauthorized', () => {
+    return request(app.getHttpServer())
+      .post('/conversation/malformed-id/participants')
+      .send({ userIds: ['malformed-id'] })
+      .expect(401);
+  });
+
+  it('DELETE /conversation/:conversationId without JWT should return 401 Unauthorized', () => {
+    return request(app.getHttpServer())
+      .delete('/conversation/malformed-id')
+      .expect(401);
+  });
+
+  it('GET /conversation/:conversationId/messages without JWT should return 401 Unauthorized', () => {
+    return request(app.getHttpServer())
+      .get('/conversation/malformed-id/messages')
+      .expect(401);
+  });
+
+  it('PATCH /conversation/:conversationId/seen without JWT should return 401 Unauthorized', () => {
+    return request(app.getHttpServer())
+      .patch('/conversation/malformed-id/seen')
+      .expect(401);
+  });
+
   afterAll(async () => {
     if (app) {
+      try {
+        const connection = app.get('DatabaseConnection', { strict: false });
+        if (connection && typeof connection.close === 'function') {
+          await connection.close();
+        }
+      } catch {
+        // ignore connection lookup errors
+      }
       await app.close();
     }
   }, 30000);

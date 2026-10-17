@@ -81,6 +81,21 @@ export class LastMessage {
 //=============================================================================================
 
 export const LastMessageSchema = SchemaFactory.createForClass(LastMessage);
+/**
+ * Generates a deterministic canonical key for a direct conversation
+ * between two distinct users regardless of participant ordering (minId:maxId).
+ *
+ * Enforces uniqueness at the database level when combined with a partial unique index.
+ */
+export function getDirectKey(
+  userA: string | Types.ObjectId,
+  userB: string | Types.ObjectId,
+): string {
+  const idA = userA.toString();
+  const idB = userB.toString();
+  return idA < idB ? `${idA}:${idB}` : `${idB}:${idA}`;
+}
+
 @Schema({
   timestamps: true,
 })
@@ -91,6 +106,13 @@ export class Conversation {
     required: true,
   })
   type: 'direct' | 'group';
+
+  @Prop({
+    type: String,
+    required: false,
+    default: undefined,
+  })
+  directKey?: string;
 
   @Prop({
     type: [ParticipantSchema],
@@ -132,3 +154,17 @@ export class Conversation {
 export const ConversationSchema = SchemaFactory.createForClass(Conversation);
 
 ConversationSchema.index({ 'participants.userId': 1, lastMessageAt: -1 });
+
+/**
+ * Partial unique index for direct conversations:
+ * Only documents where directKey is a string are indexed.
+ * This guarantees that distinct pairs of users cannot have duplicate direct conversations,
+ * while having zero impact on group conversations or legacy conversations without directKey.
+ */
+ConversationSchema.index(
+  { directKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { directKey: { $type: 'string' } },
+  },
+);
