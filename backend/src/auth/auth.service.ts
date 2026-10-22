@@ -81,6 +81,15 @@ export class AuthService {
       );
     }
 
+    // Absolute session lifetime: never refresh past expiresAt (REST and socket already reject it)
+    const expiresAtMs = session.expiresAt
+      ? new Date(session.expiresAt).getTime()
+      : null;
+    if (expiresAtMs !== null && expiresAtMs <= Date.now()) {
+      await this.sessionService.revokeSession(userId, sessionId);
+      throw new UnauthorizedException('Phiên đăng nhập đã hết hạn');
+    }
+
     const isMatch = await this.verifyTokenHash(
       rawToken,
       session.refreshTokenHash,
@@ -102,31 +111,43 @@ export class AuthService {
     if (!isMatch && !isPreviousMatch) {
       // Token theft detected! Revoke all sessions for this user.
       await this.sessionService.revokeAllUserSessions(userId);
+      this.realtimeService.disconnectUser(userId);
       throw new UnauthorizedException(
         'Phát hiện đánh cắp token, tất cả phiên bị hủy',
       );
     }
 
-    const matchedHash = isMatch
-      ? session.refreshTokenHash
-      : session.previousRefreshTokenHash;
+    // Grace-period requests only get a new access token: the browser cookie
+    // already holds the token rotated by the concurrent request, so it must
+    // not be rotated (or overwritten) again. null => keep the current cookie.
+    let newRefreshTokenString: string | null = null;
 
-    // Generate new token for rotation using SHA-256 digest
-    const newRawToken = crypto.randomBytes(32).toString('hex');
-    const newRefreshTokenHash = this.hashRefreshToken(newRawToken);
-    const newRefreshTokenString = `${userId}.${sessionId}.${newRawToken}`;
+    if (isMatch) {
+      // Generate new token for rotation using SHA-256 digest
+      const newRawToken = crypto.randomBytes(32).toString('hex');
+      const newRefreshTokenHash = this.hashRefreshToken(newRawToken);
 
-    const rotated = await this.sessionService.rotateSessionToken(
-      userId,
-      sessionId,
-      matchedHash as string,
-      newRefreshTokenHash,
-      7 * 24 * 60 * 60, // 7 days
-      new Date().toISOString(),
-    );
+      // Keep the Redis TTL aligned with expiresAt; rotation must not extend the session
+      const ttlSeconds =
+        expiresAtMs !== null
+          ? Math.ceil((expiresAtMs - Date.now()) / 1000)
+          : 7 * 24 * 60 * 60; // 7 days (legacy session without expiresAt)
 
-    if (!rotated) {
-      throw new UnauthorizedException('Xung đột refresh token');
+      const rotation = await this.sessionService.rotateSessionToken(
+        userId,
+        sessionId,
+        session.refreshTokenHash,
+        newRefreshTokenHash,
+        ttlSeconds,
+        new Date().toISOString(),
+      );
+
+      if (rotation === 'failed') {
+        throw new UnauthorizedException('Xung đột refresh token');
+      }
+      if (rotation === 'rotated') {
+        newRefreshTokenString = `${userId}.${sessionId}.${newRawToken}`;
+      }
     }
 
     let user;

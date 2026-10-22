@@ -3,44 +3,38 @@ import { getToken } from '../api/api';
 import { getSocketUrl } from '@/config/env';
 
 type SocketEventHandler<T = unknown> = (payload: T) => void;
+type RawHandler = (...args: unknown[]) => void;
 
 class SocketService {
   private socket: Socket | null = null;
-  private currentToken: string | null = null;
+  // Handlers survive socket re-creation and may be registered before the socket exists
+  private handlers = new Map<string, Set<RawHandler>>();
 
-  connect(url?: string, token?: string): Socket | null {
+  connect(url?: string): Socket | null {
     if (typeof window === 'undefined') return null;
+    if (!getToken()) return null;
 
-    const authToken = token || getToken();
-    if (!authToken) {
-      return null;
-    }
-
-    const socketUrl = url || getSocketUrl();
-    if (this.socket && this.currentToken === authToken) {
-      if (this.socket.connected) {
-        return this.socket;
+    if (this.socket) {
+      if (!this.socket.connected) {
+        this.socket.connect();
       }
-      this.socket.connect();
       return this.socket;
     }
-    if (this.socket) {
-      this.disconnect();
-    }
 
-    this.currentToken = authToken;
-    this.socket = io(socketUrl, {
-      auth: {
-        token: authToken,
-      },
+    const socket = io(url || getSocketUrl(), {
+      // Evaluated on every (re)connect attempt, so a reconnect always sends the current access token
+      auth: (cb) => cb({ token: getToken() }),
       transports: ['websocket', 'polling'],
       autoConnect: true,
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
     });
-
-    return this.socket;
+    this.handlers.forEach((eventHandlers, event) => {
+      eventHandlers.forEach((handler) => socket.on(event, handler));
+    });
+    this.socket = socket;
+    return socket;
   }
 
   disconnect(): void {
@@ -49,7 +43,6 @@ class SocketService {
       this.socket.disconnect();
       this.socket = null;
     }
-    this.currentToken = null;
   }
 
   isConnected(): boolean {
@@ -57,13 +50,23 @@ class SocketService {
   }
 
   on<T = unknown>(event: string, handler: SocketEventHandler<T>): void {
-    this.socket?.on(event, handler as (...args: unknown[]) => void);
+    const raw = handler as RawHandler;
+    let eventHandlers = this.handlers.get(event);
+    if (!eventHandlers) {
+      eventHandlers = new Set();
+      this.handlers.set(event, eventHandlers);
+    }
+    eventHandlers.add(raw);
+    this.socket?.on(event, raw);
   }
 
   off<T = unknown>(event: string, handler?: SocketEventHandler<T>): void {
     if (handler) {
-      this.socket?.off(event, handler as (...args: unknown[]) => void);
+      const raw = handler as RawHandler;
+      this.handlers.get(event)?.delete(raw);
+      this.socket?.off(event, raw);
     } else {
+      this.handlers.delete(event);
       this.socket?.off(event);
     }
   }

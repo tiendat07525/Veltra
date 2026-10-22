@@ -189,6 +189,48 @@ describe('AuthService (Security & Registration)', () => {
       );
     });
 
+    it('should reject and delete a session past expiresAt without treating it as theft', async () => {
+      mockSessionService.getSession.mockResolvedValue({
+        userId: 'user1',
+        sessionId: 'sess1',
+        refreshTokenHash: 'irrelevant',
+        expiresAt: new Date(Date.now() - 1000).toISOString(),
+      });
+
+      await expect(service.refresh('user1.sess1.rawTokenHex')).rejects.toThrow(
+        new UnauthorizedException('Phiên đăng nhập đã hết hạn'),
+      );
+      expect(mockSessionService.revokeSession).toHaveBeenCalledWith(
+        'user1',
+        'sess1',
+      );
+      expect(mockSessionService.rotateSessionToken).not.toHaveBeenCalled();
+      expect(mockSessionService.revokeAllUserSessions).not.toHaveBeenCalled();
+      expect(mockRealtimeService.disconnectUser).not.toHaveBeenCalled();
+    });
+
+    it('should rotate with the TTL remaining until expiresAt, not a fresh 7 days', async () => {
+      const rawToken = 'remainingTtlTokenHexValue123';
+      mockSessionService.getSession.mockResolvedValue({
+        userId: 'user1',
+        sessionId: 'sess1',
+        refreshTokenHash: service.hashRefreshToken(rawToken),
+        expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
+      });
+      mockSessionService.rotateSessionToken.mockResolvedValue('rotated');
+      mockUsersService.findOne.mockResolvedValue({
+        _id: 'user1',
+        email: 'user1@example.com',
+        username: 'alice',
+      });
+
+      await service.refresh(`user1.sess1.${rawToken}`);
+
+      const ttlSeconds = mockSessionService.rotateSessionToken.mock.calls[0][4];
+      expect(ttlSeconds).toBeGreaterThan(3590);
+      expect(ttlSeconds).toBeLessThanOrEqual(3600);
+    });
+
     it('should successfully rotate refresh token and issue new access token on valid refresh', async () => {
       const rawToken = 'mySecretRawTokenHexValue123456';
       const tokenHash = await bcrypt.hash(rawToken, 10);
@@ -198,7 +240,7 @@ describe('AuthService (Security & Registration)', () => {
         sessionId: 'sess1',
         refreshTokenHash: tokenHash,
       });
-      mockSessionService.rotateSessionToken.mockResolvedValue(true);
+      mockSessionService.rotateSessionToken.mockResolvedValue('rotated');
       mockUsersService.findOne.mockResolvedValue({
         _id: 'user1',
         email: 'user1@example.com',
@@ -208,8 +250,8 @@ describe('AuthService (Security & Registration)', () => {
       const result = await service.refresh(`user1.sess1.${rawToken}`);
 
       expect(result.accessToken).toBe('mock-new-access-token');
-      expect(result.refreshTokenString).toBeDefined();
-      expect(result.refreshTokenString.startsWith('user1.sess1.')).toBe(true);
+      expect(result.refreshTokenString).not.toBeNull();
+      expect(result.refreshTokenString?.startsWith('user1.sess1.')).toBe(true);
       expect(mockSessionService.rotateSessionToken).toHaveBeenCalled();
     });
 
@@ -224,7 +266,6 @@ describe('AuthService (Security & Registration)', () => {
         previousRefreshTokenHash: oldHash,
         rotatedAt: new Date().toISOString(), // within 15s grace window
       });
-      mockSessionService.rotateSessionToken.mockResolvedValue(true);
       mockUsersService.findOne.mockResolvedValue({
         _id: 'user1',
         email: 'user1@example.com',
@@ -233,8 +274,37 @@ describe('AuthService (Security & Registration)', () => {
 
       const result = await service.refresh(`user1.sess1.${oldRawToken}`);
 
+      // Grace period: new access token only, no second rotation, cookie kept
       expect(result.accessToken).toBe('mock-new-access-token');
-      expect(result.refreshTokenString).toBeDefined();
+      expect(result.refreshTokenString).toBeNull();
+      expect(mockSessionService.rotateSessionToken).not.toHaveBeenCalled();
+      expect(mockSessionService.revokeAllUserSessions).not.toHaveBeenCalled();
+    });
+
+    it('should not rotate twice when a concurrent request rotated between read and Lua (already_rotated)', async () => {
+      const rawToken = 'concurrentTokenHexValue123';
+      const tokenHash = await bcrypt.hash(rawToken, 10);
+
+      // Both requests read the session before either rotation ran
+      mockSessionService.getSession.mockResolvedValue({
+        userId: 'user1',
+        sessionId: 'sess1',
+        refreshTokenHash: tokenHash,
+      });
+      mockSessionService.rotateSessionToken.mockResolvedValue(
+        'already_rotated',
+      );
+      mockUsersService.findOne.mockResolvedValue({
+        _id: 'user1',
+        email: 'user1@example.com',
+        username: 'alice',
+      });
+
+      const result = await service.refresh(`user1.sess1.${rawToken}`);
+
+      expect(result.accessToken).toBe('mock-new-access-token');
+      expect(result.refreshTokenString).toBeNull();
+      expect(mockSessionService.revokeAllUserSessions).not.toHaveBeenCalled();
     });
 
     it('should detect token theft and revoke all user sessions when token matches neither current nor previous', async () => {
@@ -259,6 +329,7 @@ describe('AuthService (Security & Registration)', () => {
       expect(mockSessionService.revokeAllUserSessions).toHaveBeenCalledWith(
         'user1',
       );
+      expect(mockRealtimeService.disconnectUser).toHaveBeenCalledWith('user1');
     });
 
     it('should throw UnauthorizedException on rotation concurrency conflict', async () => {
@@ -270,7 +341,7 @@ describe('AuthService (Security & Registration)', () => {
         sessionId: 'sess1',
         refreshTokenHash: tokenHash,
       });
-      mockSessionService.rotateSessionToken.mockResolvedValue(false); // Lua script returned 0 (conflict)
+      mockSessionService.rotateSessionToken.mockResolvedValue('failed'); // Lua script returned 0 (conflict)
 
       await expect(service.refresh(`user1.sess1.${rawToken}`)).rejects.toThrow(
         new UnauthorizedException('Xung đột refresh token'),
@@ -329,7 +400,7 @@ describe('AuthService (Security & Registration)', () => {
         sessionId: 'sess1',
         refreshTokenHash: sha256Hash,
       });
-      mockSessionService.rotateSessionToken.mockResolvedValue(true);
+      mockSessionService.rotateSessionToken.mockResolvedValue('rotated');
       mockUsersService.findOne.mockResolvedValue({
         _id: 'user1',
         email: 'user1@example.com',
@@ -363,7 +434,7 @@ describe('AuthService (Security & Registration)', () => {
         sessionId: 'sess1',
         refreshTokenHash: legacyBcryptHash,
       });
-      mockSessionService.rotateSessionToken.mockResolvedValue(true);
+      mockSessionService.rotateSessionToken.mockResolvedValue('rotated');
       mockUsersService.findOne.mockResolvedValue({
         _id: 'user1',
         email: 'user1@example.com',

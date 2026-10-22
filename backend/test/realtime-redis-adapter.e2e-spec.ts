@@ -6,10 +6,15 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../src/users/users.service';
 import { RealtimeService } from '../src/realtime/realtime.service';
+import { SessionService } from '../src/auth/session.service';
 
 describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
   const REDIS_URL = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
   let isRedisAvailable = false;
+  // Handshake session check always finds an active session in these tests
+  const mockSessionService: Partial<SessionService> = {
+    getSession: jest.fn().mockResolvedValue({ expiresAt: undefined }),
+  };
 
   let httpServer1: http.Server;
   let httpServer2: http.Server;
@@ -128,12 +133,14 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
       mockConfigService as any,
       mockUsersService as any,
       realtimeService1,
+      mockSessionService as any,
     );
     gateway2 = new RealtimeGateway(
       mockJwtService as any,
       mockConfigService as any,
       mockUsersService as any,
       realtimeService2,
+      mockSessionService as any,
     );
 
     httpServer1 = http.createServer();
@@ -200,12 +207,14 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
       mockConfigService as any,
       mockUsersService as any,
       realtimeService1,
+      mockSessionService as any,
     );
     gateway2 = new RealtimeGateway(
       mockJwtService as any,
       mockConfigService as any,
       mockUsersService as any,
       realtimeService2,
+      mockSessionService as any,
     );
 
     httpServer1 = http.createServer();
@@ -310,12 +319,14 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
       mockConfigService as any,
       mockUsersService as any,
       realtimeService1,
+      mockSessionService as any,
     );
     gateway2 = new RealtimeGateway(
       mockJwtService as any,
       mockConfigService as any,
       mockUsersService as any,
       realtimeService2,
+      mockSessionService as any,
     );
 
     httpServer1 = http.createServer();

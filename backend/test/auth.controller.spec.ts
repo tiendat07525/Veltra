@@ -128,5 +128,31 @@ describe('AuthController (Security & Rate Limiting)', () => {
       );
       expect(result).toEqual({ accessToken: 'new-mock-access-token' });
     });
+
+    it('should keep the existing cookie when refresh happens in the grace period', async () => {
+      const mockReq: any = {
+        cookies: {
+          refreshToken: 'user1.sess1.previousTokenHex',
+        },
+        headers: {
+          'user-agent': 'Jest-Agent',
+        },
+        ip: '127.0.0.1',
+      };
+
+      const mockRes: any = {
+        cookie: jest.fn(),
+      };
+
+      mockAuthService.refresh.mockResolvedValue({
+        accessToken: 'grace-access-token',
+        refreshTokenString: null,
+      });
+
+      const result = await controller.refresh(mockReq, mockRes);
+
+      expect(mockRes.cookie).not.toHaveBeenCalled();
+      expect(result).toEqual({ accessToken: 'grace-access-token' });
+    });
   });
 });

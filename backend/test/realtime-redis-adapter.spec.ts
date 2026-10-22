@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../src/users/users.service';
 import { RealtimeService } from '../src/realtime/realtime.service';
 import { RealtimeGateway } from '../src/realtime/realtime.gateway';
+import { SessionService } from '../src/auth/session.service';
 import * as redisModule from 'redis';
 import { createAdapter } from '@socket.io/redis-adapter';
 
@@ -18,6 +19,7 @@ describe('RealtimeGateway - Socket.IO Redis Adapter (Unit Tests)', () => {
   let configService: jest.Mocked<Partial<ConfigService>>;
   let usersService: jest.Mocked<Partial<UsersService>>;
   let realtimeService: jest.Mocked<Partial<RealtimeService>>;
+  let sessionService: jest.Mocked<Partial<SessionService>>;
   let mockServer: any;
 
   beforeEach(() => {
@@ -38,6 +40,9 @@ describe('RealtimeGateway - Socket.IO Redis Adapter (Unit Tests)', () => {
       disconnectSession: jest.fn(),
       disconnectUser: jest.fn(),
     };
+    sessionService = {
+      getSession: jest.fn(),
+    };
 
     mockServer = {
       adapter: jest.fn(),
@@ -53,6 +58,7 @@ describe('RealtimeGateway - Socket.IO Redis Adapter (Unit Tests)', () => {
       configService as any,
       usersService as any,
       realtimeService as any,
+      sessionService as any,
     );
   });
 
@@ -398,6 +404,11 @@ describe('RealtimeGateway - Socket.IO Redis Adapter (Unit Tests)', () => {
         sessionId: 'session-xyz',
         exp: 1893456000,
       });
+      (sessionService.getSession as jest.Mock).mockResolvedValue({
+        userId: '507f1f77bcf86cd799439011',
+        sessionId: 'session-xyz',
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      });
 
       (usersService.findOne as jest.Mock).mockResolvedValue({
         _id: '507f1f77bcf86cd799439011',
@@ -467,6 +478,11 @@ describe('RealtimeGateway - Socket.IO Redis Adapter (Unit Tests)', () => {
 
       (jwtService.verifyAsync as jest.Mock).mockResolvedValue({
         id: '507f1f77bcf86cd799439011',
+        sessionId: 'session-xyz',
+      });
+      (sessionService.getSession as jest.Mock).mockResolvedValue({
+        userId: '507f1f77bcf86cd799439011',
+        sessionId: 'session-xyz',
       });
       (usersService.findOne as jest.Mock).mockResolvedValue(null);
 
@@ -475,6 +491,95 @@ describe('RealtimeGateway - Socket.IO Redis Adapter (Unit Tests)', () => {
 
       expect(next).toHaveBeenCalledWith(expect.any(Error));
       expect(next.mock.calls[0][0].message).toBe('Không có quyền truy cập');
+    });
+
+    describe('Redis session verification (A1)', () => {
+      const mockSocket = (): any => ({
+        handshake: { auth: { token: 'valid-jwt-token' } },
+        data: {},
+      });
+
+      beforeEach(() => {
+        (usersService.findOne as jest.Mock).mockResolvedValue({
+          _id: '507f1f77bcf86cd799439011',
+          username: 'alice',
+          email: 'alice@example.com',
+        });
+      });
+
+      it('should reject socket when token payload has no sessionId', async () => {
+        (jwtService.verifyAsync as jest.Mock).mockResolvedValue({
+          id: '507f1f77bcf86cd799439011',
+          exp: 1893456000,
+        });
+
+        const socket = mockSocket();
+        const next = jest.fn();
+        await authMiddleware(socket, next);
+
+        expect(next.mock.calls[0][0]).toBeInstanceOf(Error);
+        expect(sessionService.getSession).not.toHaveBeenCalled();
+        expect(socket.data.user).toBeUndefined();
+      });
+
+      it('should reject socket when Redis session was revoked (logout / login elsewhere)', async () => {
+        (jwtService.verifyAsync as jest.Mock).mockResolvedValue({
+          id: '507f1f77bcf86cd799439011',
+          sessionId: 'revoked-session',
+          exp: 1893456000,
+        });
+        (sessionService.getSession as jest.Mock).mockResolvedValue(null);
+
+        const socket = mockSocket();
+        const next = jest.fn();
+        await authMiddleware(socket, next);
+
+        expect(sessionService.getSession).toHaveBeenCalledWith(
+          '507f1f77bcf86cd799439011',
+          'revoked-session',
+        );
+        expect(next.mock.calls[0][0]).toBeInstanceOf(Error);
+        expect(next.mock.calls[0][0].message).toBe('Không có quyền truy cập');
+        expect(socket.data.user).toBeUndefined();
+      });
+
+      it('should reject socket when Redis session is past expiresAt', async () => {
+        (jwtService.verifyAsync as jest.Mock).mockResolvedValue({
+          id: '507f1f77bcf86cd799439011',
+          sessionId: 'session-xyz',
+          exp: 1893456000,
+        });
+        (sessionService.getSession as jest.Mock).mockResolvedValue({
+          userId: '507f1f77bcf86cd799439011',
+          sessionId: 'session-xyz',
+          expiresAt: new Date(Date.now() - 1000).toISOString(),
+        });
+
+        const socket = mockSocket();
+        const next = jest.fn();
+        await authMiddleware(socket, next);
+
+        expect(next.mock.calls[0][0]).toBeInstanceOf(Error);
+        expect(socket.data.user).toBeUndefined();
+      });
+
+      it('should fail closed when Redis is unreachable', async () => {
+        (jwtService.verifyAsync as jest.Mock).mockResolvedValue({
+          id: '507f1f77bcf86cd799439011',
+          sessionId: 'session-xyz',
+          exp: 1893456000,
+        });
+        (sessionService.getSession as jest.Mock).mockRejectedValue(
+          new Error('ECONNREFUSED'),
+        );
+
+        const socket = mockSocket();
+        const next = jest.fn();
+        await authMiddleware(socket, next);
+
+        expect(next.mock.calls[0][0]).toBeInstanceOf(Error);
+        expect(socket.data.user).toBeUndefined();
+      });
     });
 
     it('handleConnection should join user and session rooms for authenticated socket', async () => {

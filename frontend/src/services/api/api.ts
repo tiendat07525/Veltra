@@ -18,12 +18,23 @@ export const refreshClient = axios.create({
 });
 
 let inMemoryToken: string | null = null;
+type TokenListener = (token: string | null) => void;
+const tokenListeners = new Set<TokenListener>();
 
 export const setToken = (token: string | null) => {
     inMemoryToken = token;
+    tokenListeners.forEach((listener) => listener(token));
 };
 
 export const getToken = () => inMemoryToken;
+
+// Lets the socket follow login / refresh / logout without copying the token into React state
+export const onTokenChange = (listener: TokenListener) => {
+    tokenListeners.add(listener);
+    return () => {
+        tokenListeners.delete(listener);
+    };
+};
 
 interface FailedQueueItem {
     resolve: (token: string | null) => void;

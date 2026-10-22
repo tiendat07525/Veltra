@@ -13,6 +13,7 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import { createClient } from 'redis';
 import { UsersService } from 'src/users/users.service';
 import { RealtimeService } from './realtime.service';
+import { SessionService } from 'src/auth/session.service';
 
 const allowedOrigins = [
   'http://localhost:3000',
@@ -54,6 +55,7 @@ export class RealtimeGateway
     private readonly configService: ConfigService,
     private readonly usersService: UsersService,
     private readonly realtimeService: RealtimeService,
+    private readonly sessionService: SessionService,
   ) {}
 
   async afterInit(server: Server) {
@@ -77,7 +79,20 @@ export class RealtimeGateway
           secret: jwtSecret,
         });
 
-        if (!payload || !payload.id) {
+        if (!payload || !payload.id || !payload.sessionId) {
+          return next(new Error('Không có quyền truy cập'));
+        }
+
+        // Fail-closed: reject sockets whose Redis session is missing, revoked or expired
+        const session = await this.sessionService.getSession(
+          payload.id,
+          payload.sessionId,
+        );
+        if (
+          !session ||
+          (session.expiresAt &&
+            new Date(session.expiresAt).getTime() <= Date.now())
+        ) {
           return next(new Error('Không có quyền truy cập'));
         }
 

@@ -19,6 +19,8 @@ export interface SessionData {
   rotatedAt?: string;
 }
 
+export type RotationResult = 'rotated' | 'already_rotated' | 'failed';
+
 @Injectable()
 export class SessionService implements OnModuleInit, OnModuleDestroy {
   private client: any;
@@ -85,10 +87,10 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
     newHash: string,
     ttlSeconds: number,
     rotatedAt: string,
-  ): Promise<boolean> {
+  ): Promise<RotationResult> {
     const key = `session:${userId}:${sessionId}`;
 
-    // Lua script for atomic rotation
+    // Lua script for atomic rotation (1 = rotated, 2 = already rotated, 0 = no match)
     const luaScript = `
       local data = redis.call('GET', KEYS[1])
       if not data then
@@ -102,10 +104,8 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
         redis.call('SETEX', KEYS[1], tonumber(ARGV[3]), cjson.encode(session))
         return 1
       elseif session.previousRefreshTokenHash == ARGV[1] then
-        session.rotatedAt = ARGV[4]
-        session.refreshTokenHash = ARGV[2]
-        redis.call('SETEX', KEYS[1], tonumber(ARGV[3]), cjson.encode(session))
-        return 1
+        -- A concurrent request already rotated this token: do not rotate again
+        return 2
       else
         return 0
       end
@@ -116,10 +116,12 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
         keys: [key],
         arguments: [oldHash, newHash, ttlSeconds.toString(), rotatedAt],
       });
-      return result === 1;
+      if (result === 1) return 'rotated';
+      if (result === 2) return 'already_rotated';
+      return 'failed';
     } catch (err) {
       this.logger.error('Error executing lua script for rotation', err);
-      return false;
+      return 'failed';
     }
   }
 }

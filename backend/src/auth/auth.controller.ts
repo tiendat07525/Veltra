@@ -58,7 +58,10 @@ export class AuthController {
     const { accessToken, refreshTokenString: newRefreshToken } =
       await this.authService.refresh(refreshTokenString, userAgent, ipAddress);
 
-    this.setRefreshCookie(res, newRefreshToken);
+    // Grace-period refresh returns no new token: keep the cookie already set
+    if (newRefreshToken) {
+      this.setRefreshCookie(res, newRefreshToken);
+    }
 
     return { accessToken };
   }
