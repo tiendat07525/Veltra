@@ -28,6 +28,8 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [removingFriendId, setRemovingFriendId] = useState<string | null>(null);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Latest query sent; a slower response to an older query must not overwrite newer results
+  const latestSearchRef = useRef('');
 
   const friendsHook = useFriends();
 
@@ -45,7 +47,9 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
     setSearchQuery(value);
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
 
-    if (!value.trim()) {
+    const query = value.trim();
+    latestSearchRef.current = query;
+    if (!query) {
       setSearchResults([]);
       setSearchLoading(false);
       return;
@@ -54,20 +58,14 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
     setSearchLoading(true);
     searchTimeoutRef.current = setTimeout(async () => {
       try {
-        const users = await userService.getUsers();
-        const query = value.toLowerCase().trim();
-        const filtered = users.filter(
-          (u) =>
-            u._id !== currentUser?._id &&
-            (u.username?.toLowerCase().includes(query) ||
-              u.displayName?.toLowerCase().includes(query) ||
-              u.email?.toLowerCase().includes(query))
-        );
-        setSearchResults(filtered);
+        // Server matches username / displayName (case-insensitive, partial)
+        const users = await userService.getUsers({ search: query });
+        if (latestSearchRef.current !== query) return;
+        setSearchResults(users.filter((u) => u._id !== currentUser?._id));
       } catch {
         showToast('Lỗi tìm kiếm người dùng', 'error');
       } finally {
-        setSearchLoading(false);
+        if (latestSearchRef.current === query) setSearchLoading(false);
       }
     }, 400);
   }, [currentUser]);

@@ -64,7 +64,7 @@ export function useFriends() {
         return { status: 'friends' };
       }
       const sentReq = sentRequests.find((r) => {
-        const toId = typeof r.to === 'string' ? r.to : r.to._id;
+        const toId = typeof r.to === 'string' ? r.to : r.to?._id;
         return toId === targetUserId;
       });
       if (sentReq) {
@@ -72,7 +72,7 @@ export function useFriends() {
       }
 
       const receivedReq = receivedRequests.find((r) => {
-        const fromId = typeof r.from === 'string' ? r.from : r.from._id;
+        const fromId = typeof r.from === 'string' ? r.from : r.from?._id;
         return fromId === targetUserId;
       });
       if (receivedReq) {
