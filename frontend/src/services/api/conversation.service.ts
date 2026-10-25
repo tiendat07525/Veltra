@@ -17,7 +17,7 @@ export const conversationService = {
     return res.data.conversation;
   },
 
-  async markAsSeen(conversationId: string): Promise<any> {
+  async markAsSeen(conversationId: string): Promise<{ success?: boolean; message?: string }> {
     const res = await api.patch(`/conversation/${conversationId}/seen`);
     return res.data;
   },

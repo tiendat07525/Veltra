@@ -45,7 +45,7 @@ export const MainSidebar: React.FC<MainSidebarProps> = ({
       .catch((err) => console.error('Lỗi khi lấy thông tin user:', err));
   }, []);
 
-  const navItems: { id: NavTab; label: string; icon: any; badge?: number }[] = [
+  const navItems: { id: NavTab; label: string; icon: React.ComponentType<{ className?: string }>; badge?: number }[] = [
     { id: 'chat', label: 'Tin nhắn', icon: MessageSquare, badge: unreadMessagesCount },
     { id: 'contacts', label: 'Bạn bè', icon: Users },
     { id: 'notifications', label: 'Thông báo', icon: Bell, badge: unreadNotificationsCount },

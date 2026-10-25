@@ -1,6 +1,13 @@
 import React from 'react';
 import './globals.css';
 import { NavigationProvider } from '@/lib/navigation';
+import { Plus_Jakarta_Sans } from 'next/font/google';
+
+const plusJakartaSans = Plus_Jakarta_Sans({
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '600', '700', '800'],
+  display: 'swap',
+});
 
 export const metadata = {
   title: 'Veltra – Realtime Chat Platform',
@@ -19,14 +26,8 @@ export default function RootLayout({
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
         <title>Veltra – Ứng dụng chat realtime</title>
         <meta name="description" content="A modern, hyper-responsive realtime messaging and collaboration platform." />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"
-          rel="stylesheet"
-        />
       </head>
-      <body className="h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 font-sans antialiased">
+      <body className={`h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 font-sans antialiased ${plusJakartaSans.className}`}>
         <NavigationProvider>
           {children}
         </NavigationProvider>

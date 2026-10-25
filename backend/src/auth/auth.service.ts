@@ -1,7 +1,6 @@
 import {
   ConflictException,
   Injectable,
-  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { RegisterDto } from './dto/register.dto';
@@ -9,12 +8,19 @@ import { JwtService } from '@nestjs/jwt';
 import { UsersService } from 'src/users/users.service';
 import { LoginDto } from './dto/login.dto';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
+import { SessionService } from './session.service';
+import { RealtimeService } from 'src/realtime/realtime.service';
+import { forwardRef, Inject } from '@nestjs/common';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
+    private readonly sessionService: SessionService,
+    @Inject(forwardRef(() => RealtimeService))
+    private readonly realtimeService: RealtimeService,
   ) {}
 
   async register(registerDto: RegisterDto) {
@@ -31,18 +37,15 @@ export class AuthService {
     }
 
     const hashedPassword = await bcrypt.hash(registerDto.password, 10);
-    const user = await this.usersService.create({
+    const result = await this.usersService.create({
       ...registerDto,
       password: hashedPassword,
     });
 
-    return {
-      message: 'Tạo user thành công',
-      data: user,
-    };
+    return result;
   }
 
-  async login(loginDto: LoginDto) {
+  async login(loginDto: LoginDto, userAgent?: string, ipAddress?: string) {
     const user = await this.usersService.findByUsername(loginDto.username);
     if (!user) {
       throw new UnauthorizedException('Username hoặc mật khẩu không chính xác');
@@ -53,18 +56,218 @@ export class AuthService {
       throw new UnauthorizedException('Username hoặc mật khẩu không chính xác');
     }
 
+    return this.createSessionAndTokens(user, userAgent, ipAddress);
+  }
+
+  async refresh(
+    refreshTokenString: string,
+    _userAgent?: string,
+    _ipAddress?: string,
+  ) {
+    if (!refreshTokenString) {
+      throw new UnauthorizedException('Token không hợp lệ');
+    }
+
+    const parts = refreshTokenString.split('.');
+    if (parts.length !== 3) {
+      throw new UnauthorizedException('Token không hợp lệ');
+    }
+    const [userId, sessionId, rawToken] = parts;
+
+    const session = await this.sessionService.getSession(userId, sessionId);
+    if (!session) {
+      throw new UnauthorizedException(
+        'Phiên đăng nhập không tồn tại hoặc đã hết hạn',
+      );
+    }
+
+    // Absolute session lifetime: never refresh past expiresAt (REST and socket already reject it)
+    const expiresAtMs = session.expiresAt
+      ? new Date(session.expiresAt).getTime()
+      : null;
+    if (expiresAtMs !== null && expiresAtMs <= Date.now()) {
+      await this.sessionService.revokeSession(userId, sessionId);
+      throw new UnauthorizedException('Phiên đăng nhập đã hết hạn');
+    }
+
+    const isMatch = await this.verifyTokenHash(
+      rawToken,
+      session.refreshTokenHash,
+    );
+    let isPreviousMatch = false;
+
+    if (!isMatch && session.previousRefreshTokenHash && session.rotatedAt) {
+      const rotatedAtTime = new Date(session.rotatedAt).getTime();
+      const now = Date.now();
+      if (now - rotatedAtTime <= 15000) {
+        // 15 seconds grace period
+        isPreviousMatch = await this.verifyTokenHash(
+          rawToken,
+          session.previousRefreshTokenHash,
+        );
+      }
+    }
+
+    if (!isMatch && !isPreviousMatch) {
+      // Token theft detected! Revoke all sessions for this user.
+      await this.sessionService.revokeAllUserSessions(userId);
+      this.realtimeService.disconnectUser(userId);
+      throw new UnauthorizedException(
+        'Phát hiện đánh cắp token, tất cả phiên bị hủy',
+      );
+    }
+
+    // Grace-period requests only get a new access token: the browser cookie
+    // already holds the token rotated by the concurrent request, so it must
+    // not be rotated (or overwritten) again. null => keep the current cookie.
+    let newRefreshTokenString: string | null = null;
+
+    if (isMatch) {
+      // Generate new token for rotation using SHA-256 digest
+      const newRawToken = crypto.randomBytes(32).toString('hex');
+      const newRefreshTokenHash = this.hashRefreshToken(newRawToken);
+
+      // Keep the Redis TTL aligned with expiresAt; rotation must not extend the session
+      const ttlSeconds =
+        expiresAtMs !== null
+          ? Math.ceil((expiresAtMs - Date.now()) / 1000)
+          : 7 * 24 * 60 * 60; // 7 days (legacy session without expiresAt)
+
+      const rotation = await this.sessionService.rotateSessionToken(
+        userId,
+        sessionId,
+        session.refreshTokenHash,
+        newRefreshTokenHash,
+        ttlSeconds,
+        new Date().toISOString(),
+      );
+
+      if (rotation === 'failed') {
+        throw new UnauthorizedException('Xung đột refresh token');
+      }
+      if (rotation === 'rotated') {
+        newRefreshTokenString = `${userId}.${sessionId}.${newRawToken}`;
+      }
+    }
+
+    let user;
+    try {
+      user = await this.usersService.findOne(userId);
+    } catch {
+      throw new UnauthorizedException('Người dùng không tồn tại');
+    }
+
     const payload = {
-      id: user._id,
+      id: user._id.toString(),
       email: user.email,
       username: user.username,
       phone: user.phone,
+      sessionId,
+    };
+
+    const newAccessToken = await this.jwtService.signAsync(payload);
+
+    return {
+      accessToken: newAccessToken,
+      refreshTokenString: newRefreshTokenString,
+    };
+  }
+
+  async logout(userId: string, sessionId: string) {
+    await this.sessionService.revokeSession(userId, sessionId);
+    this.realtimeService.disconnectSession(sessionId);
+  }
+
+  /**
+   * Computes SHA-256 hex digest for high-entropy refresh tokens.
+   */
+  hashRefreshToken(token: string): string {
+    return crypto.createHash('sha256').update(token, 'utf8').digest('hex');
+  }
+
+  /**
+   * Verifies refresh token against stored digest using constant-time comparison.
+   * Seamlessly supports legacy bcrypt hashes for zero-downtime migration.
+   */
+  async verifyTokenHash(
+    rawToken: string,
+    storedHash?: string,
+  ): Promise<boolean> {
+    if (!storedHash || !rawToken) {
+      return false;
+    }
+
+    // Transitional migration support: Check if storedHash is legacy bcrypt ($2a$, $2b$, $2y$)
+    if (
+      storedHash.startsWith('$2a$') ||
+      storedHash.startsWith('$2b$') ||
+      storedHash.startsWith('$2y$')
+    ) {
+      try {
+        return await bcrypt.compare(rawToken, storedHash);
+      } catch {
+        return false;
+      }
+    }
+
+    // High-entropy token: SHA-256 digest comparison using constant-time comparison
+    const computedHash = this.hashRefreshToken(rawToken);
+    const computedBuffer = Buffer.from(computedHash, 'utf8');
+    const storedBuffer = Buffer.from(storedHash, 'utf8');
+
+    if (computedBuffer.length !== storedBuffer.length) {
+      return false;
+    }
+
+    return crypto.timingSafeEqual(computedBuffer, storedBuffer);
+  }
+
+  private async createSessionAndTokens(
+    user: any,
+    userAgent?: string,
+    ipAddress?: string,
+  ) {
+    const userId = user._id.toString();
+
+    // ENFORCE SINGLE ACTIVE SESSION: Revoke all existing sessions for this user
+    await this.sessionService.revokeAllUserSessions(userId);
+    this.realtimeService.disconnectUser(userId);
+
+    const sessionId = crypto.randomUUID();
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const refreshTokenHash = this.hashRefreshToken(rawToken);
+
+    const refreshTokenString = `${userId}.${sessionId}.${rawToken}`;
+
+    const payload = {
+      id: userId,
+      email: user.email,
+      username: user.username,
+      phone: user.phone,
+      sessionId,
     };
 
     const accessToken = await this.jwtService.signAsync(payload);
 
+    await this.sessionService.createSession(
+      user._id.toString(),
+      sessionId,
+      {
+        userId: user._id.toString(),
+        sessionId,
+        refreshTokenHash,
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        userAgent,
+        ipAddress,
+      },
+      7 * 24 * 60 * 60, // 7 days in seconds
+    );
+
     return {
       message: 'Đăng nhập thành công',
       accessToken,
+      refreshTokenString,
     };
   }
 }

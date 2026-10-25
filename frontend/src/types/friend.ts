@@ -3,8 +3,9 @@ import { UserBasicInfo } from './user';
 
 export interface FriendRequest {
   _id: string;
-  from: string | UserBasicInfo;  
-  to: string | UserBasicInfo;    
+  // null when the referenced user was deleted (populate finds no document)
+  from: string | UserBasicInfo | null;
+  to: string | UserBasicInfo | null;
   message?: string;
   status: 'pending' | 'accepted' | 'rejected';
   createdAt?: string;

@@ -16,7 +16,7 @@ import { ConversationService } from './conversation.service';
 
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
-import { AddParticipantDto } from './dto/add.participant.dto';
+import { AddParticipantDto } from './dto/add-participant.dto';
 
 @Controller('conversation')
 @UseGuards(JwtAuthGuard)

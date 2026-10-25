@@ -1,13 +1,11 @@
 import React, { useState } from 'react';
 import {
-  User,
   Bell,
   Moon,
   Shield,
   MessageSquare,
   Lock,
   Smartphone,
-  Check,
   Radio,
 } from 'lucide-react';
 
@@ -22,15 +20,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 }) => {
   const [activeSection, setActiveSection] = useState<'appearance' | 'notifications' | 'privacy' | 'chat' | 'security'>('appearance');
 
-  // Toggle states
-  const [soundEnabled, setSoundEnabled] = useState(true);
-  const [previewEnabled, setPreviewEnabled] = useState(true);
-  const [dndEnabled, setDndEnabled] = useState(false);
-  const [readReceipts, setReadReceipts] = useState(true);
-  const [lastSeenPublic, setLastSeenPublic] = useState(true);
-  const [enterToSend, setEnterToSend] = useState(true);
-  const [autoDownload, setAutoDownload] = useState(true);
-  const [twoFactor, setTwoFactor] = useState(false);
+  // Toggle states (mocked pending backend settings support)
+  const soundEnabled = true;
+  const previewEnabled = true;
+  const dndEnabled = false;
+  const readReceipts = true;
+  const lastSeenPublic = true;
+  const enterToSend = true;
+  const autoDownload = true;
+  const twoFactor = false;
 
   return (
     <div className="flex-1 h-full flex flex-col bg-slate-50 dark:bg-slate-950 overflow-hidden">

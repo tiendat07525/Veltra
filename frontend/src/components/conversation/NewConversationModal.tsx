@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Search, MessageSquarePlus, Check, Loader2 } from 'lucide-react';
 import { UserAvatar } from '@/components/ui/UserAvatar';
-import { User, CurrentUserProfile } from '@/types/user';
+import { User } from '@/types/user';
 import { authService } from '@/services/api/auth.service';
 import { userService } from '@/services/api/user.service';
 
@@ -26,20 +26,24 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
   const [groupName, setGroupName] = useState('');
   const [search, setSearch] = useState('');
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
-  const [currentUser, setCurrentUser] = useState<CurrentUserProfile | null>(null);
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      setLoading(true);
+      void Promise.resolve().then(() => {
+        setLoading(true);
+        setSelectedUserIds([]);
+        setSearch('');
+        setGroupName('');
+        setTab('direct');
+      });
       async function load() {
         try {
           const [me, users] = await Promise.all([
             authService.getCurrentUser(),
             userService.getUsers(),
           ]);
-          setCurrentUser(me);
           setAvailableUsers(users.filter((u) => u._id !== me._id));
         } catch (err) {
           console.error('Lỗi khi tải danh sách người dùng:', err);
@@ -48,11 +52,6 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
         }
       }
       load();
-      // Reset state when opening
-      setSelectedUserIds([]);
-      setSearch('');
-      setGroupName('');
-      setTab('direct');
     }
   }, [isOpen]);
 

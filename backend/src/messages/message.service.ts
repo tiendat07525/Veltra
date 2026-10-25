@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Message, MessageDocument } from './schemas/message.schema';
 import { Model, Types } from 'mongoose';
@@ -6,13 +10,8 @@ import { CreateMessageDto } from './dto/create-message.dto';
 import {
   Conversation,
   ConversationDocument,
+  getDirectKey,
 } from 'src/conversation/schemas/conversation.schema';
-import { create } from 'domain';
-import { UpdateConversationDto } from 'src/conversation/dto/update-conversation.dto';
-import { emitNewMessage } from './messageHelper';
-import { isObject } from 'class-validator';
-import { NotFoundException } from '@nestjs/common';
-
 import { RealtimeService } from 'src/realtime/realtime.service';
 import { UsersService } from 'src/users/users.service';
 
@@ -30,12 +29,20 @@ export class MessageService {
   async sendDirectMessage(dto: CreateMessageDto, userId: string) {
     try {
       const { conversationId, receiverId, content } = dto;
+      if (!Types.ObjectId.isValid(userId)) {
+        throw new BadRequestException('User ID không hợp lệ');
+      }
       const senderId = new Types.ObjectId(userId);
 
       let conversation: ConversationDocument | null = null;
 
       if (conversationId) {
-        conversation = await this.conversationModel.findById(conversationId);
+        if (!Types.ObjectId.isValid(conversationId)) {
+          throw new BadRequestException('Conversation ID không hợp lệ');
+        }
+        conversation = await this.conversationModel.findById(
+          new Types.ObjectId(conversationId),
+        );
 
         if (!conversation) {
           throw new NotFoundException('Không tìm thấy hội thoại');
@@ -51,20 +58,90 @@ export class MessageService {
       }
 
       if (!conversation) {
-        const receiverExists = await this.usersService.findOne(receiverId!);
+        if (!receiverId) {
+          throw new BadRequestException(
+            'Cần cung cấp conversationId hoặc receiverId',
+          );
+        }
+
+        if (!Types.ObjectId.isValid(receiverId)) {
+          throw new BadRequestException('ID người nhận không hợp lệ');
+        }
+
+        if (senderId.toString() === receiverId) {
+          throw new BadRequestException(
+            'Không thể gửi tin nhắn cho chính mình',
+          );
+        }
+
+        const receiverExists = await this.usersService.findOne(receiverId);
         if (!receiverExists) {
           throw new NotFoundException('Người nhận không tồn tại');
         }
 
-        conversation = await this.conversationModel.create({
-          type: 'direct',
-          participants: [
-            { userId: senderId, joinedAt: new Date() },
-            { userId: new Types.ObjectId(receiverId), joinedAt: new Date() },
-          ],
-          lastMessageAt: new Date(),
-          unreadCounts: new Map(),
-        });
+        const receiverObjectId = new Types.ObjectId(receiverId);
+        const directKey = getDirectKey(senderId, receiverObjectId);
+
+        // Find existing direct conversation (supporting both canonical directKey and legacy participant arrays)
+        conversation = await this.conversationModel
+          .findOne({
+            type: 'direct',
+            $or: [
+              { directKey },
+              {
+                participants: {
+                  $all: [
+                    { $elemMatch: { userId: senderId } },
+                    { $elemMatch: { userId: receiverObjectId } },
+                  ],
+                },
+              },
+            ],
+          })
+          .sort({ lastMessageAt: -1, createdAt: -1 });
+
+        if (!conversation) {
+          try {
+            conversation = await this.conversationModel.create({
+              type: 'direct',
+              directKey,
+              participants: [
+                { userId: senderId, joinedAt: new Date() },
+                { userId: receiverObjectId, joinedAt: new Date() },
+              ],
+              lastMessageAt: new Date(),
+              unreadCounts: new Map(),
+            });
+          } catch (createErr: any) {
+            // Concurrency handling: if a concurrent request created the direct conversation first,
+            // MongoDB's unique index raises code 11000. Catch it and reuse the winning conversation.
+            if (
+              createErr.code === 11000 ||
+              createErr.message?.includes('E11000')
+            ) {
+              conversation = await this.conversationModel.findOne({
+                type: 'direct',
+                $or: [
+                  { directKey },
+                  {
+                    participants: {
+                      $all: [
+                        { $elemMatch: { userId: senderId } },
+                        { $elemMatch: { userId: receiverObjectId } },
+                      ],
+                    },
+                  },
+                ],
+              });
+
+              if (!conversation) {
+                throw createErr;
+              }
+            } else {
+              throw createErr;
+            }
+          }
+        }
       }
 
       const message = await this.messageModel.create({
@@ -148,7 +225,13 @@ export class MessageService {
       throw new BadRequestException('Message ID không hợp lệ');
     }
 
-    const message = await this.messageModel.findById(messageId);
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('User ID không hợp lệ');
+    }
+
+    const message = await this.messageModel.findById(
+      new Types.ObjectId(messageId),
+    );
     if (!message) {
       throw new NotFoundException('Tin nhắn không tồn tại');
     }
@@ -161,7 +244,9 @@ export class MessageService {
       throw new BadRequestException('Tin nhắn này đã bị thu hồi');
     }
 
-    const conversation = await this.conversationModel.findById(message.conversationId);
+    const conversation = await this.conversationModel.findById(
+      message.conversationId,
+    );
     if (!conversation) {
       throw new NotFoundException('Hội thoại không tồn tại');
     }
@@ -170,10 +255,13 @@ export class MessageService {
     message.content = 'Tin nhắn đã thu hồi';
     await message.save();
 
-    if (conversation.lastMessage && conversation.lastMessage._id?.toString() === messageId) {
-       await this.conversationModel.findByIdAndUpdate(conversation._id, {
-         $set: { 'lastMessage.content': 'Tin nhắn đã thu hồi' }
-       });
+    if (
+      conversation.lastMessage &&
+      conversation.lastMessage._id?.toString() === messageId
+    ) {
+      await this.conversationModel.findByIdAndUpdate(conversation._id, {
+        $set: { 'lastMessage.content': 'Tin nhắn đã thu hồi' },
+      });
     }
 
     const payload = {
@@ -182,11 +270,11 @@ export class MessageService {
       content: message.content,
       isRevoked: true,
     };
-    conversation.participants?.forEach(p => {
-       const memberId = p.userId?.toString();
-       if (memberId) {
-         this.realtimeService.emitToUser(memberId, 'message:revoked', payload);
-       }
+    conversation.participants?.forEach((p) => {
+      const memberId = p.userId?.toString();
+      if (memberId) {
+        this.realtimeService.emitToUser(memberId, 'message:revoked', payload);
+      }
     });
 
     return { success: true, message: 'Thu hồi thành công', data: payload };

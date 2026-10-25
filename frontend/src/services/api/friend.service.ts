@@ -1,5 +1,5 @@
 import api from './api';
-import { FriendRequest, FriendRequestsResponse, FriendListResponse } from '@/types/friend';
+import { FriendRequest, FriendRequestsResponse } from '@/types/friend';
 import { UserBasicInfo } from '@/types/user';
 
 export const friendService = {

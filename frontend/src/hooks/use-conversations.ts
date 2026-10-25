@@ -4,7 +4,7 @@ import { Message } from '@/types/message';
 import { conversationService } from '@/services/api/conversation.service';
 import { socketService } from '@/services/socket/socket.service';
 
-export function useConversations() {
+export function useConversations(enabled: boolean = true) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -17,20 +17,28 @@ export function useConversations() {
     try {
       const data = await conversationService.getConversations();
       setConversations(data);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Lỗi khi lấy danh sách hội thoại:', err);
-      setError(err?.response?.data?.message || 'Không thể tải danh sách hội thoại');
+      const errMsg =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
+      setError(errMsg || 'Không thể tải danh sách hội thoại');
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchConversations();
-  }, [fetchConversations]);
+    if (enabled) {
+      void Promise.resolve().then(() => {
+        fetchConversations();
+      });
+    }
+  }, [fetchConversations, enabled]);
 
   useEffect(() => {
-    const handleNewMessage = (payload: { message: Message; conversation?: any }) => {
+    const handleNewMessage = (payload: { message: Message; conversation?: Partial<Conversation> }) => {
       const newMsg = payload?.message;
       if (!newMsg) return;
 

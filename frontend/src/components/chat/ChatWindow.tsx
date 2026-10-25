@@ -40,7 +40,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   sendingMessage,
   onSendMessage,
   onBackMobile,
-  onShowToast,
   currentUserId,
   messagesError,
   onRefreshMessages,
@@ -60,19 +59,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (conversation) {
       inputRef.current?.focus();
     }
-  }, [conversation?._id]);
+  }, [conversation]);
 
   const handleSend = () => {
     if (!inputValue.trim() || sendingMessage) return;
     onSendMessage(inputValue.trim());
     setInputValue('');
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
   };
 
   // Empty state
@@ -186,7 +178,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 {group.messages.map((msg) => {
                   let msgSenderId = String(msg.senderId);
                   if (typeof msg.senderId === 'object' && msg.senderId !== null) {
-                    const senderObj = msg.senderId as any;
+                    const senderObj = msg.senderId as Record<string, unknown>;
                     msgSenderId = String(senderObj._id || senderObj.id || senderObj.$oid || msg.senderId);
 
                     // Fallback if serialization resulted in an empty object

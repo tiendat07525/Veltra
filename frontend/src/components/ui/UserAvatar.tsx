@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import Image from 'next/image';
 import { UserStatus } from '@/types/user';
 import { OnlineStatusDot } from './OnlineStatusDot';
 
@@ -50,13 +51,13 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
   return (
     <div id={id} className={`relative shrink-0 select-none ${sizeClasses[size]} ${className}`}>
       {src && !imgError ? (
-        <img
+        <Image
           src={src}
           alt={name}
+          fill
+          unoptimized
           onError={() => setImgError(true)}
-          className="w-full h-full rounded-2xl object-cover ring-1 ring-slate-200/50 dark:ring-slate-800/80 shadow-xs"
-          referrerPolicy="no-referrer"
-          loading="lazy"
+          className="rounded-2xl object-cover ring-1 ring-slate-200/50 dark:ring-slate-800/80 shadow-xs"
         />
       ) : (
         <div className="w-full h-full rounded-2xl bg-gradient-to-tr from-sky-600 via-indigo-600 to-cyan-500 flex items-center justify-center text-white font-medium shadow-xs ring-1 ring-sky-400/20">

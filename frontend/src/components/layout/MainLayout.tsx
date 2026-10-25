@@ -2,7 +2,6 @@
 
 import React from 'react';
 import { MainSidebar } from './MainSidebar';
-import { ActiveTab } from '@/types/chat';
 
 interface MainLayoutProps {
   children: React.ReactNode;

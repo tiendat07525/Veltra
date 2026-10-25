@@ -7,7 +7,6 @@ import {
   PhoneMissed,
   UserPlus,
   CheckCheck,
-  Check,
 } from 'lucide-react';
 import { Notification, NotificationType } from '@/types/notification';
 import { UserAvatar } from '@/components/ui/UserAvatar';

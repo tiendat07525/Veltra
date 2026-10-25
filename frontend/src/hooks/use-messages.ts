@@ -6,7 +6,8 @@ import { socketService } from '@/services/socket/socket.service';
 
 export function useMessages(
   conversationId: string | null,
-  onMarkAsSeen?: (convId: string) => void
+  onMarkAsSeen?: (convId: string) => void,
+  enabled: boolean = true
 ) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -16,12 +17,15 @@ export function useMessages(
   const [sending, setSending] = useState<boolean>(false);
 
   const activeConvIdRef = useRef<string | null>(conversationId);
-  activeConvIdRef.current = conversationId;
   const onMarkAsSeenRef = useRef(onMarkAsSeen);
-  onMarkAsSeenRef.current = onMarkAsSeen;
+
+  useEffect(() => {
+    activeConvIdRef.current = conversationId;
+    onMarkAsSeenRef.current = onMarkAsSeen;
+  }, [conversationId, onMarkAsSeen]);
 
   const fetchMessages = useCallback(async () => {
-    if (!conversationId) {
+    if (!enabled || !conversationId) {
       setMessages([]);
       setLoading(false);
       setNextCursor(null);
@@ -44,20 +48,25 @@ export function useMessages(
       } catch {
 
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Lỗi khi lấy tin nhắn:', err);
-      setError(err?.response?.data?.message || 'Không thể tải tin nhắn');
+      const apiErr = err as { response?: { data?: { message?: string } } };
+      setError(apiErr?.response?.data?.message || 'Không thể tải tin nhắn');
     } finally {
       setLoading(false);
     }
-  }, [conversationId]);
+  }, [conversationId, enabled]);
 
   useEffect(() => {
-    fetchMessages();
-  }, [fetchMessages]);
+    if (enabled) {
+      void Promise.resolve().then(() => {
+        fetchMessages();
+      });
+    }
+  }, [fetchMessages, enabled]);
 
   useEffect(() => {
-    const handleNewMessage = (payload: { message: Message; conversation?: any }) => {
+    const handleNewMessage = (payload: { message: Message; conversation?: unknown }) => {
       const newMsg = payload?.message;
       if (!newMsg) return;
 
@@ -114,7 +123,7 @@ export function useMessages(
         return [...newOlder, ...prev];
       });
       setNextCursor(data.nextCursor);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Lỗi khi tải thêm tin nhắn:', err);
     } finally {
       setLoadingMore(false);
@@ -142,9 +151,10 @@ export function useMessages(
         } else {
           await fetchMessages();
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Lỗi khi gửi tin nhắn:', err);
-        setError(err?.response?.data?.message || 'Không thể gửi tin nhắn');
+        const apiErr = err as { response?: { data?: { message?: string } } };
+        setError(apiErr?.response?.data?.message || 'Không thể gửi tin nhắn');
       } finally {
         setSending(false);
       }
@@ -162,7 +172,7 @@ export function useMessages(
             : m
         )
       );
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Lỗi khi thu hồi tin nhắn:', err);
       throw err;
     }

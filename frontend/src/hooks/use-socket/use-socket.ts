@@ -2,43 +2,48 @@
 
 import { useEffect, useState } from 'react';
 import { socketService } from '@/services/socket/socket.service';
+import { getToken, onTokenChange } from '@/services/api/api';
+import { authService } from '@/services/api/auth.service';
 
-export function useSocket(token?: string | null) {
-  const [isConnected, setIsConnected] = useState<boolean>(false);
+export function useSocket() {
+  const [isConnected, setIsConnected] = useState<boolean>(() => socketService.isConnected());
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const authToken = token || localStorage.getItem('accessToken');
-
-    if (!authToken) {
-      socketService.disconnect();
+    const handleConnect = () => setIsConnected(true);
+    const handleDisconnect = (reason: string) => {
       setIsConnected(false);
-      return;
-    }
-
-    const socket = socketService.connect(undefined, authToken);
-
-    if (socket) {
-      const handleConnect = () => setIsConnected(true);
-      const handleDisconnect = () => setIsConnected(false);
-
-      if (socket.connected) {
-        setIsConnected(true);
+      if (reason === 'io server disconnect') {
+        // Token expiry, logout or login elsewhere: on success the token listener reconnects, on failure it tears down
+        void authService.refreshSilent();
       }
+    };
+    // Follows the in-memory access token: login / refresh connects, logout / failed refresh disconnects
+    const syncWithToken = (token: string | null) => {
+      if (token) {
+        socketService.connect();
+      } else {
+        socketService.disconnect();
+        setIsConnected(false);
+      }
+    };
 
-      socket.on('connect', handleConnect);
-      socket.on('disconnect', handleDisconnect);
-
-      return () => {
-        socket.off('connect', handleConnect);
-        socket.off('disconnect', handleDisconnect);
-      };
+    socketService.on('connect', handleConnect);
+    socketService.on('disconnect', handleDisconnect);
+    if (getToken()) {
+      socketService.connect();
     }
-  }, [token]);
+    const unsubscribe = onTokenChange(syncWithToken);
+
+    return () => {
+      unsubscribe();
+      socketService.off('connect', handleConnect);
+      socketService.off('disconnect', handleDisconnect);
+    };
+  }, []);
 
   return {
-    socket: socketService.getSocket(),
     isConnected,
     socketService,
   };

@@ -1,4 +1,12 @@
-import { Body, Controller, Post, Req, UseGuards, Patch, Param } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Post,
+  Req,
+  UseGuards,
+  Patch,
+  Param,
+} from '@nestjs/common';
 import { MessageService } from './message.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
@@ -15,6 +23,9 @@ export class MessageController {
 
   @Patch(':messageId/revoke')
   async revokeMessage(@Param('messageId') messageId: string, @Req() req: any) {
-    return this.messageService.revokeMessage(messageId, req.user._id.toString());
+    return this.messageService.revokeMessage(
+      messageId,
+      req.user._id.toString(),
+    );
   }
 }

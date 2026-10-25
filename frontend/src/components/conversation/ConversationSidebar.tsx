@@ -45,7 +45,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
 }) => {
   const [showNewModal, setShowNewModal] = useState(false);
 
-  const filterTabs: { id: ConversationFilter; label: string; icon: any }[] = [
+  const filterTabs: { id: ConversationFilter; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { id: 'all', label: 'Tất cả', icon: Inbox },
     { id: 'direct', label: 'Cá nhân', icon: MessageCircle },
     { id: 'groups', label: 'Nhóm', icon: Users },

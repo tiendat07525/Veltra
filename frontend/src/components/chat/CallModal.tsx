@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { Mic, MicOff, Video, VideoOff, PhoneOff, Volume2 } from 'lucide-react';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { formatDuration } from '@/lib/utils';
@@ -23,12 +24,12 @@ export const CallModal: React.FC<CallModalProps> = ({
   const [isVideoOff, setIsVideoOff] = useState(false);
 
   useEffect(() => {
-    if (!isOpen) {
-      setDuration(0);
-      return;
-    }
+    if (!isOpen) return;
     const timer = setInterval(() => setDuration((d) => d + 1), 1000);
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      setDuration(0);
+    };
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -42,12 +43,15 @@ export const CallModal: React.FC<CallModalProps> = ({
         {/* Video feed placeholder (Frontend Only) */}
         {type === 'video' && !isVideoOff ? (
           <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-slate-800 border border-slate-700/60 mb-6 shadow-inner flex items-center justify-center">
-            <img
-              src={contactAvatar}
-              alt={contactName}
-              className="w-full h-full object-cover filter blur-xs brightness-75"
-              referrerPolicy="no-referrer"
-            />
+            {contactAvatar && (
+              <Image
+                src={contactAvatar}
+                alt={contactName}
+                fill
+                unoptimized
+                className="object-cover filter blur-xs brightness-75"
+              />
+            )}
             <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-black/30 backdrop-blur-xs">
               <UserAvatar src={contactAvatar} name={contactName} size="xl" className="mb-3 ring-4 ring-sky-500/40" />
               <p className="font-semibold text-lg">{contactName}</p>

@@ -1,19 +1,16 @@
 import React, { useState } from 'react';
+import Image from 'next/image';
 import {
   X,
   Bell,
   BellOff,
-  Pin,
-  Image as ImageIcon,
   FileText,
   Link2,
-  Users,
   Search,
   LogOut,
   Shield,
   Download,
   ExternalLink,
-  ChevronRight,
 } from 'lucide-react';
 import { Conversation } from '@/types/conversation';
 import { User } from '@/types/user';
@@ -53,9 +50,6 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
 
   // Extract shared files
   const sharedFiles = messages.filter((m) => m.type === 'file' && !m.isDeleted);
-
-  // Extract pinned
-  const pinnedMessages = messages.filter((m) => m.isPinned && !m.isDeleted);
 
   // TODO: Backend chưa hỗ trợ chức năng lấy link
   const sharedLinks: { title: string; url: string; date: string }[] = [];
@@ -206,12 +200,12 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
                     onClick={() => onOpenImage(msg.mediaUrl || msg.content || '', 'Photo')}
                     className="aspect-square rounded-xl overflow-hidden cursor-pointer group relative bg-slate-100 dark:bg-slate-800"
                   >
-                    <img
-                      src={msg.mediaUrl || msg.content}
+                    <Image
+                      src={msg.mediaUrl || msg.content || ''}
                       alt="Media"
-                      className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                      referrerPolicy="no-referrer"
-                      loading="lazy"
+                      fill
+                      unoptimized
+                      className="object-cover transition-transform group-hover:scale-105"
                     />
                   </div>
                 ))}

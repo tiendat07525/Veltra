@@ -31,7 +31,6 @@ const EMOJI_CATEGORIES = [
 
 export const EmojiPickerPopover: React.FC<EmojiPickerPopoverProps> = ({
   onSelectEmoji,
-  onClose,
 }) => {
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState(0);

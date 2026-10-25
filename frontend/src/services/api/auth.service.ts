@@ -1,4 +1,4 @@
-import api from './api';
+import { api, setToken, refreshToken } from './api';
 import { CurrentUserProfile } from '@/types/user';
 
 export const authService = {
@@ -11,17 +11,34 @@ export const authService = {
   async login(credentials: { username: string; password: string }): Promise<{ message: string; accessToken: string }> {
     const res = await api.post('/auth/login', credentials);
     if (res.data.accessToken) {
-      localStorage.setItem('accessToken', res.data.accessToken);
+      setToken(res.data.accessToken);
     }
     return res.data;
   },
 
-  async register(data: { username: string; email: string; password: string }): Promise<{ message: string; data: any }> {
+  async register(data: { username: string; email: string; password: string }): Promise<{ message: string; data: Record<string, unknown> }> {
     const res = await api.post('/auth/register', data);
     return res.data;
   },
 
-  logout(): void {
-    localStorage.removeItem('accessToken');
+  async logout(): Promise<void> {
+    try {
+      await api.post('/auth/logout');
+    } catch {
+      // Ignore errors on logout
+    } finally {
+      setToken(null);
+      if (typeof window !== 'undefined') {
+        window.location.replace('/auth/login');
+      }
+    }
   },
+
+  async refreshSilent(): Promise<void> {
+    try {
+      await refreshToken();
+    } catch {
+      setToken(null);
+    }
+  }
 };

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -8,11 +9,12 @@ import { InjectModel } from '@nestjs/mongoose';
 import {
   Conversation,
   ConversationDocument,
+  getDirectKey,
 } from './schemas/conversation.schema';
 import { Model, Types } from 'mongoose';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { Message, MessageDocument } from '../messages/schemas/message.schema';
-import { AddParticipantDto } from './dto/add.participant.dto';
+import { AddParticipantDto } from './dto/add-participant.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
 
 @Injectable()
@@ -26,6 +28,9 @@ export class ConversationService {
 
   async create(dto: CreateConversationDto, userId: string) {
     try {
+      if (!Types.ObjectId.isValid(userId)) {
+        throw new BadRequestException('User ID không hợp lệ');
+      }
       const currentUserId = new Types.ObjectId(userId);
       if (dto.type === 'direct') {
         return this.createDirectConversation(currentUserId, dto.participants);
@@ -43,7 +48,8 @@ export class ConversationService {
     } catch (error) {
       if (
         error instanceof BadRequestException ||
-        error instanceof NotFoundException
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException
       ) {
         throw error;
       }
@@ -60,6 +66,10 @@ export class ConversationService {
       throw new BadRequestException('Hội thoại trực tiếp cần 2 người');
     }
 
+    if (!participants[0] || !Types.ObjectId.isValid(participants[0])) {
+      throw new BadRequestException('User ID không hợp lệ');
+    }
+
     const participantId = new Types.ObjectId(participants[0]);
 
     if (userId.equals(participantId)) {
@@ -68,16 +78,26 @@ export class ConversationService {
       );
     }
 
+    // Canonical key guarantees (A, B) and (B, A) evaluate to identical keys (minId:maxId)
+    const directKey = getDirectKey(userId, participantId);
+
+    // Query for existing direct conversation (supporting both canonical directKey and legacy participant arrays)
     let conversation = await this.conversationModel
       .findOne({
         type: 'direct',
-        participants: {
-          $all: [
-            { $elemMatch: { userId } },
-            { $elemMatch: { userId: participantId } },
-          ],
-        },
+        $or: [
+          { directKey },
+          {
+            participants: {
+              $all: [
+                { $elemMatch: { userId } },
+                { $elemMatch: { userId: participantId } },
+              ],
+            },
+          },
+        ],
       })
+      .sort({ lastMessageAt: -1, createdAt: -1 })
       .populate([
         {
           path: 'participants.userId',
@@ -94,36 +114,79 @@ export class ConversationService {
       ]);
 
     if (!conversation) {
-      conversation = await this.conversationModel.create({
-        type: 'direct',
-        participants: [
+      try {
+        conversation = await this.conversationModel.create({
+          type: 'direct',
+          directKey,
+          participants: [
+            {
+              userId,
+              joinedAt: new Date(),
+            },
+            {
+              userId: participantId,
+              joinedAt: new Date(),
+            },
+          ],
+
+          lastMessageAt: new Date(),
+        });
+
+        await conversation.populate([
           {
-            userId,
-            joinedAt: new Date(),
+            path: 'participants.userId',
+            select: 'displayName avatar',
           },
           {
-            userId: participantId,
-            joinedAt: new Date(),
+            path: 'seenBy',
+            select: 'displayName avatar',
           },
-        ],
+          {
+            path: 'lastMessage.senderId',
+            select: 'displayName avatar',
+          },
+        ]);
+      } catch (createErr: any) {
+        // Concurrency handling: if a concurrent request created the direct conversation first,
+        // MongoDB's unique index raises code 11000. Catch it and return the created conversation.
+        if (createErr.code === 11000 || createErr.message?.includes('E11000')) {
+          conversation = await this.conversationModel
+            .findOne({
+              type: 'direct',
+              $or: [
+                { directKey },
+                {
+                  participants: {
+                    $all: [
+                      { $elemMatch: { userId } },
+                      { $elemMatch: { userId: participantId } },
+                    ],
+                  },
+                },
+              ],
+            })
+            .populate([
+              {
+                path: 'participants.userId',
+                select: 'displayName avatar',
+              },
+              {
+                path: 'seenBy',
+                select: 'displayName avatar',
+              },
+              {
+                path: 'lastMessage.senderId',
+                select: 'displayName avatar',
+              },
+            ]);
 
-        lastMessageAt: new Date(),
-      });
-
-      await conversation.populate([
-        {
-          path: 'participants.userId',
-          select: 'displayName avatar',
-        },
-        {
-          path: 'seenBy',
-          select: 'displayName avatar',
-        },
-        {
-          path: 'lastMessage.senderId',
-          select: 'displayName avatar',
-        },
-      ]);
+          if (!conversation) {
+            throw createErr;
+          }
+        } else {
+          throw createErr;
+        }
+      }
     }
     return this.formatConversation(conversation);
   }
@@ -135,6 +198,12 @@ export class ConversationService {
   ) {
     if (!groupName?.trim()) {
       throw new BadRequestException('Tên Group không được để trống');
+    }
+
+    for (const p of participants) {
+      if (!p || !Types.ObjectId.isValid(p)) {
+        throw new BadRequestException('User ID không hợp lệ');
+      }
     }
 
     const participantIds = [userId.toString(), ...participants];
@@ -212,6 +281,10 @@ export class ConversationService {
       throw new BadRequestException('Conversation ID không hợp lệ');
     }
 
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('User ID không hợp lệ');
+    }
+
     const conversation = await this.conversationModel.findOne({
       _id: new Types.ObjectId(conversationId),
       'participants.userId': new Types.ObjectId(userId),
@@ -265,6 +338,10 @@ export class ConversationService {
   async markAsSeen(conversationId: string, userId: string) {
     if (!Types.ObjectId.isValid(conversationId)) {
       throw new BadRequestException('Conversation ID không hợp lệ');
+    }
+
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('User ID không hợp lệ');
     }
 
     const userObjectId = new Types.ObjectId(userId);
@@ -328,8 +405,16 @@ export class ConversationService {
     dto: UpdateConversationDto,
     userId: string,
   ) {
+    if (!Types.ObjectId.isValid(conversationId)) {
+      throw new BadRequestException('Conversation ID không hợp lệ');
+    }
+
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('User ID không hợp lệ');
+    }
+
     const conversation = await this.conversationModel.findOne({
-      _id: conversationId,
+      _id: new Types.ObjectId(conversationId),
       type: 'group',
       'participants.userId': new Types.ObjectId(userId),
     });
@@ -340,7 +425,11 @@ export class ConversationService {
       );
     }
 
-    conversation.group!.name = dto.groupName.trim();
+    if (conversation.group?.createdBy?.toString() !== userId) {
+      throw new ForbiddenException('Chỉ trưởng nhóm mới có quyền đổi tên nhóm');
+    }
+
+    conversation.group.name = dto.groupName.trim();
 
     await conversation.save();
 
@@ -352,8 +441,25 @@ export class ConversationService {
     dto: AddParticipantDto,
     userId: string,
   ) {
+    if (!Types.ObjectId.isValid(conversationId)) {
+      throw new BadRequestException('Conversation ID không hợp lệ');
+    }
+
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('User ID không hợp lệ');
+    }
+
+    if (
+      !dto?.userIds ||
+      !Array.isArray(dto.userIds) ||
+      dto.userIds.length === 0 ||
+      dto.userIds.some((id) => !id || !Types.ObjectId.isValid(id))
+    ) {
+      throw new BadRequestException('User ID không hợp lệ');
+    }
+
     const conversation = await this.conversationModel.findOne({
-      _id: conversationId,
+      _id: new Types.ObjectId(conversationId),
       type: 'group',
       'participants.userId': new Types.ObjectId(userId),
     });
@@ -364,12 +470,19 @@ export class ConversationService {
       );
     }
 
+    if (conversation.group?.createdBy?.toString() !== userId) {
+      throw new ForbiddenException(
+        'Chỉ trưởng nhóm mới có quyền thêm thành viên',
+      );
+    }
+
     const existingIds = conversation.participants.map((participant) =>
       participant.userId.toString(),
     );
 
     for (const id of dto.userIds) {
       if (!existingIds.includes(id)) {
+        existingIds.push(id);
         conversation.participants.push({
           userId: new Types.ObjectId(id),
           joinedAt: new Date(),
@@ -440,6 +553,10 @@ export class ConversationService {
       throw new BadRequestException('Conversation ID không hợp lệ');
     }
 
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('User ID không hợp lệ');
+    }
+
     const conversation = await this.conversationModel.findOne({
       _id: new Types.ObjectId(conversationId),
       'participants.userId': new Types.ObjectId(userId),
@@ -449,6 +566,13 @@ export class ConversationService {
       throw new NotFoundException(
         'Conversation không tồn tại hoặc bạn không có quyền',
       );
+    }
+
+    if (
+      conversation.type === 'group' &&
+      conversation.group?.createdBy?.toString() !== userId
+    ) {
+      throw new ForbiddenException('Chỉ trưởng nhóm mới có quyền xóa nhóm');
     }
 
     await this.conversationModel.findByIdAndDelete(conversationId);
