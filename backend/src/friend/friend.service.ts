@@ -202,11 +202,12 @@ export class FriendService {
       .populate('friend', '_id username displayName avatarUrl')
       .lean();
 
-    const friends = friendships.map((friend) => {
-      return friend.user._id.equals(currentUserId)
-        ? friend.friend
-        : friend.user;
-    });
+    // populate yields null for deleted users; skip those friendships instead of crashing
+    const friends = friendships
+      .filter((friend) => friend.user && friend.friend)
+      .map((friend) =>
+        friend.user._id.equals(currentUserId) ? friend.friend : friend.user,
+      );
     return {
       status: true,
       friends,
@@ -230,8 +231,9 @@ export class FriendService {
 
     return {
       success: true,
-      sent,
-      received,
+      // Drop requests whose counterpart user no longer exists
+      sent: sent.filter((request) => request.to),
+      received: received.filter((request) => request.from),
     };
   }
 

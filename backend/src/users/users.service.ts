@@ -56,11 +56,8 @@ export class UsersService {
       if (trimmed.length > 0) {
         const safePattern = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const searchRegex = new RegExp(safePattern, 'i');
-        filter.$or = [
-          { username: searchRegex },
-          { displayName: searchRegex },
-          { email: searchRegex },
-        ];
+        // Never match email: result presence would reveal which addresses are registered
+        filter.$or = [{ username: searchRegex }, { displayName: searchRegex }];
       }
     }
 
