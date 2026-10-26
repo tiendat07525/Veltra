@@ -1,0 +1,11 @@
+[Unit]
+Description=Veltra auto-deploy from GitHub main
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=dat07525
+ExecStart=/bin/bash /home/dat07525/VeltraV2/deploy/deploy.sh
+TimeoutStartSec=30min
+Nice=10
