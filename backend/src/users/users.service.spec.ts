@@ -240,7 +240,21 @@ describe('UsersService (Security & Password Hashing)', () => {
       expect(mockUserModel.find).toHaveBeenCalled();
       const findFilter = mockUserModel.find.mock.calls[0][0];
       expect(findFilter.$or).toBeDefined();
-      expect(findFilter.$or.length).toBe(3);
+      expect(findFilter.$or.length).toBe(2);
+    });
+
+    it('should search only username and displayName, never email', async () => {
+      const qb = mockQueryBuilder([]);
+      mockUserModel.find.mockReturnValue(qb);
+      mockUserModel.countDocuments.mockResolvedValue(0);
+
+      await service.findAll({ search: 'alice' });
+
+      const findFilter = mockUserModel.find.mock.calls[0][0];
+      const fields = findFilter.$or.map((c: object) => Object.keys(c)[0]);
+      expect(fields).toEqual(['username', 'displayName']);
+      expect(fields).not.toContain('email');
+      expect(findFilter.$or[0].username.test('ALICE_99')).toBe(true);
     });
   });
 });

@@ -224,4 +224,48 @@ describe('FriendService (FULLAUDIT-007: Recipient Existence & Authorization)', (
       );
     });
   });
+
+  describe('Deleted users (populate returns null)', () => {
+    const me = new Types.ObjectId();
+    const alive = { _id: new Types.ObjectId(), username: 'bob' };
+
+    it('getFriendRequests should drop requests whose counterpart was deleted', async () => {
+      const sent = [
+        { _id: 'r1', from: me, to: alive },
+        { _id: 'r2', from: me, to: null },
+      ];
+      const received = [
+        { _id: 'r3', from: null, to: me },
+        { _id: 'r4', from: alive, to: me },
+      ];
+      mockFriendRequestModel.find
+        .mockReturnValueOnce({
+          populate: () => ({ lean: () => Promise.resolve(sent) }),
+        })
+        .mockReturnValueOnce({
+          populate: () => ({ lean: () => Promise.resolve(received) }),
+        });
+
+      const result = await service.getFriendRequests(me.toString());
+
+      expect(result.sent.map((r) => r._id)).toEqual(['r1']);
+      expect(result.received.map((r) => r._id)).toEqual(['r4']);
+    });
+
+    it('getAllFriend should skip friendships with a deleted user instead of throwing', async () => {
+      const friendships = [
+        { user: { _id: me }, friend: alive },
+        { user: { _id: me }, friend: null },
+      ];
+      mockFriendModel.find.mockReturnValue({
+        populate: () => ({
+          populate: () => ({ lean: () => Promise.resolve(friendships) }),
+        }),
+      });
+
+      const result = await service.getAllFriend(me.toString());
+
+      expect(result.friends).toEqual([alive]);
+    });
+  });
 });

@@ -326,9 +326,9 @@ export class ConversationService {
     let nextCursor: string | null = null;
 
     if (messages.length > safeLimit) {
-      const nextMessage = messages[messages.length - 1];
-      nextCursor = nextMessage.createdAt.toISOString();
+      // The extra row only signals that older messages exist; drop it and page from the oldest returned message
       messages.pop();
+      nextCursor = messages[messages.length - 1].createdAt.toISOString();
     }
     messages.reverse();
 
