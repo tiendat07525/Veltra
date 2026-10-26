@@ -113,7 +113,9 @@ export class RealtimeGateway
 
         next();
       } catch (err: any) {
-        next(new Error(`Không có quyền truy cập: ${err.message}`));
+        // Keep the reason server-side; clients only learn that access was denied
+        this.logger.warn(`[Socket] Handshake bị từ chối: ${err.message}`);
+        next(new Error('Không có quyền truy cập'));
       }
     });
 

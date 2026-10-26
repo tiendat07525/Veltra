@@ -46,7 +46,9 @@ export class AuthService {
   }
 
   async login(loginDto: LoginDto, userAgent?: string, ipAddress?: string) {
-    const user = await this.usersService.findByUsername(loginDto.username);
+    const user = await this.usersService.findByUsernameWithPassword(
+      loginDto.username,
+    );
     if (!user) {
       throw new UnauthorizedException('Username hoặc mật khẩu không chính xác');
     }

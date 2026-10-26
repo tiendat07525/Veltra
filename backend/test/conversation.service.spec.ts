@@ -2,9 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
 import { NotFoundException } from '@nestjs/common';
 import { Types } from 'mongoose';
-import { ConversationService } from './conversation.service';
-import { Conversation } from './schemas/conversation.schema';
-import { Message } from '../messages/schemas/message.schema';
+import { ConversationService } from '../src/conversation/conversation.service';
+import { Conversation } from '../src/conversation/schemas/conversation.schema';
+import { Message } from '../src/messages/schemas/message.schema';
 
 describe('ConversationService.getMessages (cursor pagination)', () => {
   let service: ConversationService;

@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../src/users/users.service';
@@ -455,6 +456,9 @@ describe('RealtimeGateway - Socket.IO Redis Adapter (Unit Tests)', () => {
         data: {},
       };
 
+      const warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
       (jwtService.verifyAsync as jest.Mock).mockRejectedValue(
         new Error('jwt expired'),
       );
@@ -463,9 +467,12 @@ describe('RealtimeGateway - Socket.IO Redis Adapter (Unit Tests)', () => {
       await authMiddleware(mockSocket, next);
 
       expect(next).toHaveBeenCalledWith(expect.any(Error));
-      expect(next.mock.calls[0][0].message).toContain(
-        'Không có quyền truy cập',
+      // The client must not learn why verification failed
+      expect(next.mock.calls[0][0].message).toBe('Không có quyền truy cập');
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('jwt expired'),
       );
+      warnSpy.mockRestore();
     });
 
     it('should reject socket connection if user does not exist in database', async () => {
