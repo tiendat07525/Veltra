@@ -19,6 +19,8 @@ export class User {
     required: true,
     unique: true,
     trim: true,
+    // Excluded from every query by default; only login selects it with '+password'
+    select: false,
   })
   password: string;
 

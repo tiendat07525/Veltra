@@ -2,8 +2,10 @@ import {
   IsEmail,
   IsOptional,
   IsString,
+  IsUrl,
   MaxLength,
   Matches,
+  ValidateIf,
 } from 'class-validator';
 
 export class UpdateUserDto {
@@ -28,6 +30,10 @@ export class UpdateUserDto {
   phone?: string;
 
   @IsOptional()
+  // '' clears the avatar; anything else must be an absolute https URL (blocks javascript:, data:, http:)
+  @ValidateIf((_, value) => value !== '')
   @IsString()
+  @MaxLength(2048)
+  @IsUrl({ protocols: ['https'], require_protocol: true })
   avatarUrl?: string;
 }

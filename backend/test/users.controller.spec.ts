@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { UsersController } from './users.controller';
-import { UsersService } from './users.service';
+import { UsersController } from '../src/users/users.controller';
+import { UsersService } from '../src/users/users.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 
 describe('UsersController (Security & Functionality)', () => {

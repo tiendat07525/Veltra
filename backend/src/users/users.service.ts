@@ -7,7 +7,7 @@ import {
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { UserDocument, User } from './schemas/user.schema';
 import * as bcrypt from 'bcrypt';
 
@@ -90,6 +90,10 @@ export class UsersService {
   }
 
   async findPublicProfile(id: string) {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('ID người dùng không hợp lệ');
+    }
+
     const user = await this.userModel
       .findById(id)
       .select('_id username displayName avatarUrl bio onlineStatus lastSeen')
@@ -106,6 +110,14 @@ export class UsersService {
     }
     const user = await this.userModel.findOne({ username });
     return user;
+  }
+
+  // Only for login: the password hash is excluded from every other query
+  async findByUsernameWithPassword(username: string) {
+    if (typeof username !== 'string') {
+      throw new BadRequestException('Username không hợp lệ');
+    }
+    return this.userModel.findOne({ username }).select('+password');
   }
 
   async findByUsernameAndEmail(username: string, email: string) {

@@ -13,6 +13,7 @@ describe('AuthService (Security & Registration)', () => {
   const mockUsersService = {
     findByEmail: jest.fn(),
     findByUsername: jest.fn(),
+    findByUsernameWithPassword: jest.fn(),
     create: jest.fn(),
     findOne: jest.fn(),
   };
@@ -138,7 +139,7 @@ describe('AuthService (Security & Registration)', () => {
 
   describe('Authentication Generic Error Messages', () => {
     it('should return generic error message when user not found', async () => {
-      mockUsersService.findByUsername.mockResolvedValue(null);
+      mockUsersService.findByUsernameWithPassword.mockResolvedValue(null);
 
       await expect(
         service.login({ username: 'nonexistent', password: 'password' }),
@@ -149,7 +150,7 @@ describe('AuthService (Security & Registration)', () => {
 
     it('should return identical generic error message when password incorrect', async () => {
       const hashedPassword = await bcrypt.hash('correctPassword', 10);
-      mockUsersService.findByUsername.mockResolvedValue({
+      mockUsersService.findByUsernameWithPassword.mockResolvedValue({
         _id: 'user1',
         username: 'user1',
         password: hashedPassword,
@@ -354,7 +355,7 @@ describe('AuthService (Security & Registration)', () => {
       const password = 'StrongPassword123!';
       const hashedPassword = await bcrypt.hash(password, 10);
 
-      mockUsersService.findByUsername.mockResolvedValue({
+      mockUsersService.findByUsernameWithPassword.mockResolvedValue({
         _id: 'user1',
         username: 'alice',
         password: hashedPassword,
@@ -483,7 +484,7 @@ describe('AuthService (Security & Registration)', () => {
       const password = 'StrongPassword123!';
       const hashedPassword = await bcrypt.hash(password, 10);
 
-      mockUsersService.findByUsername.mockResolvedValue({
+      mockUsersService.findByUsernameWithPassword.mockResolvedValue({
         _id: 'user1',
         username: 'alice',
         password: hashedPassword,

@@ -1,9 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
-import { UsersService } from './users.service';
-import { User } from './schemas/user.schema';
+import { UsersService } from '../src/users/users.service';
+import { User, UserSchema } from '../src/users/schemas/user.schema';
 import * as bcrypt from 'bcrypt';
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Types } from 'mongoose';
 
 describe('UsersService (Security & Password Hashing)', () => {
   let service: UsersService;
@@ -122,6 +123,7 @@ describe('UsersService (Security & Password Hashing)', () => {
     });
 
     it('should never expose password in findPublicProfile', async () => {
+      const id = new Types.ObjectId().toString();
       mockUserModel.findById.mockReturnValue({
         select: jest.fn().mockReturnValue({
           lean: jest.fn().mockResolvedValue({
@@ -132,10 +134,40 @@ describe('UsersService (Security & Password Hashing)', () => {
         }),
       });
 
-      const user = await service.findPublicProfile('user1');
+      const user = await service.findPublicProfile(id);
       expect(
         (user as unknown as Record<string, unknown>).password,
       ).toBeUndefined();
+    });
+
+    it('should reject a malformed id with 400 before querying', async () => {
+      await expect(service.findPublicProfile('abc')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockUserModel.findById).not.toHaveBeenCalled();
+    });
+
+    it('should exclude password from queries at the schema level', () => {
+      expect(UserSchema.path('password').options.select).toBe(false);
+    });
+
+    it('findByUsernameWithPassword should explicitly select the hash', async () => {
+      const select = jest
+        .fn()
+        .mockResolvedValue({ username: 'alice', password: 'hash' });
+      mockUserModel.findOne.mockReturnValue({ select });
+
+      await service.findByUsernameWithPassword('alice');
+
+      expect(mockUserModel.findOne).toHaveBeenCalledWith({ username: 'alice' });
+      expect(select).toHaveBeenCalledWith('+password');
+    });
+
+    it('findByUsernameWithPassword should reject non-string input', async () => {
+      await expect(
+        service.findByUsernameWithPassword({ $ne: '' } as unknown as string),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockUserModel.findOne).not.toHaveBeenCalled();
     });
   });
 
