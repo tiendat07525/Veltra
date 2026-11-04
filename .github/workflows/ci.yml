@@ -11,6 +11,25 @@ permissions:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 })'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     defaults:
       run:
         working-directory: backend
@@ -24,6 +43,10 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit -p tsconfig.json
       - run: npx jest
+      - run: npx jest --config ./test/jest-e2e.json test/realtime-redis-adapter.e2e-spec.ts test/session-rotation.e2e-spec.ts test/direct-conversation.e2e-spec.ts
+        env:
+          REDIS_URL: redis://127.0.0.1:6379
+          MONGODB_URL: mongodb://127.0.0.1:27017
       - run: npm run build
 
   frontend:
