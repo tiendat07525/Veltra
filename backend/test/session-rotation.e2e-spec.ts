@@ -54,7 +54,7 @@ describe('Refresh Token Rotation Concurrency (Real Redis E2E)', () => {
       ),
     };
     const mockUsersService = {
-      findByUsername: jest.fn().mockResolvedValue({
+      findByUsernameWithPassword: jest.fn().mockResolvedValue({
         _id: userId,
         username: 'rotation-user',
         email: 'rotation@example.com',
