@@ -28,7 +28,6 @@
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/platform-socket.io": "^11.2.1",
-    "@nestjs/swagger": "^11.4.7",
     "@nestjs/throttler": "^6.7.1",
     "@nestjs/websockets": "^11.2.1",
     "@socket.io/redis-adapter": "^8.3.0",
@@ -96,5 +95,8 @@
     "moduleNameMapper": {
       "^src/(.*)$": "<rootDir>/src/$1"
     }
+  },
+  "overrides": {
+    "multer": "2.5.0"
   }
 }
