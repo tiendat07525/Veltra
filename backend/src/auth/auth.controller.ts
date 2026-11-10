@@ -52,7 +52,9 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const refreshTokenString = req.cookies?.refreshToken;
+    // cookie-parser turns "j:{...}" cookies into objects; only a string can be a refresh token
+    const cookie: unknown = req.cookies?.refreshToken;
+    const refreshTokenString = typeof cookie === 'string' ? cookie : '';
     const userAgent = req.headers['user-agent'];
     const ipAddress = req.ip;
 

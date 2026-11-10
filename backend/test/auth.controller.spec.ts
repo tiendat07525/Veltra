@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { UnauthorizedException } from '@nestjs/common';
 import { AuthController } from '../src/auth/auth.controller';
 import { AuthService } from '../src/auth/auth.service';
 
@@ -153,6 +154,29 @@ describe('AuthController (Security & Rate Limiting)', () => {
 
       expect(mockRes.cookie).not.toHaveBeenCalled();
       expect(result).toEqual({ accessToken: 'grace-access-token' });
+    });
+
+    it('should pass an empty token when cookie-parser turned the cookie into an object', async () => {
+      // "refreshToken=j:{...}" is parsed by cookie-parser into a plain object
+      const mockReq: any = {
+        cookies: { refreshToken: { a: 1 } },
+        headers: { 'user-agent': 'Jest-Agent' },
+        ip: '127.0.0.1',
+      };
+      const mockRes: any = { cookie: jest.fn() };
+      mockAuthService.refresh.mockRejectedValue(
+        new UnauthorizedException('Token không hợp lệ'),
+      );
+
+      await expect(controller.refresh(mockReq, mockRes)).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(mockAuthService.refresh).toHaveBeenCalledWith(
+        '',
+        'Jest-Agent',
+        '127.0.0.1',
+      );
+      expect(mockRes.cookie).not.toHaveBeenCalled();
     });
   });
 });
