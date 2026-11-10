@@ -197,6 +197,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
         },
         participants: [{ userId: new Types.ObjectId(creatorUserId) }],
         save: jest.fn().mockResolvedValue(true),
+        populate: jest.fn().mockResolvedValue(undefined),
         toObject: () => ({
           _id: new Types.ObjectId(validConversationId),
           type: 'group',
@@ -257,6 +258,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
         group: { createdBy: new Types.ObjectId(creatorUserId) },
         participants: [{ userId: new Types.ObjectId(creatorUserId) }],
         save: jest.fn().mockResolvedValue(true),
+        populate: jest.fn().mockResolvedValue(undefined),
         toObject: () => ({
           _id: new Types.ObjectId(validConversationId),
           type: 'group',
@@ -692,6 +694,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
             },
           ],
           save: mockSave,
+          populate: jest.fn().mockResolvedValue(undefined),
           toObject: () => ({
             _id: new Types.ObjectId(validConversationId),
             type: 'group',
@@ -733,6 +736,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
             { userId: new Types.ObjectId(creatorUserId), joinedAt: new Date() },
           ],
           save: mockSave,
+          populate: jest.fn().mockResolvedValue(undefined),
           toObject: () => ({
             _id: new Types.ObjectId(validConversationId),
             type: 'group',
@@ -861,6 +865,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
             { userId: new Types.ObjectId(memberUserId), joinedAt: new Date() },
           ],
           save: mockSave,
+          populate: jest.fn().mockResolvedValue(undefined),
           toObject: () => ({
             _id: new Types.ObjectId(validConversationId),
             type: 'group',
@@ -900,6 +905,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
             { userId: new Types.ObjectId(creatorUserId), joinedAt: new Date() },
           ],
           save: mockSave,
+          populate: jest.fn().mockResolvedValue(undefined),
           toObject: () => ({
             _id: new Types.ObjectId(validConversationId),
             type: 'group',
@@ -936,6 +942,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
           },
           participants: [{ userId: new Types.ObjectId(creatorUserId) }],
           save: mockSave,
+          populate: jest.fn().mockResolvedValue(undefined),
           toObject: () => ({
             _id: new Types.ObjectId(validConversationId),
             type: 'group',

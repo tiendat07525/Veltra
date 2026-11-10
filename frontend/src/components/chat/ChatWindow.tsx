@@ -219,8 +219,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                         {/* Show sender name in groups */}
                         {!isOwn && conversation.type === 'group' && !msg.isRevoked && (
                           <p className="text-[11px] font-semibold text-sky-500 dark:text-sky-400 mb-0.5">
-                            {conversation.participants.find((p) => String(p._id) === String(msgSenderId))
-                              ?.displayName || 'Người dùng'}
+                            {(() => {
+                              const sender = conversation.participants.find((p) => String(p._id) === String(msgSenderId));
+                              return sender?.displayName || sender?.username || 'Người dùng';
+                            })()}
                           </p>
                         )}
                         <p className="whitespace-pre-wrap break-words text-[13px]">{msg.content}</p>
