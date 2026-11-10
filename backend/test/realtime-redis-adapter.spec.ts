@@ -629,6 +629,20 @@ describe('RealtimeGateway - Socket.IO Redis Adapter (Unit Tests)', () => {
       expect(mockSocket.join).not.toHaveBeenCalled();
     });
 
+    it('handleConnection should disconnect without joining rooms when jwtExp is missing', async () => {
+      const mockSocket: any = {
+        id: 'socket-no-exp',
+        data: { user: { _id: 'user-abc' } },
+        join: jest.fn(),
+        disconnect: jest.fn(),
+      };
+
+      await gateway.handleConnection(mockSocket);
+
+      expect(mockSocket.disconnect).toHaveBeenCalledWith(true);
+      expect(mockSocket.join).not.toHaveBeenCalled();
+    });
+
     it('handleDisconnect should clear the token expiration timer', () => {
       const clearSpy = jest.spyOn(global, 'clearTimeout');
       const mockTimer = setTimeout(() => {}, 10000);

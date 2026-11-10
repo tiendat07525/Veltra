@@ -2,6 +2,14 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { UsersController } from '../src/users/users.controller';
 import { UsersService } from '../src/users/users.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import type {
+  AuthenticatedRequest,
+  AuthenticatedUser,
+} from '../src/auth/authenticated-request';
+
+// Controllers only read req.user; the rest of the Express request is irrelevant here
+const asReq = (user: Partial<AuthenticatedUser>) =>
+  ({ user }) as unknown as AuthenticatedRequest;
 
 describe('UsersController (Security & Functionality)', () => {
   let controller: UsersController;
@@ -58,7 +66,7 @@ describe('UsersController (Security & Functionality)', () => {
       };
       mockUsersService.findOne.mockResolvedValue(mockUser);
 
-      const result = await controller.getProfile({ user: { id: 'user1' } });
+      const result = await controller.getProfile(asReq({ id: 'user1' }));
       expect(result).toEqual(mockUser);
       expect(mockUsersService.findOne).toHaveBeenCalledWith('user1');
     });
@@ -73,7 +81,7 @@ describe('UsersController (Security & Functionality)', () => {
       mockUsersService.update.mockResolvedValue(updatedUser);
 
       const result = await controller.updateProfile(
-        { user: { id: 'user1' } },
+        asReq({ id: 'user1' }),
         updateDto,
       );
       expect(result).toEqual(updatedUser);
@@ -113,9 +121,11 @@ describe('UsersController (Security & Functionality)', () => {
       const updateDto = { displayName: 'Updated' };
       mockUsersService.update.mockResolvedValue({ _id: 'user1', ...updateDto });
 
-      const result = await controller.update('user1', updateDto, {
-        user: { id: 'user1' },
-      });
+      const result = await controller.update(
+        'user1',
+        updateDto,
+        asReq({ id: 'user1' }),
+      );
       expect(result).toEqual({ _id: 'user1', ...updateDto });
       expect(mockUsersService.update).toHaveBeenCalledWith(
         'user1',
@@ -129,9 +139,7 @@ describe('UsersController (Security & Functionality)', () => {
         message: 'Xóa user thành công',
       });
 
-      const result = await controller.remove('user1', {
-        user: { id: 'user1' },
-      });
+      const result = await controller.remove('user1', asReq({ id: 'user1' }));
       expect(result).toEqual({ message: 'Xóa user thành công' });
       expect(mockUsersService.remove).toHaveBeenCalledWith('user1', 'user1');
     });

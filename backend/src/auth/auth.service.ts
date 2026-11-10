@@ -12,6 +12,15 @@ import * as crypto from 'crypto';
 import { SessionService } from './session.service';
 import { RealtimeService } from 'src/realtime/realtime.service';
 import { forwardRef, Inject } from '@nestjs/common';
+import { Types } from 'mongoose';
+
+// User fields that go into the JWT payload and the Redis session
+interface SessionUser {
+  _id: Types.ObjectId;
+  email: string;
+  username: string;
+  phone?: string;
+}
 
 @Injectable()
 export class AuthService {
@@ -152,7 +161,7 @@ export class AuthService {
       }
     }
 
-    let user;
+    let user: SessionUser;
     try {
       user = await this.usersService.findOne(userId);
     } catch {
@@ -225,7 +234,7 @@ export class AuthService {
   }
 
   private async createSessionAndTokens(
-    user: any,
+    user: SessionUser,
     userAgent?: string,
     ipAddress?: string,
   ) {

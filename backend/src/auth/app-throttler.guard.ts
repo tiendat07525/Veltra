@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import * as crypto from 'crypto';
+import type { Request } from 'express';
 
 @Injectable()
 export class AppThrottlerGuard extends ThrottlerGuard {
@@ -11,13 +12,17 @@ export class AppThrottlerGuard extends ThrottlerGuard {
    *   Raw tokens, cookies, and authentication secrets are NEVER used as keys or logged.
    */
   protected getTracker(req: Record<string, any>): Promise<string> {
-    const rawIp = req.ips?.length ? req.ips[0] : req.ip || '127.0.0.1';
+    // ThrottlerGuard passes the Express request under a loose type
+    const request = req as Request;
+    const rawIp = request.ips?.length
+      ? request.ips[0]
+      : request.ip || '127.0.0.1';
     // Clean and normalize IP
     const ip = typeof rawIp === 'string' ? rawIp.trim() : '127.0.0.1';
 
-    const url = req.originalUrl || req.url || '';
+    const url = request.originalUrl || request.url || '';
     if (url.includes('/auth/refresh')) {
-      const refreshToken = req.cookies?.refreshToken;
+      const refreshToken: unknown = request.cookies?.refreshToken;
       if (typeof refreshToken === 'string' && refreshToken.length > 0) {
         const parts = refreshToken.split('.');
         if (parts.length === 3 && parts[1]) {
