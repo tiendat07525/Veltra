@@ -5,6 +5,7 @@ import { Strategy, ExtractJwt } from 'passport-jwt';
 import { UsersService } from 'src/users/users.service';
 import { SessionService } from './session.service';
 import { AuthenticatedUser } from './authenticated-request';
+import { errorMessage } from '../common/error-message';
 
 export interface JwtPayload {
   id: string;
@@ -53,12 +54,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       ) {
         throw new UnauthorizedException('Phiên đăng nhập đã hết hạn');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error instanceof UnauthorizedException) {
         throw error;
       }
       this.logger.error(
-        `Không thể xác thực phiên đăng nhập cho user ${payload.id}: ${error?.message || error}`,
+        `Không thể xác thực phiên đăng nhập cho user ${payload.id}: ${errorMessage(error)}`,
       );
       // Fail closed: reject request if session validity cannot be established
       throw new UnauthorizedException('Không thể xác thực phiên đăng nhập');

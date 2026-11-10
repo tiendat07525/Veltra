@@ -7,6 +7,8 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { createClient } from 'redis';
 
+type RedisClient = ReturnType<typeof createClient>;
+
 export interface SessionData {
   userId: string;
   sessionId: string;
@@ -23,7 +25,7 @@ export type RotationResult = 'rotated' | 'already_rotated' | 'failed';
 
 @Injectable()
 export class SessionService implements OnModuleInit, OnModuleDestroy {
-  private client: any;
+  private client!: RedisClient;
   private readonly logger = new Logger(SessionService.name);
 
   constructor(private configService: ConfigService) {}
@@ -33,7 +35,7 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
       this.configService.get<string>('REDIS_URL') || 'redis://localhost:6379';
     this.client = createClient({ url });
 
-    this.client.on('error', (err: any) =>
+    this.client.on('error', (err: unknown) =>
       this.logger.error('Redis Client Error', err),
     );
 
@@ -65,7 +67,7 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
     const key = `session:${userId}:${sessionId}`;
     const data = await this.client.get(key);
     if (!data) return null;
-    return JSON.parse(data);
+    return JSON.parse(data) as SessionData;
   }
 
   async revokeSession(userId: string, sessionId: string): Promise<void> {

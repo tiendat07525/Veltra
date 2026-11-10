@@ -8,12 +8,15 @@ import { ConfigService } from '@nestjs/config';
 import { ThrottlerStorage } from '@nestjs/throttler';
 import { ThrottlerStorageRecord } from '@nestjs/throttler/dist/throttler-storage-record.interface';
 import { createClient } from 'redis';
+import { errorMessage } from '../common/error-message';
+
+type RedisClient = ReturnType<typeof createClient>;
 
 @Injectable()
 export class ThrottlerStorageRedisService
   implements ThrottlerStorage, OnModuleInit, OnModuleDestroy
 {
-  private client: any;
+  private client?: RedisClient;
   private readonly logger = new Logger(ThrottlerStorageRedisService.name);
   private isConnected = false;
 
@@ -25,9 +28,9 @@ export class ThrottlerStorageRedisService
         this.configService.get<string>('REDIS_URL') || 'redis://localhost:6379';
       this.client = createClient({ url });
 
-      this.client.on('error', (err: any) => {
+      this.client.on('error', (err: unknown) => {
         this.isConnected = false;
-        this.logger.error('Throttler Redis Client Error', err?.message || err);
+        this.logger.error('Throttler Redis Client Error', errorMessage(err));
       });
 
       this.client.on('connect', () => {
@@ -40,11 +43,11 @@ export class ThrottlerStorageRedisService
       try {
         await this.client.connect();
         this.isConnected = true;
-      } catch (err: any) {
+      } catch (err: unknown) {
         this.isConnected = false;
         this.logger.error(
           'Failed to connect Throttler to Redis; will fail-open until reconnected',
-          err?.message || err,
+          errorMessage(err),
         );
       }
     }
@@ -58,8 +61,11 @@ export class ThrottlerStorageRedisService
     if (this.client && this.isConnected) {
       try {
         await this.client.quit();
-      } catch (err: any) {
-        this.logger.warn('Error closing throttler redis client', err?.message);
+      } catch (err: unknown) {
+        this.logger.warn(
+          'Error closing throttler redis client',
+          errorMessage(err),
+        );
       }
     }
   }
@@ -97,10 +103,14 @@ export class ThrottlerStorageRedisService
     `;
 
     try {
-      const result: any = await this.client.eval(luaScript, {
+      // Falls into the fail-open catch below, as a missing client always has
+      if (!this.client) {
+        throw new Error('Throttler Redis client is not initialized');
+      }
+      const result = (await this.client.eval(luaScript, {
         keys: [redisKey],
         arguments: [ttl.toString()],
-      });
+      })) as [number, number];
 
       const totalHits = Number(result[0]);
       const pttl = Number(result[1]);
@@ -114,10 +124,10 @@ export class ThrottlerStorageRedisService
         isBlocked,
         timeToBlockExpire,
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Documented policy: Fail-open on Redis errors to prevent cascading denial-of-service
       this.logger.warn(
-        `Redis rate-limiter unavailable for key "${key}". Failing open to preserve availability. Error: ${err?.message || err}`,
+        `Redis rate-limiter unavailable for key "${key}". Failing open to preserve availability. Error: ${errorMessage(err)}`,
       );
       return {
         totalHits: 0,
