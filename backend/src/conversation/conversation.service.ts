@@ -10,12 +10,14 @@ import {
   Conversation,
   ConversationDocument,
   getDirectKey,
+  Participant,
 } from './schemas/conversation.schema';
 import { Model, Types } from 'mongoose';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { Message, MessageDocument } from '../messages/schemas/message.schema';
 import { AddParticipantDto } from './dto/add-participant.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
+import { isDuplicateKeyError } from '../common/mongo-errors';
 
 // Public fields of other users embedded in conversation responses (data_model.md §1)
 const CONVERSATION_USER_FIELDS = 'username displayName avatarUrl';
@@ -24,6 +26,25 @@ const conversationUserPopulate = () => [
   { path: 'seenBy', select: CONVERSATION_USER_FIELDS },
   { path: 'lastMessage.senderId', select: CONVERSATION_USER_FIELDS },
 ];
+
+// participants[].userId after populate(conversationUserPopulate())
+interface PopulatedParticipant {
+  userId?: {
+    _id?: Types.ObjectId;
+    username?: string;
+    displayName?: string;
+    avatarUrl?: string;
+  } | null;
+  joinedAt?: Date;
+}
+
+const formatParticipant = (participant: PopulatedParticipant) => ({
+  _id: participant.userId?._id,
+  username: participant.userId?.username,
+  displayName: participant.userId?.displayName,
+  avatarUrl: participant.userId?.avatarUrl ?? null,
+  joinedAt: participant.joinedAt,
+});
 
 @Injectable()
 export class ConversationService {
@@ -128,10 +149,10 @@ export class ConversationService {
         });
 
         await conversation.populate(conversationUserPopulate());
-      } catch (createErr: any) {
+      } catch (createErr: unknown) {
         // Concurrency handling: if a concurrent request created the direct conversation first,
         // MongoDB's unique index raises code 11000. Catch it and return the created conversation.
-        if (createErr.code === 11000 || createErr.message?.includes('E11000')) {
+        if (isDuplicateKeyError(createErr)) {
           conversation = await this.conversationModel
             .findOne({
               type: 'direct',
@@ -243,7 +264,8 @@ export class ConversationService {
 
     const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
 
-    const query: any = { conversationId: new Types.ObjectId(conversationId) };
+    const query: { conversationId: Types.ObjectId; createdAt?: { $lt: Date } } =
+      { conversationId: new Types.ObjectId(conversationId) };
 
     if (cursor) {
       const cursorDate = new Date(cursor);
@@ -432,7 +454,7 @@ export class ConversationService {
         conversation.participants.push({
           userId: new Types.ObjectId(id),
           joinedAt: new Date(),
-        } as any);
+        } as Participant);
       }
     }
 
@@ -462,14 +484,8 @@ export class ConversationService {
   private formatConversation(conversation: ConversationDocument) {
     const object = conversation.toObject();
 
-    const participants = (conversation.participants || []).map(
-      (participant: any) => ({
-        _id: participant.userId?._id,
-        username: participant.userId?.username,
-        displayName: participant.userId?.displayName,
-        avatarUrl: participant.userId?.avatarUrl ?? null,
-        joinedAt: participant.joinedAt,
-      }),
+    const participants = (conversation.participants || []).map((participant) =>
+      formatParticipant(participant as unknown as PopulatedParticipant),
     );
 
     return {
@@ -479,15 +495,11 @@ export class ConversationService {
     };
   }
 
-  private formatLeanConversation(conversation: any) {
-    const participants = (conversation.participants || []).map(
-      (participant: any) => ({
-        _id: participant.userId?._id,
-        username: participant.userId?.username,
-        displayName: participant.userId?.displayName,
-        avatarUrl: participant.userId?.avatarUrl ?? null,
-        joinedAt: participant.joinedAt,
-      }),
+  private formatLeanConversation<
+    T extends { participants?: unknown[]; unreadCounts?: unknown },
+  >(conversation: T) {
+    const participants = (conversation.participants || []).map((participant) =>
+      formatParticipant(participant as PopulatedParticipant),
     );
 
     return {

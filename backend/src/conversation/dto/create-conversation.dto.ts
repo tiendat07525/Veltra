@@ -18,7 +18,7 @@ export class CreateConversationDto {
   @IsMongoId({ each: true })
   participants: string[];
 
-  @ValidateIf((o) => o.type === 'group')
+  @ValidateIf((o: CreateConversationDto) => o.type === 'group')
   @IsString()
   @IsNotEmpty()
   @MinLength(1)

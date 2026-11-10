@@ -14,6 +14,7 @@ import {
 } from 'src/conversation/schemas/conversation.schema';
 import { RealtimeService } from 'src/realtime/realtime.service';
 import { UsersService } from 'src/users/users.service';
+import { isDuplicateKeyError } from '../common/mongo-errors';
 
 @Injectable()
 export class MessageService {
@@ -112,13 +113,10 @@ export class MessageService {
               lastMessageAt: new Date(),
               unreadCounts: new Map(),
             });
-          } catch (createErr: any) {
+          } catch (createErr: unknown) {
             // Concurrency handling: if a concurrent request created the direct conversation first,
             // MongoDB's unique index raises code 11000. Catch it and reuse the winning conversation.
-            if (
-              createErr.code === 11000 ||
-              createErr.message?.includes('E11000')
-            ) {
+            if (isDuplicateKeyError(createErr)) {
               conversation = await this.conversationModel.findOne({
                 type: 'direct',
                 $or: [
