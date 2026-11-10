@@ -5,7 +5,7 @@ import {
   OnGatewayConnection,
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
-import { Server, Socket } from 'socket.io';
+import { DefaultEventsMap, Server, Socket } from 'socket.io';
 import { Logger, OnModuleDestroy } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -14,6 +14,24 @@ import { createClient } from 'redis';
 import { UsersService } from 'src/users/users.service';
 import { RealtimeService } from './realtime.service';
 import { SessionService } from 'src/auth/session.service';
+import type { JwtPayload } from 'src/auth/jwt.strategy';
+import { errorMessage } from 'src/common/error-message';
+
+type RedisClient = ReturnType<typeof createClient>;
+
+// Fields the auth middleware and handleConnection store on socket.data
+interface GatewaySocketData {
+  user?: { _id: string; id: string; username: string; email: string };
+  sessionId?: string;
+  jwtExp?: number;
+  expTimer?: NodeJS.Timeout;
+}
+type GatewaySocket = Socket<
+  DefaultEventsMap,
+  DefaultEventsMap,
+  DefaultEventsMap,
+  GatewaySocketData
+>;
 
 const allowedOrigins = [
   'http://localhost:3000',
@@ -45,8 +63,8 @@ export class RealtimeGateway
   server: Server;
 
   private readonly logger = new Logger(RealtimeGateway.name);
-  private pubClient: any = null;
-  private subClient: any = null;
+  private pubClient: RedisClient | null = null;
+  private subClient: RedisClient | null = null;
   private isRedisAdapterActive = false;
   private isInitializingAdapter = false;
 
@@ -63,9 +81,9 @@ export class RealtimeGateway
     this.realtimeService.setServer(server);
 
     // eslint-disable-next-line @typescript-eslint/no-misused-promises
-    server.use(async (socket: Socket, next) => {
+    server.use(async (socket: GatewaySocket, next) => {
       try {
-        const token =
+        const token: unknown =
           socket.handshake.auth?.token ||
           socket.handshake.headers?.authorization?.replace(/^Bearer\s+/i, '') ||
           socket.handshake.query?.token;
@@ -75,7 +93,9 @@ export class RealtimeGateway
         }
 
         const jwtSecret = this.configService.getOrThrow<string>('JWT_SECRET');
-        const payload = await this.jwtService.verifyAsync(token, {
+        const payload = await this.jwtService.verifyAsync<
+          JwtPayload & { exp?: number }
+        >(token, {
           secret: jwtSecret,
         });
 
@@ -112,9 +132,9 @@ export class RealtimeGateway
         socket.data.jwtExp = payload.exp;
 
         next();
-      } catch (err: any) {
+      } catch (err: unknown) {
         // Keep the reason server-side; clients only learn that access was denied
-        this.logger.warn(`[Socket] Handshake bị từ chối: ${err.message}`);
+        this.logger.warn(`[Socket] Handshake bị từ chối: ${errorMessage(err)}`);
         next(new Error('Không có quyền truy cập'));
       }
     });
@@ -148,17 +168,17 @@ export class RealtimeGateway
         `Đang khởi tạo Socket.IO Redis adapter với URL: ${maskedUrl}`,
       );
 
-      const pubClient = createClient({ url: redisUrl });
-      const subClient = pubClient.duplicate();
+      const pubClient: RedisClient = createClient({ url: redisUrl });
+      const subClient: RedisClient = pubClient.duplicate();
 
-      pubClient.on('error', (err: any) => {
+      pubClient.on('error', (err: unknown) => {
         this.logger.error(
-          `Socket.IO Redis PubClient Error: ${err?.message || err}`,
+          `Socket.IO Redis PubClient Error: ${errorMessage(err)}`,
         );
       });
-      subClient.on('error', (err: any) => {
+      subClient.on('error', (err: unknown) => {
         this.logger.error(
-          `Socket.IO Redis SubClient Error: ${err?.message || err}`,
+          `Socket.IO Redis SubClient Error: ${errorMessage(err)}`,
         );
       });
 
@@ -172,10 +192,10 @@ export class RealtimeGateway
       this.logger.log(
         'Socket.IO Redis adapter đã được khởi tạo và kết nối thành công',
       );
-    } catch (err: any) {
+    } catch (err: unknown) {
       this.isRedisAdapterActive = false;
       this.logger.error(
-        `Không thể khởi tạo Socket.IO Redis adapter; chuyển về bộ điều hợp in-memory. Lỗi: ${err?.message || err}`,
+        `Không thể khởi tạo Socket.IO Redis adapter; chuyển về bộ điều hợp in-memory. Lỗi: ${errorMessage(err)}`,
       );
       await this.cleanupRedisClients();
     } finally {
@@ -217,9 +237,9 @@ export class RealtimeGateway
               // Client is already closed or destroyed
             }
           }
-        } catch (err: any) {
+        } catch (err: unknown) {
           this.logger.warn(
-            `Lỗi khi đóng Socket.IO Redis client: ${err?.message || err}`,
+            `Lỗi khi đóng Socket.IO Redis client: ${errorMessage(err)}`,
           );
         }
       }
@@ -231,8 +251,8 @@ export class RealtimeGateway
   }
 
   getRedisClients(): {
-    pubClient: any;
-    subClient: any;
+    pubClient: RedisClient | null;
+    subClient: RedisClient | null;
   } {
     return {
       pubClient: this.pubClient,
@@ -240,7 +260,7 @@ export class RealtimeGateway
     };
   }
 
-  async handleConnection(client: Socket) {
+  async handleConnection(client: GatewaySocket) {
     try {
       const user = client.data.user;
       if (!user?._id) {
@@ -252,7 +272,7 @@ export class RealtimeGateway
       const sessionId = client.data.sessionId;
       const jwtExp = client.data.jwtExp;
 
-      const delay = jwtExp * 1000 - Date.now();
+      const delay = (jwtExp ?? 0) * 1000 - Date.now();
       if (delay <= 0) {
         this.logger.warn(
           `[Socket] Token đã hết hạn khi kết nối: socketId=${client.id}`,
@@ -285,13 +305,13 @@ export class RealtimeGateway
       this.logger.log(`[Socket] Client đã kết nối: socketId=${client.id}`);
       this.logger.log(`[Socket] User đã xác thực: userId=${userId}`);
       this.logger.log(`[Socket] User đã vào phòng: ${userRoom}`);
-    } catch (err: any) {
-      this.logger.warn(`[Socket] Có lỗi khi vào phòng: ${err.message}`);
+    } catch (err: unknown) {
+      this.logger.warn(`[Socket] Có lỗi khi vào phòng: ${errorMessage(err)}`);
       client.disconnect(true);
     }
   }
 
-  handleDisconnect(client: Socket) {
+  handleDisconnect(client: GatewaySocket) {
     if (client.data?.expTimer) {
       clearTimeout(client.data.expTimer);
     }
