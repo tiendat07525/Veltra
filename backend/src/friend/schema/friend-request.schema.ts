@@ -42,14 +42,14 @@ export class FriendRequest {
 
 export const FriendRequestSchema = SchemaFactory.createForClass(FriendRequest);
 
-FriendRequestSchema.pre('validate', function (next: any) {
+// Mongoose 9 pre hooks receive no next(); the hook continues when the function returns
+FriendRequestSchema.pre('validate', function () {
   if (this.from && this.to) {
     const fromStr = this.from.toString();
     const toStr = this.to.toString();
     this.pairKey =
       fromStr < toStr ? `${fromStr}_${toStr}` : `${toStr}_${fromStr}`;
   }
-  next();
 });
 
 FriendRequestSchema.index({ pairKey: 1 }, { unique: true });
