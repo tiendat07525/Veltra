@@ -17,6 +17,14 @@ import { Message, MessageDocument } from '../messages/schemas/message.schema';
 import { AddParticipantDto } from './dto/add-participant.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
 
+// Public fields of other users embedded in conversation responses (data_model.md §1)
+const CONVERSATION_USER_FIELDS = 'username displayName avatarUrl';
+const conversationUserPopulate = () => [
+  { path: 'participants.userId', select: CONVERSATION_USER_FIELDS },
+  { path: 'seenBy', select: CONVERSATION_USER_FIELDS },
+  { path: 'lastMessage.senderId', select: CONVERSATION_USER_FIELDS },
+];
+
 @Injectable()
 export class ConversationService {
   constructor(
@@ -98,20 +106,7 @@ export class ConversationService {
         ],
       })
       .sort({ lastMessageAt: -1, createdAt: -1 })
-      .populate([
-        {
-          path: 'participants.userId',
-          select: 'displayName avatar',
-        },
-        {
-          path: 'seenBy',
-          select: 'displayName avatar',
-        },
-        {
-          path: 'lastMessage.senderId',
-          select: 'displayName avatar',
-        },
-      ]);
+      .populate(conversationUserPopulate());
 
     if (!conversation) {
       try {
@@ -132,20 +127,7 @@ export class ConversationService {
           lastMessageAt: new Date(),
         });
 
-        await conversation.populate([
-          {
-            path: 'participants.userId',
-            select: 'displayName avatar',
-          },
-          {
-            path: 'seenBy',
-            select: 'displayName avatar',
-          },
-          {
-            path: 'lastMessage.senderId',
-            select: 'displayName avatar',
-          },
-        ]);
+        await conversation.populate(conversationUserPopulate());
       } catch (createErr: any) {
         // Concurrency handling: if a concurrent request created the direct conversation first,
         // MongoDB's unique index raises code 11000. Catch it and return the created conversation.
@@ -165,20 +147,7 @@ export class ConversationService {
                 },
               ],
             })
-            .populate([
-              {
-                path: 'participants.userId',
-                select: 'displayName avatar',
-              },
-              {
-                path: 'seenBy',
-                select: 'displayName avatar',
-              },
-              {
-                path: 'lastMessage.senderId',
-                select: 'displayName avatar',
-              },
-            ]);
+            .populate(conversationUserPopulate());
 
           if (!conversation) {
             throw createErr;
@@ -226,20 +195,7 @@ export class ConversationService {
       lastMessageAt: new Date(),
     });
 
-    await conversation.populate([
-      {
-        path: 'participants.userId',
-        select: 'displayName avatar',
-      },
-      {
-        path: 'seenBy',
-        select: 'displayName avatar',
-      },
-      {
-        path: 'lastMessage.senderId',
-        select: 'displayName avatar',
-      },
-    ]);
+    await conversation.populate(conversationUserPopulate());
 
     return this.formatConversation(conversation);
   }
@@ -252,18 +208,7 @@ export class ConversationService {
     const conversations = await this.conversationModel
       .find({ 'participants.userId': new Types.ObjectId(userId) })
       .sort({ lastMessageAt: -1, updatedAt: -1 })
-      .populate({
-        path: 'participants.userId',
-        select: 'displayName avatarUrl',
-      })
-      .populate({
-        path: 'lastMessage.senderId',
-        select: 'displayName avatarUrl',
-      })
-      .populate({
-        path: 'seenBy',
-        select: 'displayName avatarUrl',
-      })
+      .populate(conversationUserPopulate())
       .lean();
 
     return conversations.map((conversation) =>
@@ -432,6 +377,7 @@ export class ConversationService {
     conversation.group.name = dto.groupName.trim();
 
     await conversation.save();
+    await conversation.populate(conversationUserPopulate());
 
     return this.formatConversation(conversation);
   }
@@ -491,6 +437,7 @@ export class ConversationService {
     }
 
     await conversation.save();
+    await conversation.populate(conversationUserPopulate());
 
     return this.formatConversation(conversation);
   }
@@ -518,6 +465,7 @@ export class ConversationService {
     const participants = (conversation.participants || []).map(
       (participant: any) => ({
         _id: participant.userId?._id,
+        username: participant.userId?.username,
         displayName: participant.userId?.displayName,
         avatarUrl: participant.userId?.avatarUrl ?? null,
         joinedAt: participant.joinedAt,
@@ -535,6 +483,7 @@ export class ConversationService {
     const participants = (conversation.participants || []).map(
       (participant: any) => ({
         _id: participant.userId?._id,
+        username: participant.userId?.username,
         displayName: participant.userId?.displayName,
         avatarUrl: participant.userId?.avatarUrl ?? null,
         joinedAt: participant.joinedAt,
