@@ -42,6 +42,7 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
       - run: npx tsc --noEmit -p tsconfig.json
+      - run: npx eslint .
       - run: npx jest
       - run: npx jest --config ./test/jest-e2e.json test/realtime-redis-adapter.e2e-spec.ts test/session-rotation.e2e-spec.ts test/direct-conversation.e2e-spec.ts
         env:
