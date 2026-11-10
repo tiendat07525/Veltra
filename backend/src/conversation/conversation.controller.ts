@@ -11,6 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import type { AuthenticatedRequest } from 'src/auth/authenticated-request';
 
 import { ConversationService } from './conversation.service';
 
@@ -24,7 +25,10 @@ export class ConversationController {
   constructor(private readonly conversationsService: ConversationService) {}
 
   @Post()
-  async create(@Body() dto: CreateConversationDto, @Req() req: any) {
+  async create(
+    @Body() dto: CreateConversationDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
     const userId = req.user._id.toString();
 
     const conversation = await this.conversationsService.create(dto, userId);
@@ -35,7 +39,7 @@ export class ConversationController {
   }
 
   @Get()
-  async findAll(@Req() req: any) {
+  async findAll(@Req() req: AuthenticatedRequest) {
     const userId = req.user._id.toString();
 
     const conversations = await this.conversationsService.findAll(userId);
@@ -48,9 +52,9 @@ export class ConversationController {
   @Get(':conversationId/messages')
   async getMessages(
     @Param('conversationId') conversationId: string,
-    @Query('limit') limit?: string,
-    @Query('cursor') cursor?: string,
-    @Req() req?: any,
+    @Query('limit') limit: string | undefined,
+    @Query('cursor') cursor: string | undefined,
+    @Req() req: AuthenticatedRequest,
   ) {
     const userId = req.user._id.toString();
 
@@ -65,7 +69,7 @@ export class ConversationController {
   @Patch(':conversationId/seen')
   async markAsSeen(
     @Param('conversationId') conversationId: string,
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
   ) {
     const userId = req.user._id.toString();
 
@@ -76,7 +80,7 @@ export class ConversationController {
   async update(
     @Param('conversationId') conversationId: string,
     @Body() dto: UpdateConversationDto,
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
   ) {
     const userId = req.user._id.toString();
 
@@ -87,7 +91,7 @@ export class ConversationController {
   async addParticipants(
     @Param('conversationId') conversationId: string,
     @Body() dto: AddParticipantDto,
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
   ) {
     const userId = req.user._id.toString();
 
@@ -101,7 +105,7 @@ export class ConversationController {
   @Delete(':conversationId')
   async remove(
     @Param('conversationId') conversationId: string,
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
   ) {
     const userId = req.user._id.toString();
 

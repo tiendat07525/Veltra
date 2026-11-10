@@ -14,6 +14,7 @@ import { AuthService } from './auth.service';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import type { AuthenticatedRequest } from './authenticated-request';
 
 @Controller('auth')
 export class AuthController {
@@ -69,7 +70,10 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
-  async logout(@Req() req: any, @Res({ passthrough: true }) res: Response) {
+  async logout(
+    @Req() req: AuthenticatedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const userId = req.user.id;
     const sessionId = req.user.sessionId;
 

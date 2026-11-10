@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { FriendService } from './friend.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import type { AuthenticatedRequest } from 'src/auth/authenticated-request';
 import { SendFriendRequestDto } from './dto/send-friend-request.dto';
 
 @Controller('friend')
@@ -17,7 +18,10 @@ export class FriendController {
   constructor(private readonly friendService: FriendService) {}
 
   @Post('request')
-  async sendFriendRequest(@Body() dto: SendFriendRequestDto, @Req() req: any) {
+  async sendFriendRequest(
+    @Body() dto: SendFriendRequestDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
     const userId = req.user.id;
     return this.friendService.sendFriendRequest(dto, userId);
   }
@@ -25,7 +29,7 @@ export class FriendController {
   @Post('request/:requestId/accept')
   async acceptFriendRequest(
     @Param('requestId') requestId: string,
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
   ) {
     const userId = req.user.id;
     return this.friendService.acceptFriendRequest(requestId, userId);
@@ -34,26 +38,29 @@ export class FriendController {
   @Post('request/:requestId/decline')
   async declineFriendRequest(
     @Param('requestId') requestId: string,
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
   ) {
     const userId = req.user.id;
     return this.friendService.declineFriendRequest(requestId, userId);
   }
 
   @Post('remove/:friendId')
-  async removeFriend(@Param('friendId') friendId: string, @Req() req: any) {
+  async removeFriend(
+    @Param('friendId') friendId: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
     const user = req.user.id;
     return this.friendService.removeFriend(friendId, user);
   }
 
   @Get('requests')
-  async getFriendRequests(@Req() req: any) {
+  async getFriendRequests(@Req() req: AuthenticatedRequest) {
     const userId = req.user.id;
     return this.friendService.getFriendRequests(userId);
   }
 
   @Get()
-  async getAllFriend(@Req() req: any) {
+  async getAllFriend(@Req() req: AuthenticatedRequest) {
     const userId = req.user.id;
     return this.friendService.getAllFriend(userId);
   }

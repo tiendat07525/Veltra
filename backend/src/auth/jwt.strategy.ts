@@ -4,6 +4,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { Strategy, ExtractJwt } from 'passport-jwt';
 import { UsersService } from 'src/users/users.service';
 import { SessionService } from './session.service';
+import { AuthenticatedUser } from './authenticated-request';
 
 export interface JwtPayload {
   id: string;
@@ -29,7 +30,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: JwtPayload) {
+  async validate(payload: JwtPayload): Promise<AuthenticatedUser> {
     if (!payload || !payload.id || !payload.sessionId) {
       throw new UnauthorizedException('Token payload không hợp lệ');
     }

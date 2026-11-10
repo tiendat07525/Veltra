@@ -13,6 +13,7 @@ import { AddParticipantDto } from '../src/conversation/dto/add-participant.dto';
 import { CreateConversationDto } from '../src/conversation/dto/create-conversation.dto';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
+import type { AuthenticatedRequest } from '../src/auth/authenticated-request';
 import { Types } from 'mongoose';
 import {
   BadRequestException,
@@ -402,7 +403,9 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
       });
 
       it('should reject malformed conversationId in ConversationController.update', async () => {
-        const mockReq = { user: { _id: new Types.ObjectId(creatorUserId) } };
+        const mockReq = {
+          user: { _id: creatorUserId },
+        } as unknown as AuthenticatedRequest;
         await expect(
           conversationController.update(
             malformedId,
@@ -431,7 +434,9 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
       });
 
       it('should reject malformed conversationId in ConversationController.addParticipants', async () => {
-        const mockReq = { user: { _id: new Types.ObjectId(creatorUserId) } };
+        const mockReq = {
+          user: { _id: creatorUserId },
+        } as unknown as AuthenticatedRequest;
         await expect(
           conversationController.addParticipants(
             malformedId,
