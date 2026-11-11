@@ -16,6 +16,7 @@ import { RealtimeService } from './realtime.service';
 import { SessionService } from 'src/auth/session.service';
 import type { JwtPayload } from 'src/auth/jwt.strategy';
 import { errorMessage } from 'src/common/error-message';
+import { isAllowedOrigin } from 'src/common/allowed-origins';
 
 type RedisClient = ReturnType<typeof createClient>;
 
@@ -33,17 +34,10 @@ type GatewaySocket = Socket<
   GatewaySocketData
 >;
 
-const allowedOrigins = [
-  'http://localhost:3000',
-  'https://tiendat75.id.vn',
-  'http://tiendat75.id.vn',
-  process.env.FRONTEND_URL,
-].filter(Boolean) as string[];
-
 @WebSocketGateway({
   cors: {
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (isAllowedOrigin(origin)) {
         callback(null, true);
       } else {
         callback(new Error(`WebSocket CORS blocked for origin: ${origin}`));

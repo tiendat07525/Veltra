@@ -3,6 +3,9 @@ import './globals.css';
 import { NavigationProvider } from '@/lib/navigation';
 import { Plus_Jakarta_Sans } from 'next/font/google';
 
+// Every request needs its own CSP nonce (set in middleware), so no static prerendering
+export const dynamic = 'force-dynamic';
+
 const plusJakartaSans = Plus_Jakarta_Sans({
   subsets: ['latin'],
   weight: ['300', '400', '500', '600', '700', '800'],

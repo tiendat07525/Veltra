@@ -4,6 +4,7 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
+import { getAllowedOrigins, isAllowedOrigin } from './common/allowed-origins';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -22,14 +23,15 @@ async function bootstrap() {
     }),
   );
 
-  const allowedOrigins = [
-    'http://localhost:3000',
-    'https://tiendat75.id.vn',
-    'http://tiendat75.id.vn',
-  ];
+  if (process.env.NODE_ENV === 'production' && !process.env.FRONTEND_URL) {
+    console.warn(
+      'FRONTEND_URL chưa được cấu hình: mọi request từ trình duyệt sẽ bị CORS chặn',
+    );
+  }
+  console.log(`CORS origins: ${getAllowedOrigins().join(', ') || '(none)'}`);
   app.enableCors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (isAllowedOrigin(origin)) {
         callback(null, true);
       } else {
         callback(new Error('Blocked by CORS'));
