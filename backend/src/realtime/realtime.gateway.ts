@@ -17,6 +17,11 @@ import { SessionService } from 'src/auth/session.service';
 import type { JwtPayload } from 'src/auth/jwt.strategy';
 import { errorMessage } from 'src/common/error-message';
 import { isAllowedOrigin } from 'src/common/allowed-origins';
+import { ThrottlerStorageRedisService } from 'src/auth/throttler-storage-redis.service';
+import { getSocketClientIp } from 'src/common/client-ip';
+
+const SOCKET_CONNECT_LIMIT = 30;
+const SOCKET_CONNECT_WINDOW_MS = 60_000;
 
 type RedisClient = ReturnType<typeof createClient>;
 
@@ -68,6 +73,7 @@ export class RealtimeGateway
     private readonly usersService: UsersService,
     private readonly realtimeService: RealtimeService,
     private readonly sessionService: SessionService,
+    private readonly connectRateLimiter: ThrottlerStorageRedisService,
   ) {}
 
   async afterInit(server: Server) {
@@ -77,6 +83,25 @@ export class RealtimeGateway
     // eslint-disable-next-line @typescript-eslint/no-misused-promises
     server.use(async (socket: GatewaySocket, next) => {
       try {
+        // Count every handshake (valid or not) per client IP; fails open if Redis is down
+        const ip = getSocketClientIp(
+          socket.handshake.headers,
+          socket.handshake.address,
+        );
+        const { isBlocked } = await this.connectRateLimiter.increment(
+          ip,
+          SOCKET_CONNECT_WINDOW_MS,
+          SOCKET_CONNECT_LIMIT,
+          0,
+          'socket-connect',
+        );
+        if (isBlocked) {
+          this.logger.warn(
+            '[Socket] Handshake bị từ chối: vượt giới hạn kết nối',
+          );
+          return next(new Error('Quá nhiều kết nối, vui lòng thử lại sau'));
+        }
+
         const token: unknown =
           socket.handshake.auth?.token ||
           socket.handshake.headers?.authorization?.replace(/^Bearer\s+/i, '') ||

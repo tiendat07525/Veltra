@@ -76,7 +76,14 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
   }
 
   async revokeAllUserSessions(userId: string): Promise<void> {
-    const keys = await this.client.keys(`session:${userId}:*`);
+    // SCAN walks the keyspace in batches; KEYS blocks Redis while it scans everything
+    const keys: string[] = [];
+    for await (const batch of this.client.scanIterator({
+      MATCH: `session:${userId}:*`,
+      COUNT: 100,
+    })) {
+      keys.push(...batch);
+    }
     if (keys.length > 0) {
       await this.client.del(keys);
     }

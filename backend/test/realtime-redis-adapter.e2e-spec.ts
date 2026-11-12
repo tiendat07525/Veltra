@@ -15,6 +15,16 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
   const mockSessionService: Partial<SessionService> = {
     getSession: jest.fn().mockResolvedValue({ expiresAt: undefined }),
   };
+  // Connection rate limiter that never blocks (rate limiting has its own unit tests)
+  const allowAllConnectLimiter = {
+    increment: () =>
+      Promise.resolve({
+        totalHits: 1,
+        timeToExpire: 60,
+        isBlocked: false,
+        timeToBlockExpire: 0,
+      }),
+  };
 
   let httpServer1: http.Server;
   let httpServer2: http.Server;
@@ -134,6 +144,7 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
       mockUsersService as any,
       realtimeService1,
       mockSessionService as any,
+      allowAllConnectLimiter as any,
     );
     gateway2 = new RealtimeGateway(
       mockJwtService as any,
@@ -141,6 +152,7 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
       mockUsersService as any,
       realtimeService2,
       mockSessionService as any,
+      allowAllConnectLimiter as any,
     );
 
     httpServer1 = http.createServer();
@@ -208,6 +220,7 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
       mockUsersService as any,
       realtimeService1,
       mockSessionService as any,
+      allowAllConnectLimiter as any,
     );
     gateway2 = new RealtimeGateway(
       mockJwtService as any,
@@ -215,6 +228,7 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
       mockUsersService as any,
       realtimeService2,
       mockSessionService as any,
+      allowAllConnectLimiter as any,
     );
 
     httpServer1 = http.createServer();
@@ -320,6 +334,7 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
       mockUsersService as any,
       realtimeService1,
       mockSessionService as any,
+      allowAllConnectLimiter as any,
     );
     gateway2 = new RealtimeGateway(
       mockJwtService as any,
@@ -327,6 +342,7 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
       mockUsersService as any,
       realtimeService2,
       mockSessionService as any,
+      allowAllConnectLimiter as any,
     );
 
     httpServer1 = http.createServer();
