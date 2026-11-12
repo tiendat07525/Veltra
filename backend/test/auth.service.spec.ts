@@ -70,29 +70,55 @@ describe('AuthService (Security & Registration)', () => {
       password: 'StrongSecretPassword123!',
     };
 
-    it('should reject registration if email already exists', async () => {
+    const conflictMessage = 'Email hoặc username đã được sử dụng';
+
+    it('should reject an existing email with the generic conflict message and still look up the username', async () => {
       mockUsersService.findByEmail.mockResolvedValue({ _id: 'existing1' });
+      mockUsersService.findByUsername.mockResolvedValue(null);
 
       await expect(service.register(registerDto)).rejects.toThrow(
-        new ConflictException('Email đã tồn tại'),
+        new ConflictException(conflictMessage),
       );
       expect(mockUsersService.findByEmail).toHaveBeenCalledWith(
         registerDto.email,
-      );
-      expect(mockUsersService.create).not.toHaveBeenCalled();
-    });
-
-    it('should reject registration if username already exists', async () => {
-      mockUsersService.findByEmail.mockResolvedValue(null);
-      mockUsersService.findByUsername.mockResolvedValue({ _id: 'existing2' });
-
-      await expect(service.register(registerDto)).rejects.toThrow(
-        new ConflictException('Username đã tồn tại'),
       );
       expect(mockUsersService.findByUsername).toHaveBeenCalledWith(
         registerDto.username,
       );
       expect(mockUsersService.create).not.toHaveBeenCalled();
+    });
+
+    it('should reject an existing username with the same generic conflict message', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(null);
+      mockUsersService.findByUsername.mockResolvedValue({ _id: 'existing2' });
+
+      await expect(service.register(registerDto)).rejects.toThrow(
+        new ConflictException(conflictMessage),
+      );
+      expect(mockUsersService.create).not.toHaveBeenCalled();
+    });
+
+    it('should return 409 instead of 500 when a concurrent registration hits the unique index', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(null);
+      mockUsersService.findByUsername.mockResolvedValue(null);
+      mockUsersService.create.mockRejectedValue({
+        code: 11000,
+        message: 'E11000 duplicate key error collection: users index: email_1',
+      });
+
+      await expect(service.register(registerDto)).rejects.toThrow(
+        new ConflictException(conflictMessage),
+      );
+    });
+
+    it('should rethrow other errors from user creation', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(null);
+      mockUsersService.findByUsername.mockResolvedValue(null);
+      mockUsersService.create.mockRejectedValue(new Error('connection reset'));
+
+      await expect(service.register(registerDto)).rejects.toThrow(
+        'connection reset',
+      );
     });
 
     it('should hash password with bcrypt (10 rounds) and invoke usersService.create without returning password', async () => {

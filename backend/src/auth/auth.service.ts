@@ -13,6 +13,10 @@ import { SessionService } from './session.service';
 import { RealtimeService } from 'src/realtime/realtime.service';
 import { forwardRef, Inject } from '@nestjs/common';
 import { Types } from 'mongoose';
+import { isDuplicateKeyError } from '../common/mongo-errors';
+
+// Same message for every conflict so the response does not reveal which field is taken
+const REGISTER_CONFLICT_MESSAGE = 'Email hoặc username đã được sử dụng';
 
 // User fields that go into the JWT payload and the Redis session
 interface SessionUser {
@@ -33,25 +37,28 @@ export class AuthService {
   ) {}
 
   async register(registerDto: RegisterDto) {
-    const existedUser = await this.usersService.findByEmail(registerDto.email);
-    if (existedUser) {
-      throw new ConflictException('Email đã tồn tại');
-    }
-
-    const existedPhone = await this.usersService.findByUsername(
-      registerDto.username,
-    );
-    if (existedPhone) {
-      throw new ConflictException('Username đã tồn tại');
+    // Always run both lookups so response time does not depend on which one matched
+    const [emailOwner, usernameOwner] = await Promise.all([
+      this.usersService.findByEmail(registerDto.email),
+      this.usersService.findByUsername(registerDto.username),
+    ]);
+    if (emailOwner || usernameOwner) {
+      throw new ConflictException(REGISTER_CONFLICT_MESSAGE);
     }
 
     const hashedPassword = await bcrypt.hash(registerDto.password, 10);
-    const result = await this.usersService.create({
-      ...registerDto,
-      password: hashedPassword,
-    });
-
-    return result;
+    try {
+      return await this.usersService.create({
+        ...registerDto,
+        password: hashedPassword,
+      });
+    } catch (err: unknown) {
+      // Two concurrent registrations raced past the lookups; the unique index caught it
+      if (isDuplicateKeyError(err)) {
+        throw new ConflictException(REGISTER_CONFLICT_MESSAGE);
+      }
+      throw err;
+    }
   }
 
   async login(loginDto: LoginDto, userAgent?: string, ipAddress?: string) {
