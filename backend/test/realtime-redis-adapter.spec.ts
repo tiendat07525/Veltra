@@ -21,6 +21,7 @@ describe('RealtimeGateway - Socket.IO Redis Adapter (Unit Tests)', () => {
   let usersService: jest.Mocked<Partial<UsersService>>;
   let realtimeService: jest.Mocked<Partial<RealtimeService>>;
   let sessionService: jest.Mocked<Partial<SessionService>>;
+  let connectRateLimiter: { increment: jest.Mock };
   let mockServer: any;
 
   beforeEach(() => {
@@ -44,6 +45,14 @@ describe('RealtimeGateway - Socket.IO Redis Adapter (Unit Tests)', () => {
     sessionService = {
       getSession: jest.fn(),
     };
+    connectRateLimiter = {
+      increment: jest.fn().mockResolvedValue({
+        totalHits: 1,
+        timeToExpire: 60,
+        isBlocked: false,
+        timeToBlockExpire: 0,
+      }),
+    };
 
     mockServer = {
       adapter: jest.fn(),
@@ -60,6 +69,7 @@ describe('RealtimeGateway - Socket.IO Redis Adapter (Unit Tests)', () => {
       usersService as any,
       realtimeService as any,
       sessionService as any,
+      connectRateLimiter as any,
     );
   });
 
@@ -498,6 +508,52 @@ describe('RealtimeGateway - Socket.IO Redis Adapter (Unit Tests)', () => {
 
       expect(next).toHaveBeenCalledWith(expect.any(Error));
       expect(next.mock.calls[0][0].message).toBe('Không có quyền truy cập');
+    });
+
+    describe('Connection rate limit', () => {
+      it('should count the handshake under the client IP from X-Forwarded-For', async () => {
+        const socket: any = {
+          handshake: {
+            auth: {},
+            headers: { 'x-forwarded-for': '203.0.113.7' },
+            address: '127.0.0.1',
+          },
+          data: {},
+        };
+
+        await authMiddleware(socket, jest.fn());
+
+        expect(connectRateLimiter.increment).toHaveBeenCalledWith(
+          '203.0.113.7',
+          60_000,
+          30,
+          0,
+          'socket-connect',
+        );
+      });
+
+      it('should reject without verifying the token once the limit is exceeded', async () => {
+        connectRateLimiter.increment.mockResolvedValue({
+          totalHits: 31,
+          timeToExpire: 40,
+          isBlocked: true,
+          timeToBlockExpire: 40,
+        });
+        const socket: any = {
+          handshake: { auth: { token: 'valid-jwt-token' } },
+          data: {},
+        };
+        const next = jest.fn();
+
+        await authMiddleware(socket, next);
+
+        expect(next.mock.calls[0][0]).toBeInstanceOf(Error);
+        expect(next.mock.calls[0][0].message).toBe(
+          'Quá nhiều kết nối, vui lòng thử lại sau',
+        );
+        expect(jwtService.verifyAsync).not.toHaveBeenCalled();
+        expect(socket.data.user).toBeUndefined();
+      });
     });
 
     describe('Redis session verification (A1)', () => {
