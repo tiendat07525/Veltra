@@ -4,7 +4,7 @@ import { UsersService } from '../src/users/users.service';
 import { User, UserSchema } from '../src/users/schemas/user.schema';
 import * as bcrypt from 'bcrypt';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
-import { Types } from 'mongoose';
+import { model, Types } from 'mongoose';
 
 describe('UsersService (Security & Password Hashing)', () => {
   let service: UsersService;
@@ -288,5 +288,42 @@ describe('UsersService (Security & Password Hashing)', () => {
       expect(fields).not.toContain('email');
       expect(findFilter.$or[0].username.test('ALICE_99')).toBe(true);
     });
+  });
+});
+
+describe('UserSchema constraints', () => {
+  // Model on the default (unconnected) mongoose instance: validateSync needs no database
+  const UserModel = model('UserSchemaConstraintsSpec', UserSchema);
+  const valid = {
+    username: 'alice',
+    email: 'alice@example.com',
+    password: '$2b$10$hash',
+  };
+
+  it('should require username and email', () => {
+    const missingUsername = new UserModel({ ...valid, username: undefined });
+    const missingEmail = new UserModel({ ...valid, email: undefined });
+
+    expect(missingUsername.validateSync()?.errors.username?.kind).toBe(
+      'required',
+    );
+    expect(missingEmail.validateSync()?.errors.email?.kind).toBe('required');
+  });
+
+  it('should accept a complete user', () => {
+    expect(new UserModel(valid).validateSync()).toBeUndefined();
+  });
+
+  it('should not index password, while username and email stay unique', () => {
+    const indexes = UserSchema.indexes() as [
+      Record<string, unknown>,
+      { unique?: boolean },
+    ][];
+    const uniqueFields = indexes
+      .filter(([, options]) => options.unique)
+      .flatMap(([fields]) => Object.keys(fields));
+
+    expect(indexes.some(([fields]) => 'password' in fields)).toBe(false);
+    expect(uniqueFields).toEqual(expect.arrayContaining(['username', 'email']));
   });
 });

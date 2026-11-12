@@ -8,7 +8,7 @@ export type UserDocument = HydratedDocument<User>;
 })
 export class User {
   @Prop({
-    require: true,
+    required: true,
     unique: true,
     trim: true,
     lowercase: true,
@@ -17,7 +17,6 @@ export class User {
 
   @Prop({
     required: true,
-    unique: true,
     trim: true,
     // Excluded from every query by default; only login selects it with '+password'
     select: false,
@@ -25,7 +24,7 @@ export class User {
   password: string;
 
   @Prop({
-    require: true,
+    required: true,
     unique: true,
     trim: true,
     lowercase: true,
