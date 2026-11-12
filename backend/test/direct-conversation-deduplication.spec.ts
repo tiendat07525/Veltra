@@ -12,6 +12,7 @@ import {
 import { Message } from '../src/messages/schemas/message.schema';
 import { UsersService } from '../src/users/users.service';
 import { RealtimeService } from '../src/realtime/realtime.service';
+import { groupLookupProviders } from './helpers/group-lookup-mocks';
 
 describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protection', () => {
   let conversationService: ConversationService;
@@ -53,6 +54,7 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
           provide: getModelToken(Message.name),
           useValue: mockMessageModel,
         },
+        ...groupLookupProviders(),
         {
           provide: UsersService,
           useValue: mockUsersService,

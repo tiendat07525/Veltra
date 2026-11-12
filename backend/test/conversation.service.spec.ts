@@ -5,6 +5,7 @@ import { Types } from 'mongoose';
 import { ConversationService } from '../src/conversation/conversation.service';
 import { Conversation } from '../src/conversation/schemas/conversation.schema';
 import { Message } from '../src/messages/schemas/message.schema';
+import { groupLookupProviders } from './helpers/group-lookup-mocks';
 
 describe('ConversationService.getMessages (cursor pagination)', () => {
   let service: ConversationService;
@@ -71,6 +72,7 @@ describe('ConversationService.getMessages (cursor pagination)', () => {
           provide: getModelToken(Message.name),
           useValue: mockMessageModel,
         },
+        ...groupLookupProviders(),
       ],
     }).compile();
 

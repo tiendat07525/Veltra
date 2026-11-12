@@ -3,9 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import { X, Search, MessageSquarePlus, Check, Loader2 } from 'lucide-react';
 import { UserAvatar } from '@/components/ui/UserAvatar';
-import { User } from '@/types/user';
+import { User, UserBasicInfo } from '@/types/user';
 import { authService } from '@/services/api/auth.service';
 import { userService } from '@/services/api/user.service';
+import { friendService } from '@/services/api/friend.service';
 
 interface NewConversationModalProps {
   isOpen: boolean;
@@ -27,6 +28,8 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
   const [search, setSearch] = useState('');
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
+  // Groups may only include friends (enforced by the backend)
+  const [friends, setFriends] = useState<UserBasicInfo[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -40,11 +43,16 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
       });
       async function load() {
         try {
-          const [me, users] = await Promise.all([
+          const [me, users, friendList] = await Promise.all([
             authService.getCurrentUser(),
             userService.getUsers(),
+            friendService.getFriends().catch((err: unknown) => {
+              console.error('Lỗi khi tải danh sách bạn bè:', err);
+              return [] as UserBasicInfo[];
+            }),
           ]);
           setAvailableUsers(users.filter((u) => u._id !== me._id));
+          setFriends(friendList);
         } catch (err) {
           console.error('Lỗi khi tải danh sách người dùng:', err);
         } finally {
@@ -57,7 +65,8 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
 
   if (!isOpen) return null;
 
-  const filteredUsers = availableUsers.filter(
+  const listedUsers: UserBasicInfo[] = tab === 'group' ? friends : availableUsers;
+  const filteredUsers = listedUsers.filter(
     (u) =>
       (u.displayName || '').toLowerCase().includes(search.toLowerCase().trim()) ||
       (u.username || '').toLowerCase().includes(search.toLowerCase().trim())
@@ -164,7 +173,7 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Tìm kiếm người dùng..."
+            placeholder={tab === 'group' ? 'Tìm kiếm bạn bè...' : 'Tìm kiếm người dùng...'}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-3 py-2 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:ring-1 focus:ring-sky-500 focus:outline-hidden"
@@ -179,7 +188,9 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
             </div>
           ) : filteredUsers.length === 0 ? (
             <div className="text-center py-8 text-xs text-slate-400">
-              Không tìm thấy người dùng nào
+              {tab === 'group' && friends.length === 0
+                ? 'Bạn cần kết bạn trước khi tạo nhóm'
+                : 'Không tìm thấy người dùng nào'}
             </div>
           ) : (
             filteredUsers.map((user) => {
@@ -197,7 +208,7 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
                   <div className="flex items-center gap-3">
                     <UserAvatar
                       src={user.avatarUrl}
-                      name={user.displayName || user.username}
+                      name={user.displayName || user.username || ''}
                       size="sm"
                     />
                     <div>
