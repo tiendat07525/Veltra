@@ -1,16 +1,11 @@
 import React from 'react';
 import './globals.css';
+// Self-hosted (bundled into /_next/static/media): builds no longer download from Google Fonts
+import '@fontsource-variable/plus-jakarta-sans';
 import { NavigationProvider } from '@/lib/navigation';
-import { Plus_Jakarta_Sans } from 'next/font/google';
 
 // Every request needs its own CSP nonce (set in middleware), so no static prerendering
 export const dynamic = 'force-dynamic';
-
-const plusJakartaSans = Plus_Jakarta_Sans({
-  subsets: ['latin'],
-  weight: ['300', '400', '500', '600', '700', '800'],
-  display: 'swap',
-});
 
 export const metadata = {
   title: 'Veltra – Realtime Chat Platform',
@@ -30,7 +25,7 @@ export default function RootLayout({
         <title>Veltra – Ứng dụng chat realtime</title>
         <meta name="description" content="A modern, hyper-responsive realtime messaging and collaboration platform." />
       </head>
-      <body className={`h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 font-sans antialiased ${plusJakartaSans.className}`}>
+      <body className="h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 font-sans antialiased">
         <NavigationProvider>
           {children}
         </NavigationProvider>

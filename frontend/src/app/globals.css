@@ -2,7 +2,7 @@
 
 @layer base {
   :root {
-    --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    --font-sans: 'Plus Jakarta Sans Variable', system-ui, -apple-system, sans-serif;
   }
 
   body {
