@@ -4,6 +4,7 @@ import { Types } from 'mongoose';
 import { ConversationService } from '../src/conversation/conversation.service';
 import { Conversation } from '../src/conversation/schemas/conversation.schema';
 import { Message } from '../src/messages/schemas/message.schema';
+import { groupLookupProviders } from './helpers/group-lookup-mocks';
 
 interface PopulatedUser {
   _id: Types.ObjectId;
@@ -88,6 +89,7 @@ describe('ConversationService participant user fields', () => {
           useValue: mockConversationModel,
         },
         { provide: getModelToken(Message.name), useValue: {} },
+        ...groupLookupProviders(),
       ],
     }).compile();
 

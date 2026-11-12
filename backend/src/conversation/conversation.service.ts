@@ -18,6 +18,11 @@ import { Message, MessageDocument } from '../messages/schemas/message.schema';
 import { AddParticipantDto } from './dto/add-participant.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
 import { isDuplicateKeyError } from '../common/mongo-errors';
+import { User, UserDocument } from '../users/schemas/user.schema';
+import { Friend, FriendDocument } from '../friend/schema/friend.schema';
+
+// Group size cap, including the creator
+export const MAX_GROUP_MEMBERS = 100;
 
 // Public fields of other users embedded in conversation responses (data_model.md §1)
 const CONVERSATION_USER_FIELDS = 'username displayName avatarUrl';
@@ -53,7 +58,37 @@ export class ConversationService {
     private readonly conversationModel: Model<ConversationDocument>,
     @InjectModel(Message.name)
     private readonly messageModel: Model<MessageDocument>,
+    @InjectModel(User.name)
+    private readonly userModel: Model<UserDocument>,
+    @InjectModel(Friend.name)
+    private readonly friendModel: Model<FriendDocument>,
   ) {}
+
+  // Every user added to a group must exist and be a friend of the person adding them
+  private async assertCanAddToGroup(
+    actorId: Types.ObjectId,
+    userIds: Types.ObjectId[],
+  ) {
+    if (userIds.length === 0) return;
+
+    const existing = await this.userModel.countDocuments({
+      _id: { $in: userIds },
+    });
+    if (existing !== userIds.length) {
+      throw new BadRequestException('Người dùng không tồn tại');
+    }
+
+    // Friend pairs are stored normalized (smaller id in `user`)
+    const pairs = userIds.map((id) =>
+      actorId.toString() < id.toString()
+        ? { user: actorId, friend: id }
+        : { user: id, friend: actorId },
+    );
+    const friends = await this.friendModel.countDocuments({ $or: pairs });
+    if (friends !== userIds.length) {
+      throw new BadRequestException('Chỉ có thể thêm bạn bè vào nhóm');
+    }
+  }
 
   async create(dto: CreateConversationDto, userId: string) {
     try {
@@ -196,12 +231,21 @@ export class ConversationService {
       }
     }
 
-    const participantIds = [userId.toString(), ...participants];
+    // Invited users: duplicates and the creator removed
+    const invitedIds = [...new Set(participants)]
+      .filter((id) => id !== userId.toString())
+      .map((id) => new Types.ObjectId(id));
 
-    const uniqueParticipantIds = [...new Set(participantIds)];
+    if (invitedIds.length + 1 > MAX_GROUP_MEMBERS) {
+      throw new BadRequestException(
+        `Nhóm tối đa ${MAX_GROUP_MEMBERS} thành viên`,
+      );
+    }
 
-    const conversationParticipants = uniqueParticipantIds.map((id) => ({
-      userId: new Types.ObjectId(id),
+    await this.assertCanAddToGroup(userId, invitedIds);
+
+    const conversationParticipants = [userId, ...invitedIds].map((id) => ({
+      userId: id,
       joinedAt: new Date(),
     }));
 
@@ -448,14 +492,27 @@ export class ConversationService {
       participant.userId.toString(),
     );
 
-    for (const id of dto.userIds) {
-      if (!existingIds.includes(id)) {
-        existingIds.push(id);
-        conversation.participants.push({
-          userId: new Types.ObjectId(id),
-          joinedAt: new Date(),
-        } as Participant);
-      }
+    // Only users not already in the group are checked and added
+    const newIds = [...new Set(dto.userIds)].filter(
+      (id) => !existingIds.includes(id),
+    );
+
+    if (existingIds.length + newIds.length > MAX_GROUP_MEMBERS) {
+      throw new BadRequestException(
+        `Nhóm tối đa ${MAX_GROUP_MEMBERS} thành viên`,
+      );
+    }
+
+    await this.assertCanAddToGroup(
+      new Types.ObjectId(userId),
+      newIds.map((id) => new Types.ObjectId(id)),
+    );
+
+    for (const id of newIds) {
+      conversation.participants.push({
+        userId: new Types.ObjectId(id),
+        joinedAt: new Date(),
+      } as Participant);
     }
 
     await conversation.save();

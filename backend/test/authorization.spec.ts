@@ -20,6 +20,7 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
+import { groupLookupProviders } from './helpers/group-lookup-mocks';
 
 describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
   let conversationService: ConversationService;
@@ -78,6 +79,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
           provide: getModelToken(Message.name),
           useValue: mockMessageModel,
         },
+        ...groupLookupProviders(),
         {
           provide: UsersService,
           useValue: mockUsersService,
