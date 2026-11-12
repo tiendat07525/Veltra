@@ -4,7 +4,7 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
-import { getAllowedOrigins, isAllowedOrigin } from './common/allowed-origins';
+import { getAllowedOrigins, restCorsOrigin } from './common/allowed-origins';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -30,13 +30,7 @@ async function bootstrap() {
   }
   console.log(`CORS origins: ${getAllowedOrigins().join(', ') || '(none)'}`);
   app.enableCors({
-    origin: (origin, callback) => {
-      if (isAllowedOrigin(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error('Blocked by CORS'));
-      }
-    },
+    origin: restCorsOrigin,
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,

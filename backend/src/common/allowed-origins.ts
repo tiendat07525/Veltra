@@ -1,3 +1,6 @@
+import { ForbiddenException } from '@nestjs/common';
+import type { CustomOrigin } from '@nestjs/common/interfaces/external/cors-options.interface';
+
 const DEV_FRONTEND_ORIGIN = 'http://localhost:3000';
 
 // Browser origins allowed by REST CORS and the Socket.IO gateway.
@@ -19,3 +22,12 @@ export const isAllowedOrigin = (
   origin: string | undefined,
   env: NodeJS.ProcessEnv = process.env,
 ): boolean => !origin || getAllowedOrigins(env).includes(origin);
+
+// REST CORS: a disallowed origin is rejected with 403 so the request never reaches a handler
+export const restCorsOrigin: CustomOrigin = (origin, callback) => {
+  if (isAllowedOrigin(origin)) {
+    callback(null, true);
+  } else {
+    callback(new ForbiddenException('Origin không được phép'));
+  }
+};

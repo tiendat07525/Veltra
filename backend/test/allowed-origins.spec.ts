@@ -1,6 +1,8 @@
+import { ForbiddenException } from '@nestjs/common';
 import {
   getAllowedOrigins,
   isAllowedOrigin,
+  restCorsOrigin,
 } from '../src/common/allowed-origins';
 
 describe('allowed origins', () => {
@@ -49,5 +51,35 @@ describe('allowed origins', () => {
 
   it('should allow requests without an Origin header', () => {
     expect(isAllowedOrigin(undefined, prod)).toBe(true);
+  });
+
+  describe('restCorsOrigin', () => {
+    const originalEnv = process.env;
+
+    beforeEach(() => {
+      process.env = { ...originalEnv, ...prod };
+    });
+
+    afterEach(() => {
+      process.env = originalEnv;
+    });
+
+    it('should allow a configured origin', () => {
+      const callback = jest.fn();
+
+      restCorsOrigin('https://tiendat75.id.vn', callback);
+
+      expect(callback).toHaveBeenCalledWith(null, true);
+    });
+
+    it('should reject a disallowed origin with 403 instead of a generic error (500)', () => {
+      const callback = jest.fn();
+
+      restCorsOrigin('https://evil.example', callback);
+
+      const [err] = callback.mock.calls[0] as [unknown];
+      expect(err).toBeInstanceOf(ForbiddenException);
+      expect((err as ForbiddenException).getStatus()).toBe(403);
+    });
   });
 });
