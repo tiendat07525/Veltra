@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { Conversation, ConversationParticipant } from '@/types/conversation';
 import { Message } from '@/types/message';
 import {
@@ -21,6 +21,9 @@ interface ChatWindowProps {
   partner: ConversationParticipant | null;
   messages: Message[];
   loadingMessages: boolean;
+  hasMoreMessages?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
   onSendMessage: (content: string) => void;
   onRetryMessage?: (clientMsgId: string) => void;
   onBackMobile: () => void;
@@ -37,6 +40,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   partner,
   messages,
   loadingMessages,
+  hasMoreMessages = false,
+  loadingMore = false,
+  onLoadMore,
   onSendMessage,
   onRetryMessage,
   onBackMobile,
@@ -48,11 +54,53 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [inputValue, setInputValue] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // Distance from the bottom when older messages were requested. Prepending keeps it constant,
+  // so restoring it is correct whether or not the browser's scroll anchoring already moved us.
+  const restoreFromBottomRef = useRef<number | null>(null);
+  const firstKeyRef = useRef<string | undefined>(undefined);
+  const lastKeyRef = useRef<string | undefined>(undefined);
 
-  // Auto-scroll to bottom when new messages arrive
+  const requestOlder = () => {
+    const el = scrollRef.current;
+    if (!el || !onLoadMore || !hasMoreMessages || loadingMore || loadingMessages) return;
+    restoreFromBottomRef.current = el.scrollHeight - el.scrollTop;
+    onLoadMore();
+  };
+
+  const handleScroll = () => {
+    if ((scrollRef.current?.scrollTop ?? Infinity) <= 80) requestOlder();
+  };
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+
+    // Older messages were prepended (or the request ended): keep the same message in view
+    if (restoreFromBottomRef.current !== null && !loadingMore) {
+      if (el) el.scrollTop = el.scrollHeight - restoreFromBottomRef.current;
+      restoreFromBottomRef.current = null;
+    }
+
+    // Scroll to the bottom only when the newest message changes, not on prepend or revoke
+    const keyOf = (m?: Message) => (m ? m.clientMsgId || m._id : undefined);
+    const firstKey = keyOf(messages[0]);
+    const lastKey = keyOf(messages[messages.length - 1]);
+    if (lastKey !== lastKeyRef.current) {
+      // Whole list replaced (opened / switched conversation): jump, so a smooth scroll
+      // passing the top does not trigger loading older messages
+      const replaced = firstKey !== firstKeyRef.current;
+      messagesEndRef.current?.scrollIntoView({ behavior: replaced ? 'auto' : 'smooth' });
+    }
+    firstKeyRef.current = firstKey;
+    lastKeyRef.current = lastKey;
+  }, [messages, loadingMore]);
+
+  // History shorter than the viewport has no scrollbar to pull: keep loading while it fits
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    const el = scrollRef.current;
+    if (el && messages.length > 0 && el.scrollHeight <= el.clientHeight) requestOlder();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, hasMoreMessages, loadingMore, loadingMessages]);
 
   // Focus input when conversation changes
   useEffect(() => {
@@ -140,7 +188,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       </header>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto px-4 py-3">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-3">
         {loadingMessages ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="w-6 h-6 animate-spin text-sky-500" />
@@ -165,6 +213,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           </div>
         ) : (
           <>
+            {loadingMore ? (
+              <div className="flex items-center justify-center py-2 text-xs text-slate-400">
+                <Loader2 className="w-4 h-4 animate-spin text-sky-500" />
+                <span className="ml-2">Đang tải tin cũ…</span>
+              </div>
+            ) : !hasMoreMessages ? (
+              <p className="py-2 text-center text-[11px] text-slate-400 select-none">
+                Đầu cuộc trò chuyện
+              </p>
+            ) : null}
             {groupedMessages.map((group) => (
               <div key={group.date}>
                 {/* Date separator */}
