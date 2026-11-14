@@ -251,6 +251,9 @@ export function VeltraClientApp() {
                 partner={chat.conversationPartner}
                 messages={chat.messagesHook.messages}
                 loadingMessages={chat.messagesHook.loading}
+                hasMoreMessages={chat.messagesHook.hasMore}
+                loadingMore={chat.messagesHook.loadingMore}
+                onLoadMore={chat.messagesHook.loadMore}
                 onSendMessage={chat.messagesHook.sendMessage}
                 onRetryMessage={chat.messagesHook.retryMessage}
                 onBackMobile={() => setMobileViewChat(false)}

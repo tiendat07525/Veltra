@@ -4,7 +4,7 @@ import { Message } from '@/types/message';
 import { conversationService } from '@/services/api/conversation.service';
 import { socketService } from '@/services/socket/socket.service';
 
-export function useConversations(enabled: boolean = true) {
+export function useConversations(enabled: boolean = true, currentUserId: string | null = null) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -169,12 +169,12 @@ export function useConversations(enabled: boolean = true) {
       if (filter === 'direct') return conv.type === 'direct';
       if (filter === 'groups') return conv.type === 'group';
       if (filter === 'unread') {
-        // Check if there are any unread counts > 0
-        return conv.unreadCounts && Object.values(conv.unreadCounts).some((v) => v > 0);
+        // Only my own unread count (unreadCounts holds every member's)
+        return !!currentUserId && (conv.unreadCounts?.[currentUserId] ?? 0) > 0;
       }
       return true;
     });
-  }, [conversations, searchQuery, filter]);
+  }, [conversations, searchQuery, filter, currentUserId]);
 
   return {
     conversations: filteredConversations,

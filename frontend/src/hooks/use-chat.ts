@@ -6,13 +6,13 @@ import { ConversationParticipant } from '@/types/conversation';
 import { authService } from '@/services/api/auth.service';
 
 export function useChat(enabled: boolean = true, initialConversationId?: string) {
-  const conversationsHook = useConversations(enabled);
+  const [currentUser, setCurrentUser] = useState<CurrentUserProfile | null>(null);
+  const [currentUserLoading, setCurrentUserLoading] = useState<boolean>(true);
+
+  const conversationsHook = useConversations(enabled, currentUser?._id ?? null);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
     initialConversationId || null
   );
-
-  const [currentUser, setCurrentUser] = useState<CurrentUserProfile | null>(null);
-  const [currentUserLoading, setCurrentUserLoading] = useState<boolean>(true);
 
   useEffect(() => {
     if (!enabled) return;
