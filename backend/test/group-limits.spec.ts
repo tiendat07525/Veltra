@@ -171,6 +171,19 @@ describe('ConversationService group membership limits', () => {
       expect(doc.save).toHaveBeenCalled();
     });
 
+    it('should start new members at lastReadSeq = lastSeq so earlier messages are not unread', async () => {
+      const doc = { ...makeGroupDocument(2), lastSeq: 12 };
+      mockConversationModel.findOne.mockResolvedValue(doc);
+      const [fresh] = newIds(1);
+
+      await add([fresh]);
+
+      const added = doc.participants.find(
+        (p) => p.userId.toString() === fresh,
+      ) as StoredParticipant & { lastReadSeq?: number };
+      expect(added.lastReadSeq).toBe(12);
+    });
+
     it('should skip lookups when every user is already a member', async () => {
       const doc = makeGroupDocument(2);
       mockConversationModel.findOne.mockResolvedValue(doc);

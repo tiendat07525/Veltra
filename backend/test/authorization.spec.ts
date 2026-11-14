@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { getModelToken } from '@nestjs/mongoose';
+import { getConnectionToken, getModelToken } from '@nestjs/mongoose';
 import { ConversationService } from '../src/conversation/conversation.service';
 import { ConversationController } from '../src/conversation/conversation.controller';
 import { MessageService } from '../src/messages/message.service';
@@ -80,6 +80,8 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
           useValue: mockMessageModel,
         },
         ...groupLookupProviders(),
+        // MessageService sends inside a transaction; these tests never reach it
+        { provide: getConnectionToken(), useValue: { transaction: jest.fn() } },
         {
           provide: UsersService,
           useValue: mockUsersService,

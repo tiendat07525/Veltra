@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { getModelToken } from '@nestjs/mongoose';
-import { Types } from 'mongoose';
+import { getConnectionToken, getModelToken } from '@nestjs/mongoose';
+import { model, Schema, Types } from 'mongoose';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConversationService } from '../src/conversation/conversation.service';
 import { MessageService } from '../src/messages/message.service';
@@ -30,6 +30,7 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
     findById: jest.fn(),
     create: jest.fn(),
     findByIdAndUpdate: jest.fn(),
+    findOneAndUpdate: jest.fn(),
   };
 
   const mockMessageModel: any = {
@@ -43,6 +44,31 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
 
   const mockRealtimeService = {
     emitToUser: jest.fn(),
+  };
+
+  // Runs the send callback directly; a thrown error stands for an aborted transaction
+  const session = { id: 'test-session' };
+  const mockConnection = {
+    transaction: jest.fn((fn: (s: typeof session) => Promise<unknown>) =>
+      fn(session),
+    ),
+  };
+
+  // conversationModel.findOneAndUpdate inside the send transaction: the $inc call
+  // and the $set call both see lastSeq = nextSeq (the seq given to the new message)
+  const sendUpdates =
+    (conversation: Record<string, unknown>, nextSeq = 1) =>
+    () =>
+      Promise.resolve({ ...conversation, lastSeq: nextSeq });
+
+  // The arguments of messageModel.create([doc], { session })
+  const createdDoc = (call = 0) => {
+    const [docs, options] = mockMessageModel.create.mock.calls[call] as [
+      Record<string, unknown>[],
+      unknown,
+    ];
+    expect(options).toEqual({ session });
+    return docs[0];
   };
 
   beforeEach(async () => {
@@ -59,6 +85,7 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
           useValue: mockMessageModel,
         },
         ...groupLookupProviders(),
+        { provide: getConnectionToken(), useValue: mockConnection },
         {
           provide: UsersService,
           useValue: mockUsersService,
@@ -369,8 +396,10 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
       mockConversationModel.findOne.mockReturnValue({
         sort: jest.fn().mockResolvedValue(existingConv),
       });
-      mockMessageModel.create.mockResolvedValue(savedMsg);
-      mockConversationModel.findByIdAndUpdate.mockResolvedValue(existingConv);
+      mockMessageModel.create.mockResolvedValue([savedMsg]);
+      mockConversationModel.findOneAndUpdate.mockImplementation(
+        sendUpdates(existingConv),
+      );
 
       const result = await messageService.sendDirectMessage(
         {
@@ -382,7 +411,7 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
 
       // Verify conversation was reused rather than creating a new one
       expect(mockConversationModel.create).not.toHaveBeenCalled();
-      expect(mockMessageModel.create).toHaveBeenCalledWith(
+      expect(createdDoc()).toEqual(
         expect.objectContaining({
           conversationId: convId,
           senderId: userAId,
@@ -421,8 +450,10 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
       mockConversationModel.findOne.mockReturnValue({
         sort: jest.fn().mockResolvedValue(existingConv),
       });
-      mockMessageModel.create.mockResolvedValue(replyMsg);
-      mockConversationModel.findByIdAndUpdate.mockResolvedValue(existingConv);
+      mockMessageModel.create.mockResolvedValue([replyMsg]);
+      mockConversationModel.findOneAndUpdate.mockImplementation(
+        sendUpdates(existingConv),
+      );
 
       const result = await messageService.sendDirectMessage(
         {
@@ -452,8 +483,10 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
         sort: jest.fn().mockResolvedValue(null),
       });
       mockConversationModel.create.mockResolvedValue(newConv);
-      mockMessageModel.create.mockResolvedValue(savedMsg);
-      mockConversationModel.findByIdAndUpdate.mockResolvedValue(newConv);
+      mockMessageModel.create.mockResolvedValue([savedMsg]);
+      mockConversationModel.findOneAndUpdate.mockImplementation(
+        sendUpdates(newConv),
+      );
 
       const result = await messageService.sendDirectMessage(
         {
@@ -496,8 +529,10 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
       duplicateKeyError.code = 11000;
       mockConversationModel.create.mockRejectedValue(duplicateKeyError);
 
-      mockMessageModel.create.mockResolvedValue(savedMsg);
-      mockConversationModel.findByIdAndUpdate.mockResolvedValue(winningConv);
+      mockMessageModel.create.mockResolvedValue([savedMsg]);
+      mockConversationModel.findOneAndUpdate.mockImplementation(
+        sendUpdates(winningConv),
+      );
 
       const result = await messageService.sendDirectMessage(
         {
@@ -594,15 +629,15 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
 
     beforeEach(() => {
       mockConversationModel.findById.mockResolvedValue(conversationDoc());
-      mockConversationModel.findByIdAndUpdate.mockResolvedValue(
-        conversationDoc(),
+      mockConversationModel.findOneAndUpdate.mockImplementation(
+        sendUpdates(conversationDoc()),
       );
     });
 
     it('should store clientMsgId and return it in the response and the message:new payload', async () => {
       const saved = storedMessage();
       mockMessageModel.findOne.mockResolvedValue(null);
-      mockMessageModel.create.mockResolvedValue(saved);
+      mockMessageModel.create.mockResolvedValue([saved]);
 
       const result = await send();
 
@@ -611,9 +646,7 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
         senderId: userAId,
         clientMsgId,
       });
-      expect(mockMessageModel.create).toHaveBeenCalledWith(
-        expect.objectContaining({ clientMsgId }),
-      );
+      expect(createdDoc()).toEqual(expect.objectContaining({ clientMsgId }));
       expect(result.data.clientMsgId).toBe(clientMsgId);
       expect(mockRealtimeService.emitToUser).toHaveBeenCalledTimes(2);
       expect(mockRealtimeService.emitToUser).toHaveBeenCalledWith(
@@ -632,7 +665,7 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
       const result = await send();
 
       expect(mockMessageModel.create).not.toHaveBeenCalled();
-      expect(mockConversationModel.findByIdAndUpdate).not.toHaveBeenCalled();
+      expect(mockConversationModel.findOneAndUpdate).not.toHaveBeenCalled();
       expect(mockRealtimeService.emitToUser).not.toHaveBeenCalled();
       expect(result).toEqual({
         success: true,
@@ -658,20 +691,23 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
       const result = await send();
 
       expect(result.data._id).toBe(winner._id.toString());
-      expect(mockConversationModel.findByIdAndUpdate).not.toHaveBeenCalled();
+      // Only the seq $inc ran, inside the transaction that the error aborted (rolled back);
+      // lastMessage was never updated and nothing was emitted
+      const updates = mockConversationModel.findOneAndUpdate.mock.calls.map(
+        (c: unknown[]) => c[1] as Record<string, unknown>,
+      );
+      expect(updates).toEqual([{ $inc: { lastSeq: 1 } }]);
       expect(mockRealtimeService.emitToUser).not.toHaveBeenCalled();
     });
 
     it('should keep the legacy flow when no clientMsgId is sent', async () => {
       const saved = storedMessage(false);
-      mockMessageModel.create.mockResolvedValue(saved);
+      mockMessageModel.create.mockResolvedValue([saved]);
 
       const result = await send(false);
 
       expect(mockMessageModel.findOne).not.toHaveBeenCalled();
-      expect(mockMessageModel.create).toHaveBeenCalledWith(
-        expect.not.objectContaining({ clientMsgId: expect.anything() }),
-      );
+      expect(createdDoc()).not.toHaveProperty('clientMsgId');
       expect(result.data).not.toHaveProperty('clientMsgId');
       expect(mockRealtimeService.emitToUser).toHaveBeenCalledTimes(2);
     });
@@ -729,4 +765,144 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
       });
     });
   });
+
+  describe('6. Server-assigned seq (send transaction)', () => {
+    const convId = new Types.ObjectId();
+
+    // After the send: lastSeq 5; sender already read 4, receiver read 3
+    const conversationDoc = () => ({
+      _id: convId,
+      type: 'direct',
+      participants: [
+        { userId: userAId, joinedAt: new Date(), lastReadSeq: 5 },
+        { userId: userBId, joinedAt: new Date(), lastReadSeq: 3 },
+      ],
+      lastMessage: null,
+      lastMessageAt: new Date(),
+    });
+
+    const storedMessage = (seq: number) => {
+      const data = {
+        _id: new Types.ObjectId(),
+        conversationId: convId,
+        senderId: userAId,
+        content: 'Hello',
+        seq,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      return { ...data, toObject: () => data };
+    };
+
+    const send = () =>
+      messageService.sendDirectMessage(
+        { conversationId: convId.toString(), content: 'Hello' },
+        userAId.toString(),
+      );
+
+    beforeEach(() => {
+      mockConversationModel.findById.mockResolvedValue(conversationDoc());
+      mockConversationModel.findOneAndUpdate.mockImplementation(
+        sendUpdates(conversationDoc(), 5),
+      );
+      mockMessageModel.create.mockResolvedValue([storedMessage(5)]);
+    });
+
+    it('should take seq from the $inc and store the message with it, all in one transaction', async () => {
+      const result = await send();
+
+      expect(mockConnection.transaction).toHaveBeenCalledTimes(1);
+      expect(mockConversationModel.findOneAndUpdate).toHaveBeenNthCalledWith(
+        1,
+        { _id: convId },
+        { $inc: { lastSeq: 1 } },
+        { new: true, session },
+      );
+      expect(createdDoc()).toEqual(expect.objectContaining({ seq: 5 }));
+      expect(result.data.seq).toBe(5);
+    });
+
+    it('should set lastMessage with its seq and raise only the sender lastReadSeq with $max', async () => {
+      await send();
+
+      const [filter, update, options] =
+        mockConversationModel.findOneAndUpdate.mock.calls[1];
+      expect(filter).toEqual({ _id: convId });
+      expect(update.$set.lastMessage).toEqual(
+        expect.objectContaining({ seq: 5, senderId: userAId }),
+      );
+      expect(update.$max).toEqual({ 'participants.$[me].lastReadSeq': 5 });
+      expect(update).not.toHaveProperty('$inc');
+      expect(options).toEqual({
+        new: true,
+        session,
+        arrayFilters: [{ 'me.userId': userAId }],
+      });
+    });
+
+    it('should emit seq, lastSeq and unread counts computed from lastReadSeq', async () => {
+      await send();
+
+      expect(mockRealtimeService.emitToUser).toHaveBeenCalledWith(
+        userBId.toString(),
+        'message:new',
+        {
+          message: expect.objectContaining({ seq: 5 }),
+          conversation: expect.objectContaining({
+            lastSeq: 5,
+            unreadCounts: {
+              [userAId.toString()]: 0,
+              [userBId.toString()]: 2,
+            },
+          }),
+        },
+      );
+    });
+
+    it('should not emit when the transaction fails', async () => {
+      mockConversationModel.findOneAndUpdate.mockImplementation(
+        (_f: unknown, update: { $inc?: unknown }) =>
+          update.$inc
+            ? Promise.resolve({ ...conversationDoc(), lastSeq: 5 })
+            : Promise.reject(new Error('write conflict')),
+      );
+
+      await expect(send()).rejects.toThrow('write conflict');
+      expect(mockRealtimeService.emitToUser).not.toHaveBeenCalled();
+    });
+
+    it('should define a unique, non-partial (conversationId, seq) index and keep the createdAt index', () => {
+      const indexes = MessageSchema.indexes();
+      const seqIndex = indexes.find(([fields]) => (fields as any).seq === 1);
+
+      expect(seqIndex).toEqual([
+        { conversationId: 1, seq: 1 },
+        expect.objectContaining({ unique: true }),
+      ]);
+      expect(seqIndex![1]).not.toHaveProperty('partialFilterExpression');
+      expect(
+        indexes.some(
+          ([fields]) =>
+            (fields as any).conversationId === 1 &&
+            (fields as any).createdAt === -1,
+        ),
+      ).toBe(true);
+    });
+
+    it('should default lastSeq and lastReadSeq to 0', () => {
+      const conversation = new (mongooseModelFor(ConversationSchema))({
+        type: 'group',
+        participants: [{ userId: userAId }],
+      });
+
+      expect(conversation.get('lastSeq')).toBe(0);
+      expect(conversation.get('participants.0.lastReadSeq')).toBe(0);
+    });
+  });
 });
+
+// Builds a throwaway model to apply schema defaults without a database connection
+function mongooseModelFor(schema: Schema) {
+  const name = `SeqDefaults${Math.random().toString(36).slice(2)}`;
+  return model(name, schema);
+}

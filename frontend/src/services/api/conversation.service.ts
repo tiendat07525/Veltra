@@ -17,8 +17,15 @@ export const conversationService = {
     return res.data.conversation;
   },
 
-  async markAsSeen(conversationId: string): Promise<{ success?: boolean; message?: string }> {
-    const res = await api.patch(`/conversation/${conversationId}/seen`);
+  // upToSeq = highest seq on screen; the server never reads past it (or past lastSeq)
+  async markAsSeen(
+    conversationId: string,
+    upToSeq?: number
+  ): Promise<{ message?: string; myUnreadCount?: number; lastSeq?: number; lastReadSeq?: number }> {
+    const res = await api.patch(
+      `/conversation/${conversationId}/seen`,
+      upToSeq !== undefined ? { upToSeq } : {}
+    );
     return res.data;
   },
 

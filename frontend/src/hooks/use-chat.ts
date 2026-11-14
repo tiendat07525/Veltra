@@ -29,9 +29,9 @@ export function useChat(enabled: boolean = true, initialConversationId?: string)
     loadCurrentUser();
   }, [enabled]);
 
-  const messagesHook = useMessages(activeConversationId, (convId) => {
+  const messagesHook = useMessages(activeConversationId, (convId, upToSeq) => {
     if (currentUser?._id) {
-      conversationsHook.markAsSeen(convId, currentUser._id);
+      conversationsHook.markAsSeen(convId, currentUser._id, upToSeq);
     }
   }, enabled, currentUser?._id ?? null);
 

@@ -48,6 +48,11 @@ export class Message {
   @Prop({ type: String })
   clientMsgId?: string;
 
+  // Per-conversation order, assigned by the server from conversation.lastSeq (1, 2, 3, ...).
+  // The only ordering key: never sort messages by createdAt.
+  @Prop({ type: Number })
+  seq: number;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -68,3 +73,8 @@ MessageSchema.index(
     partialFilterExpression: { clientMsgId: { $type: 'string' } },
   },
 );
+
+// History pagination and the guarantee that a seq is used once per conversation.
+// Not partial: queries that only sort by seq must be able to use it. Every message
+// must have a seq before it is built (backfill runbook in data_model.md).
+MessageSchema.index({ conversationId: 1, seq: 1 }, { unique: true });

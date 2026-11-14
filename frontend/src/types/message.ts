@@ -20,6 +20,8 @@ export interface Message {
   id?: string;
   // Client-generated UUIDv7; links an optimistic message to its stored copy. Absent on legacy messages
   clientMsgId?: string;
+  // Server-assigned order within the conversation; absent only on optimistic (unsent) messages
+  seq?: number;
   conversationId: string;
   senderId: string;
   content?: string;
@@ -47,6 +49,8 @@ export interface Message {
 
 // Response from GET /conversation/:id/messages
 export interface MessagesResponse {
+  // Oldest -> newest (ascending seq)
   messages: Message[];
-  nextCursor: string | null;
+  // Older messages exist; fetch them with beforeSeq = seq of the oldest message held
+  hasMore: boolean;
 }
