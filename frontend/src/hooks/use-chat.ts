@@ -33,7 +33,7 @@ export function useChat(enabled: boolean = true, initialConversationId?: string)
     if (currentUser?._id) {
       conversationsHook.markAsSeen(convId, currentUser._id);
     }
-  }, enabled);
+  }, enabled, currentUser?._id ?? null);
 
   const activeConversation = useMemo(() => {
     return (

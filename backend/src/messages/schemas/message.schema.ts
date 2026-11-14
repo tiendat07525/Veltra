@@ -44,6 +44,10 @@ export class Message {
   })
   isRevoked: boolean;
 
+  // Client-generated UUIDv7 that makes a retried send idempotent; absent on legacy messages
+  @Prop({ type: String })
+  clientMsgId?: string;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -54,3 +58,13 @@ MessageSchema.index({
   conversationId: 1,
   createdAt: -1,
 });
+
+// One stored message per (conversation, sender, clientMsgId), so a retried send never duplicates.
+// Partial: legacy messages have no clientMsgId and stay out of the index (no backfill needed).
+MessageSchema.index(
+  { conversationId: 1, senderId: 1, clientMsgId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { clientMsgId: { $type: 'string' } },
+  },
+);

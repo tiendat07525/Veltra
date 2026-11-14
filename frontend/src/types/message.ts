@@ -18,6 +18,8 @@ export interface ReplyPreviewData {
 export interface Message {
   _id: string;
   id?: string;
+  // Client-generated UUIDv7; links an optimistic message to its stored copy. Absent on legacy messages
+  clientMsgId?: string;
   conversationId: string;
   senderId: string;
   content?: string;

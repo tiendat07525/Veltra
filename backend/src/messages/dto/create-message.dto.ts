@@ -3,6 +3,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
 } from 'class-validator';
 
@@ -19,4 +20,9 @@ export class CreateMessageDto {
   @IsNotEmpty()
   @MaxLength(500)
   content: string;
+
+  // Optional while clients from before this change are still open; the current frontend always sends it
+  @IsOptional()
+  @IsUUID('7')
+  clientMsgId?: string;
 }

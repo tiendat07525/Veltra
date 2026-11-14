@@ -21,8 +21,8 @@ interface ChatWindowProps {
   partner: ConversationParticipant | null;
   messages: Message[];
   loadingMessages: boolean;
-  sendingMessage: boolean;
   onSendMessage: (content: string) => void;
+  onRetryMessage?: (clientMsgId: string) => void;
   onBackMobile: () => void;
   onShowToast: (msg: string, type?: 'success' | 'info' | 'error') => void;
   currentUserId: string;
@@ -37,8 +37,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   partner,
   messages,
   loadingMessages,
-  sendingMessage,
   onSendMessage,
+  onRetryMessage,
   onBackMobile,
   currentUserId,
   messagesError,
@@ -62,7 +62,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   }, [conversation]);
 
   const handleSend = () => {
-    if (!inputValue.trim() || sendingMessage) return;
+    if (!inputValue.trim()) return;
     onSendMessage(inputValue.trim());
     setInputValue('');
   };
@@ -188,14 +188,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   }
 
                   const isOwn = msgSenderId.toLowerCase() === String(currentUserId).toLowerCase();
+                  // Optimistic copy not stored yet: no real _id, so it cannot be revoked
+                  const isPending = msg.status === 'sending' || msg.status === 'failed';
 
                   return (
                     <div
-                      key={msg._id || msg.id}
+                      // clientMsgId keeps the bubble mounted when the stored copy replaces the optimistic one
+                      key={msg.clientMsgId || msg._id || msg.id}
                       className={`flex mb-2.5 group ${isOwn ? 'justify-end' : 'justify-start'}`}
                     >
-                      {/* Revoke button (only for own messages and not revoked) */}
-                      {isOwn && !msg.isRevoked && (
+                      {/* Revoke button (only for own, stored, not revoked messages) */}
+                      {isOwn && !msg.isRevoked && !isPending && (
                         <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity mr-2">
                           <button
                             type="button"
@@ -214,7 +217,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                           : isOwn
                             ? 'bg-sky-600 hover:bg-sky-500 text-white rounded-br-xs'
                             : 'bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-bl-xs'
-                          }`}
+                          } ${msg.status === 'sending' ? 'opacity-70' : ''} ${msg.status === 'failed' ? 'ring-2 ring-rose-500/70' : ''}`}
                       >
                         {/* Show sender name in groups */}
                         {!isOwn && conversation.type === 'group' && !msg.isRevoked && (
@@ -226,12 +229,30 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                           </p>
                         )}
                         <p className="whitespace-pre-wrap break-words text-[13px]">{msg.content}</p>
-                        <p
-                          className={`text-[10px] mt-1 text-right select-none ${msg.isRevoked ? 'text-slate-400' : isOwn ? 'text-sky-200' : 'text-slate-500 dark:text-slate-400'
-                            }`}
-                        >
-                          {formatTime(msg.createdAt)}
-                        </p>
+                        {msg.status === 'sending' ? (
+                          <p className="text-[10px] mt-1 text-right select-none text-sky-200">
+                            Đang gửi…
+                          </p>
+                        ) : msg.status === 'failed' ? (
+                          <p className="text-[10px] mt-1 flex items-center justify-end gap-1 select-none text-rose-100">
+                            <AlertCircle className="w-3 h-3" />
+                            Gửi thất bại ·
+                            <button
+                              type="button"
+                              onClick={() => msg.clientMsgId && onRetryMessage?.(msg.clientMsgId)}
+                              className="font-semibold underline hover:text-white"
+                            >
+                              Gửi lại
+                            </button>
+                          </p>
+                        ) : (
+                          <p
+                            className={`text-[10px] mt-1 text-right select-none ${msg.isRevoked ? 'text-slate-400' : isOwn ? 'text-sky-200' : 'text-slate-500 dark:text-slate-400'
+                              }`}
+                          >
+                            {formatTime(msg.createdAt)}
+                          </p>
+                        )}
                       </div>
                     </div>
                   );
@@ -265,7 +286,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               }
             }}
             placeholder="Nhập tin nhắn..."
-            disabled={sendingMessage}
             rows={1}
             className="flex-1 px-4 py-2.5 bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-sky-500/50 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-sky-500/20 transition-all disabled:opacity-60 resize-none overflow-y-auto"
             style={{ minHeight: '40px', maxHeight: '120px' }}
@@ -273,15 +293,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           <button
             type="button"
             onClick={handleSend}
-            disabled={!inputValue.trim() || sendingMessage}
+            disabled={!inputValue.trim()}
             className="p-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
             title="Gửi tin nhắn"
           >
-            {sendingMessage ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Send className="w-4 h-4" />
-            )}
+            <Send className="w-4 h-4" />
           </button>
         </div>
       </div>
