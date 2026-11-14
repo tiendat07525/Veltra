@@ -58,8 +58,10 @@ export function useConversations(enabled: boolean = true) {
             content: newMsg.content,
             senderId: newMsg.senderId,
             createdAt: newMsg.createdAt,
+            seq: newMsg.seq,
           },
           lastMessageAt: newMsg.createdAt,
+          lastSeq: payload.conversation?.lastSeq ?? targetConv.lastSeq,
           unreadCounts: payload.conversation?.unreadCounts || targetConv.unreadCounts,
         };
 
@@ -96,18 +98,17 @@ export function useConversations(enabled: boolean = true) {
     };
   }, [fetchConversations]);
 
-  const handleMarkAsSeen = useCallback(async (conversationId: string, currentUserId?: string) => {
+  const handleMarkAsSeen = useCallback(async (conversationId: string, currentUserId?: string, upToSeq?: number) => {
     try {
-      await conversationService.markAsSeen(conversationId);
-      if (currentUserId) {
+      const res = await conversationService.markAsSeen(conversationId, upToSeq);
+      // Use the count the server computed; skip it when it is older than what the list already holds
+      const myUnreadCount = res.myUnreadCount;
+      if (currentUserId && typeof myUnreadCount === 'number') {
         setConversations((prev) =>
           prev.map((c) => {
-            if (c._id === conversationId) {
-              const newUnreadCounts = { ...c.unreadCounts };
-              newUnreadCounts[currentUserId] = 0;
-              return { ...c, unreadCounts: newUnreadCounts };
-            }
-            return c;
+            if (c._id !== conversationId) return c;
+            if (res.lastSeq !== undefined && c.lastSeq !== undefined && res.lastSeq < c.lastSeq) return c;
+            return { ...c, unreadCounts: { ...c.unreadCounts, [currentUserId]: myUnreadCount } };
           })
         );
       }

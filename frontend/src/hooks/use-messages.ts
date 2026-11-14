@@ -15,32 +15,39 @@ function isRetryableSendError(err: unknown): boolean {
   return status === undefined || status >= 500;
 }
 
-// Put a stored message into the list. The REST response and the `message:new` event carry the
-// same message; whichever arrives first replaces the optimistic copy (same clientMsgId) in place,
-// the other then replaces it with an identical copy. Messages without a match dedupe by _id.
+// Put a stored message into the list. The list holds stored messages in ascending seq, then
+// optimistic ones (no seq yet) at the end. The REST response and the `message:new` event carry the
+// same message: whichever arrives first replaces the optimistic copy (same clientMsgId), the other
+// replaces it again with an identical copy. The client never assigns seq, it only places by it.
 function upsertMessage(list: Message[], msg: Message): Message[] {
-  if (msg.clientMsgId) {
-    const idx = list.findIndex((m) => m.clientMsgId === msg.clientMsgId);
-    if (idx !== -1) {
-      const next = list.slice();
-      next[idx] = msg;
-      return next;
-    }
+  const isSame = (m: Message) =>
+    String(m._id) === String(msg._id) || (!!msg.clientMsgId && m.clientMsgId === msg.clientMsgId);
+
+  if (msg.seq === undefined) {
+    const idx = list.findIndex(isSame);
+    if (idx === -1) return [...list, msg];
+    const next = list.slice();
+    next[idx] = msg;
+    return next;
   }
-  if (list.some((m) => String(m._id) === String(msg._id))) return list;
-  return [...list, msg];
+
+  const seq = msg.seq;
+  const rest = list.filter((m) => !isSame(m));
+  // Before the first message with a higher seq, or before the optimistic tail
+  const at = rest.findIndex((m) => m.seq === undefined || m.seq > seq);
+  return at === -1 ? [...rest, msg] : [...rest.slice(0, at), msg, ...rest.slice(at)];
 }
 
 export function useMessages(
   conversationId: string | null,
-  onMarkAsSeen?: (convId: string) => void,
+  onMarkAsSeen?: (convId: string, upToSeq?: number) => void,
   enabled: boolean = true,
   currentUserId: string | null = null
 ) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState<boolean>(false);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
 
   const activeConvIdRef = useRef<string | null>(conversationId);
@@ -55,7 +62,7 @@ export function useMessages(
     if (!enabled || !conversationId) {
       setMessages([]);
       setLoading(false);
-      setNextCursor(null);
+      setHasMore(false);
       return;
     }
 
@@ -64,13 +71,15 @@ export function useMessages(
     try {
       const data = await messageService.getMessages(conversationId);
       setMessages(data.messages);
-      setNextCursor(data.nextCursor);
+      setHasMore(data.hasMore);
 
+      // Read up to the newest message now on screen
+      const upToSeq = data.messages[data.messages.length - 1]?.seq;
       try {
         if (onMarkAsSeenRef.current) {
-          onMarkAsSeenRef.current(conversationId);
+          onMarkAsSeenRef.current(conversationId, upToSeq);
         } else {
-          await conversationService.markAsSeen(conversationId);
+          await conversationService.markAsSeen(conversationId, upToSeq);
         }
       } catch {
 
@@ -103,9 +112,9 @@ export function useMessages(
 
         try {
           if (onMarkAsSeenRef.current) {
-            onMarkAsSeenRef.current(currentConvId);
+            onMarkAsSeenRef.current(currentConvId, newMsg.seq);
           } else {
-            conversationService.markAsSeen(currentConvId);
+            conversationService.markAsSeen(currentConvId, newMsg.seq);
           }
         } catch {
           // Ignore
@@ -135,23 +144,25 @@ export function useMessages(
   }, []);
 
   const loadMore = useCallback(async () => {
-    if (!conversationId || !nextCursor || loadingMore) return;
+    // The list is in ascending seq, so the first message with a seq is the oldest held
+    const beforeSeq = messages.find((m) => m.seq !== undefined)?.seq;
+    if (!conversationId || !hasMore || beforeSeq === undefined || loadingMore) return;
 
     setLoadingMore(true);
     try {
-      const data = await messageService.getMessages(conversationId, 50, nextCursor);
+      const data = await messageService.getMessages(conversationId, 50, beforeSeq);
       setMessages((prev) => {
         const existingIds = new Set(prev.map((m) => String(m._id)));
         const newOlder = data.messages.filter((m) => !existingIds.has(String(m._id)));
         return [...newOlder, ...prev];
       });
-      setNextCursor(data.nextCursor);
+      setHasMore(data.hasMore);
     } catch (err: unknown) {
       console.error('Lỗi khi tải thêm tin nhắn:', err);
     } finally {
       setLoadingMore(false);
     }
-  }, [conversationId, nextCursor, loadingMore]);
+  }, [conversationId, messages, hasMore, loadingMore]);
 
   // Send one pending message, retrying with the same clientMsgId so the server stores it once
   const deliver = useCallback(async (pending: Message) => {
@@ -243,7 +254,7 @@ export function useMessages(
     messages,
     loading,
     error,
-    nextCursor,
+    hasMore,
     loadingMore,
     sendMessage: handleSendMessage,
     retryMessage: handleRetryMessage,

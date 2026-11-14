@@ -13,6 +13,7 @@ export interface ConversationLastMessage {
   content?: string;
   senderId?: string | UserBasicInfo;
   createdAt?: string;
+  seq?: number;
 }
 
 export interface ConversationGroup {
@@ -34,6 +35,9 @@ export interface Conversation {
   lastMessage?: ConversationLastMessage | null;
   lastMessageAt?: string;
   seenBy?: string[];
+  // seq of the newest message (server-assigned)
+  lastSeq?: number;
+  // Computed by the server from lastSeq − lastReadSeq; never incremented or zeroed on the client
   unreadCounts?: Record<string, number>;
   createdAt?: string;
   updatedAt?: string;

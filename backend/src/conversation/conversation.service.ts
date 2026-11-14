@@ -9,6 +9,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import {
   Conversation,
   ConversationDocument,
+  computeUnreadCounts,
   getDirectKey,
   Participant,
 } from './schemas/conversation.schema';
@@ -285,7 +286,7 @@ export class ConversationService {
     conversationId: string,
     userId: string,
     limit = 50,
-    cursor?: string,
+    beforeSeq?: number,
   ) {
     if (!Types.ObjectId.isValid(conversationId)) {
       throw new BadRequestException('Conversation ID không hợp lệ');
@@ -308,22 +309,21 @@ export class ConversationService {
 
     const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
 
-    const query: { conversationId: Types.ObjectId; createdAt?: { $lt: Date } } =
-      { conversationId: new Types.ObjectId(conversationId) };
+    const query: { conversationId: Types.ObjectId; seq?: { $lt: number } } = {
+      conversationId: new Types.ObjectId(conversationId),
+    };
 
-    if (cursor) {
-      const cursorDate = new Date(cursor);
-
-      if (isNaN(cursorDate.getTime())) {
-        throw new BadRequestException('Cursor không hợp lệ');
+    if (beforeSeq !== undefined) {
+      if (!Number.isInteger(beforeSeq) || beforeSeq < 1) {
+        throw new BadRequestException('beforeSeq không hợp lệ');
       }
-
-      query.createdAt = { $lt: cursorDate };
+      query.seq = { $lt: beforeSeq };
     }
 
+    // Newest first so limit takes the latest page; seq is the only order key
     const rawMessages = await this.messageModel
       .find(query)
-      .sort({ createdAt: -1 })
+      .sort({ seq: -1 })
       .limit(safeLimit + 1)
       .lean();
 
@@ -334,19 +334,18 @@ export class ConversationService {
       senderId: msg.senderId?.toString(),
     }));
 
-    let nextCursor: string | null = null;
-
-    if (messages.length > safeLimit) {
-      // The extra row only signals that older messages exist; drop it and page from the oldest returned message
+    // The extra row only signals that older messages exist; the client pages
+    // on with beforeSeq = seq of the oldest returned message
+    const hasMore = messages.length > safeLimit;
+    if (hasMore) {
       messages.pop();
-      nextCursor = messages[messages.length - 1].createdAt.toISOString();
     }
     messages.reverse();
 
-    return { messages, nextCursor };
+    return { messages, hasMore };
   }
 
-  async markAsSeen(conversationId: string, userId: string) {
+  async markAsSeen(conversationId: string, userId: string, upToSeq?: number) {
     if (!Types.ObjectId.isValid(conversationId)) {
       throw new BadRequestException('Conversation ID không hợp lệ');
     }
@@ -370,6 +369,10 @@ export class ConversationService {
       );
     }
 
+    if (upToSeq !== undefined && (!Number.isInteger(upToSeq) || upToSeq < 0)) {
+      throw new BadRequestException('upToSeq không hợp lệ');
+    }
+
     const lastMessage = conversation.lastMessage;
 
     if (!lastMessage) {
@@ -384,15 +387,20 @@ export class ConversationService {
       };
     }
 
-    const updated = await this.conversationModel.findByIdAndUpdate(
-      conversationId,
+    // Read up to what the client has displayed, never past the newest message.
+    // Clients that send no upToSeq (loaded before this change) read everything.
+    const lastSeq = conversation.lastSeq ?? 0;
+    const readTo = Math.min(upToSeq ?? lastSeq, lastSeq);
+
+    const updated = await this.conversationModel.findOneAndUpdate(
+      { _id: conversation._id, 'participants.userId': userObjectId },
       {
         $addToSet: {
           seenBy: userObjectId,
         },
-
-        $set: {
-          [`unreadCounts.${userId}`]: 0,
+        // $max: lastReadSeq never goes back (e.g. a stale request arriving late)
+        $max: {
+          'participants.$.lastReadSeq': readTo,
         },
       },
       {
@@ -400,12 +408,20 @@ export class ConversationService {
       },
     );
 
+    const me = updated?.participants.find(
+      (p) => p.userId?.toString() === userId,
+    );
+
     return {
       message: 'Đã đánh dấu là đã xem',
 
       seenBy: updated?.seenBy || [],
 
-      myUnreadCount: updated?.unreadCounts?.get(userId) || 0,
+      myUnreadCount: updated ? (computeUnreadCounts(updated)[userId] ?? 0) : 0,
+
+      lastSeq: updated?.lastSeq ?? lastSeq,
+
+      lastReadSeq: me?.lastReadSeq ?? 0,
 
       lastMessage: updated?.lastMessage || null,
     };
@@ -512,6 +528,8 @@ export class ConversationService {
       conversation.participants.push({
         userId: new Types.ObjectId(id),
         joinedAt: new Date(),
+        // Messages from before joining do not count as unread
+        lastReadSeq: conversation.lastSeq ?? 0,
       } as Participant);
     }
 
@@ -548,12 +566,16 @@ export class ConversationService {
     return {
       ...object,
       participants,
-      unreadCounts: conversation.unreadCounts || {},
+      unreadCounts: computeUnreadCounts(conversation),
     };
   }
 
   private formatLeanConversation<
-    T extends { participants?: unknown[]; unreadCounts?: unknown },
+    T extends {
+      participants?: unknown[];
+      unreadCounts?: unknown;
+      lastSeq?: number;
+    },
   >(conversation: T) {
     const participants = (conversation.participants || []).map((participant) =>
       formatParticipant(participant as PopulatedParticipant),
@@ -562,7 +584,9 @@ export class ConversationService {
     return {
       ...conversation,
       participants,
-      unreadCounts: conversation.unreadCounts || {},
+      unreadCounts: computeUnreadCounts(
+        conversation as Parameters<typeof computeUnreadCounts>[0],
+      ),
     };
   }
 

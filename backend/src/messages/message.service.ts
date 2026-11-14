@@ -3,13 +3,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { Message, MessageDocument } from './schemas/message.schema';
-import { Model, Types } from 'mongoose';
+import { Connection, Model, Types } from 'mongoose';
 import { CreateMessageDto } from './dto/create-message.dto';
 import {
   Conversation,
   ConversationDocument,
+  computeUnreadCounts,
   getDirectKey,
 } from 'src/conversation/schemas/conversation.schema';
 import { RealtimeService } from 'src/realtime/realtime.service';
@@ -25,6 +26,8 @@ export class MessageService {
     private readonly conversationModel: Model<ConversationDocument>,
     private readonly realtimeService: RealtimeService,
     private readonly usersService: UsersService,
+    @InjectConnection()
+    private readonly connection: Connection,
   ) {}
 
   async sendDirectMessage(dto: CreateMessageDto, userId: string) {
@@ -111,7 +114,6 @@ export class MessageService {
                 { userId: receiverObjectId, joinedAt: new Date() },
               ],
               lastMessageAt: new Date(),
-              unreadCounts: new Map(),
             });
           } catch (createErr: unknown) {
             // Concurrency handling: if a concurrent request created the direct conversation first,
@@ -155,14 +157,67 @@ export class MessageService {
         }
       }
 
+      const conversationObjectId = conversation._id;
       let message: MessageDocument;
+      let updatedConversation: ConversationDocument;
       try {
-        message = await this.messageModel.create({
-          conversationId: conversation._id,
-          senderId,
-          content,
-          ...(clientMsgId ? { clientMsgId } : {}),
-        });
+        // One transaction: take the next seq, store the message, update the conversation.
+        // Any failure (including a duplicate clientMsgId) rolls back the $inc, so seq has no gaps.
+        // Concurrent sends conflict on the conversation document and are retried by Mongoose,
+        // so lastMessage always ends up as the highest seq.
+        ({ message, conversation: updatedConversation } =
+          await this.connection.transaction(async (session) => {
+            const counter = await this.conversationModel.findOneAndUpdate(
+              { _id: conversationObjectId },
+              { $inc: { lastSeq: 1 } },
+              { new: true, session },
+            );
+            if (!counter) {
+              throw new NotFoundException('Không tìm thấy hội thoại');
+            }
+            const seq = counter.lastSeq;
+
+            const [created] = await this.messageModel.create(
+              [
+                {
+                  conversationId: conversationObjectId,
+                  senderId,
+                  content,
+                  seq,
+                  ...(clientMsgId ? { clientMsgId } : {}),
+                },
+              ],
+              { session },
+            );
+
+            const updated = await this.conversationModel.findOneAndUpdate(
+              { _id: conversationObjectId },
+              {
+                $set: {
+                  seenBy: [],
+                  lastMessageAt: created.createdAt,
+                  lastMessage: {
+                    _id: created._id,
+                    content: created.content,
+                    senderId,
+                    createdAt: created.createdAt,
+                    seq,
+                  },
+                },
+                // The sender has read their own message
+                $max: { 'participants.$[me].lastReadSeq': seq },
+              },
+              {
+                new: true,
+                session,
+                arrayFilters: [{ 'me.userId': senderId }],
+              },
+            );
+            if (!updated) {
+              throw new Error('Không thể cập nhật conversation');
+            }
+            return { message: created, conversation: updated };
+          }));
       } catch (createErr: unknown) {
         // Two copies of the same send passed the lookup together; the unique index let one in
         if (clientMsgId && isDuplicateKeyError(createErr)) {
@@ -177,46 +232,17 @@ export class MessageService {
         }
         throw createErr;
       }
-      const updateInc: Record<string, number> = {};
-      conversation.participants.forEach((p) => {
-        const memberId = p.userId?.toString();
-        if (memberId && memberId !== senderId.toString()) {
-          updateInc[`unreadCounts.${memberId}`] = 1;
-        }
-      });
-
-      const updatedConversation =
-        await this.conversationModel.findByIdAndUpdate(
-          conversation._id,
-          {
-            $set: {
-              seenBy: [],
-              lastMessageAt: message.createdAt,
-              lastMessage: {
-                _id: message._id,
-                content: message.content,
-                senderId: senderId,
-                createdAt: message.createdAt,
-              },
-              [`unreadCounts.${senderId.toString()}`]: 0,
-            },
-            ...(Object.keys(updateInc).length > 0 ? { $inc: updateInc } : {}),
-          },
-          { new: true },
-        );
-
-      if (!updatedConversation) {
-        throw new Error('Không thể cập nhật conversation');
-      }
       conversation = updatedConversation;
 
+      // Emitted only after the transaction committed
       const messagePayload = this.toMessagePayload(message);
 
       const conversationPayload = {
         _id: conversation._id.toString(),
         lastMessage: conversation.lastMessage,
         lastMessageAt: conversation.lastMessageAt,
-        unreadCounts: conversation.unreadCounts || {},
+        lastSeq: conversation.lastSeq,
+        unreadCounts: computeUnreadCounts(conversation),
       };
 
       conversation.participants?.forEach((p) => {
@@ -253,6 +279,7 @@ export class MessageService {
       senderId: raw.senderId.toString(),
       content: raw.content,
       ...(raw.clientMsgId ? { clientMsgId: raw.clientMsgId } : {}),
+      seq: raw.seq,
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
     };

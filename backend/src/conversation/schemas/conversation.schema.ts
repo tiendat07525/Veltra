@@ -24,6 +24,13 @@ export class Participant {
     enum: ['admin', 'member'],
   })
   role: string;
+
+  // Highest seq this member has read; only ever raised ($max). Unread = lastSeq − lastReadSeq.
+  @Prop({
+    type: Number,
+    default: 0,
+  })
+  lastReadSeq: number;
 }
 
 //========================================================================================
@@ -76,6 +83,11 @@ export class LastMessage {
     default: null,
   })
   createdAt?: Date;
+
+  @Prop({
+    type: Number,
+  })
+  seq?: number;
 }
 
 //=============================================================================================
@@ -94,6 +106,31 @@ export function getDirectKey(
   const idA = userA.toString();
   const idB = userB.toString();
   return idA < idB ? `${idA}:${idB}` : `${idB}:${idA}`;
+}
+
+/**
+ * Unread count per member, computed (never stored): max(0, lastSeq − lastReadSeq).
+ * Accepts raw or populated participants (`userId` as an id or as a user object).
+ */
+export function computeUnreadCounts(conversation: {
+  lastSeq?: number;
+  participants?: {
+    userId?: Types.ObjectId | { _id?: unknown } | null;
+    lastReadSeq?: number;
+  }[];
+}): Record<string, number> {
+  const lastSeq = conversation.lastSeq ?? 0;
+  const counts: Record<string, number> = {};
+  for (const participant of conversation.participants ?? []) {
+    const user = participant.userId;
+    const rawId = user instanceof Types.ObjectId ? user : user?._id;
+    if (!(rawId instanceof Types.ObjectId)) continue;
+    counts[rawId.toString()] = Math.max(
+      0,
+      lastSeq - (participant.lastReadSeq ?? 0),
+    );
+  }
+  return counts;
 }
 
 @Schema({
@@ -143,6 +180,14 @@ export class Conversation {
   })
   lastMessage?: LastMessage | null;
 
+  // seq of the newest message; incremented atomically inside the send transaction
+  @Prop({
+    type: Number,
+    default: 0,
+  })
+  lastSeq: number;
+
+  // RETIRED: no longer written or read; unread is computeUnreadCounts(). Kept until removed via the runbook.
   @Prop({
     type: Map,
     of: Number,

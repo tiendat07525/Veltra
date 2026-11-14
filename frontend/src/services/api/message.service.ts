@@ -6,9 +6,9 @@ const SEND_TIMEOUT_MS = 15_000;
 
 export const messageService = {
 
-  async getMessages(conversationId: string, limit = 50, cursor?: string): Promise<MessagesResponse> {
+  async getMessages(conversationId: string, limit = 50, beforeSeq?: number): Promise<MessagesResponse> {
     const params: Record<string, string> = { limit: String(limit) };
-    if (cursor) params.cursor = cursor;
+    if (beforeSeq !== undefined) params.beforeSeq = String(beforeSeq);
     const res = await api.get(`/conversation/${conversationId}/messages`, { params });
     return res.data;
   },

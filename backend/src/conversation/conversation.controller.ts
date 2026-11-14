@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  ParseIntPipe,
   Patch,
   Post,
   Delete,
@@ -53,7 +54,9 @@ export class ConversationController {
   async getMessages(
     @Param('conversationId') conversationId: string,
     @Query('limit') limit: string | undefined,
-    @Query('cursor') cursor: string | undefined,
+    // Non-integer values are rejected with 400 by the pipe
+    @Query('beforeSeq', new ParseIntPipe({ optional: true }))
+    beforeSeq: number | undefined,
     @Req() req: AuthenticatedRequest,
   ) {
     const userId = req.user._id.toString();
@@ -62,18 +65,25 @@ export class ConversationController {
       conversationId,
       userId,
       Number(limit) || 50,
-      cursor,
+      beforeSeq,
     );
   }
 
   @Patch(':conversationId/seen')
   async markAsSeen(
     @Param('conversationId') conversationId: string,
+    // Highest seq the client has displayed; optional for clients loaded before seq existed
+    @Body('upToSeq', new ParseIntPipe({ optional: true }))
+    upToSeq: number | undefined,
     @Req() req: AuthenticatedRequest,
   ) {
     const userId = req.user._id.toString();
 
-    return this.conversationsService.markAsSeen(conversationId, userId);
+    return this.conversationsService.markAsSeen(
+      conversationId,
+      userId,
+      upToSeq,
+    );
   }
 
   @Patch(':conversationId')
