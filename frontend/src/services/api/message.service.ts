@@ -1,6 +1,9 @@
 import api from './api';
 import { Message, MessagesResponse } from '@/types/message';
 
+// `api` has no default timeout; without one a hung send would never be retried
+const SEND_TIMEOUT_MS = 15_000;
+
 export const messageService = {
 
   async getMessages(conversationId: string, limit = 50, cursor?: string): Promise<MessagesResponse> {
@@ -14,8 +17,9 @@ export const messageService = {
     conversationId?: string;
     receiverId?: string;
     content: string;
+    clientMsgId: string;
   }): Promise<{ success: boolean; message: string; data?: Message }> {
-    const res = await api.post('/message/direct', params);
+    const res = await api.post('/message/direct', params, { timeout: SEND_TIMEOUT_MS });
     return res.data;
   },
 

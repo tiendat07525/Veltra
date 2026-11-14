@@ -29,7 +29,7 @@ export class MessageService {
 
   async sendDirectMessage(dto: CreateMessageDto, userId: string) {
     try {
-      const { conversationId, receiverId, content } = dto;
+      const { conversationId, receiverId, content, clientMsgId } = dto;
       if (!Types.ObjectId.isValid(userId)) {
         throw new BadRequestException('User ID không hợp lệ');
       }
@@ -142,11 +142,41 @@ export class MessageService {
         }
       }
 
-      const message = await this.messageModel.create({
-        conversationId: conversation._id,
-        senderId,
-        content,
-      });
+      // A retry of a send that was already stored returns the stored message:
+      // no second message, no unread increment, no second emit
+      if (clientMsgId) {
+        const existing = await this.findByClientMsgId(
+          conversation._id,
+          senderId,
+          clientMsgId,
+        );
+        if (existing) {
+          return this.toSendResponse(existing);
+        }
+      }
+
+      let message: MessageDocument;
+      try {
+        message = await this.messageModel.create({
+          conversationId: conversation._id,
+          senderId,
+          content,
+          ...(clientMsgId ? { clientMsgId } : {}),
+        });
+      } catch (createErr: unknown) {
+        // Two copies of the same send passed the lookup together; the unique index let one in
+        if (clientMsgId && isDuplicateKeyError(createErr)) {
+          const winner = await this.findByClientMsgId(
+            conversation._id,
+            senderId,
+            clientMsgId,
+          );
+          if (winner) {
+            return this.toSendResponse(winner);
+          }
+        }
+        throw createErr;
+      }
       const updateInc: Record<string, number> = {};
       conversation.participants.forEach((p) => {
         const memberId = p.userId?.toString();
@@ -180,15 +210,7 @@ export class MessageService {
       }
       conversation = updatedConversation;
 
-      const rawMessage = message.toObject ? message.toObject() : message;
-      const messagePayload = {
-        _id: rawMessage._id.toString(),
-        conversationId: conversation._id.toString(),
-        senderId: senderId.toString(),
-        content: rawMessage.content,
-        createdAt: rawMessage.createdAt,
-        updatedAt: rawMessage.updatedAt,
-      };
+      const messagePayload = this.toMessagePayload(message);
 
       const conversationPayload = {
         _id: conversation._id.toString(),
@@ -207,15 +229,41 @@ export class MessageService {
         }
       });
 
-      return {
-        success: true,
-        message: 'Thành công',
-        data: messagePayload,
-      };
+      return this.toSendResponse(message);
     } catch (error) {
       console.error('Lỗi gửi tin nhắn trực tiếp: ', error);
       throw error;
     }
+  }
+
+  private findByClientMsgId(
+    conversationId: Types.ObjectId,
+    senderId: Types.ObjectId,
+    clientMsgId: string,
+  ) {
+    return this.messageModel.findOne({ conversationId, senderId, clientMsgId });
+  }
+
+  // Shape shared by the REST response and the `message:new` event
+  private toMessagePayload(message: MessageDocument) {
+    const raw = message.toObject ? message.toObject() : message;
+    return {
+      _id: raw._id.toString(),
+      conversationId: raw.conversationId.toString(),
+      senderId: raw.senderId.toString(),
+      content: raw.content,
+      ...(raw.clientMsgId ? { clientMsgId: raw.clientMsgId } : {}),
+      createdAt: raw.createdAt,
+      updatedAt: raw.updatedAt,
+    };
+  }
+
+  private toSendResponse(message: MessageDocument) {
+    return {
+      success: true,
+      message: 'Thành công',
+      data: this.toMessagePayload(message),
+    };
   }
 
   async revokeMessage(messageId: string, userId: string) {

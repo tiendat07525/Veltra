@@ -9,7 +9,10 @@ import {
   ConversationSchema,
   getDirectKey,
 } from '../src/conversation/schemas/conversation.schema';
-import { Message } from '../src/messages/schemas/message.schema';
+import { Message, MessageSchema } from '../src/messages/schemas/message.schema';
+import { CreateMessageDto } from '../src/messages/dto/create-message.dto';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import { UsersService } from '../src/users/users.service';
 import { RealtimeService } from '../src/realtime/realtime.service';
 import { groupLookupProviders } from './helpers/group-lookup-mocks';
@@ -31,6 +34,7 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
 
   const mockMessageModel: any = {
     create: jest.fn(),
+    findOne: jest.fn(),
   };
 
   const mockUsersService = {
@@ -546,6 +550,183 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
           userAId.toString(),
         ),
       ).rejects.toThrow(new NotFoundException('Người nhận không tồn tại'));
+    });
+  });
+
+  describe('5. Message idempotency (clientMsgId)', () => {
+    const clientMsgId = '019a7f3e-8c2b-7d4a-9e1f-0123456789ab';
+    const convId = new Types.ObjectId();
+
+    const conversationDoc = () => ({
+      _id: convId,
+      type: 'direct',
+      participants: [
+        { userId: userAId, joinedAt: new Date() },
+        { userId: userBId, joinedAt: new Date() },
+      ],
+      lastMessage: null,
+      lastMessageAt: new Date(),
+      unreadCounts: new Map(),
+    });
+
+    const storedMessage = (withClientMsgId = true) => {
+      const data = {
+        _id: new Types.ObjectId(),
+        conversationId: convId,
+        senderId: userAId,
+        content: 'Hello',
+        ...(withClientMsgId ? { clientMsgId } : {}),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      return { ...data, toObject: () => data };
+    };
+
+    const send = (withClientMsgId = true) =>
+      messageService.sendDirectMessage(
+        {
+          conversationId: convId.toString(),
+          content: 'Hello',
+          ...(withClientMsgId ? { clientMsgId } : {}),
+        },
+        userAId.toString(),
+      );
+
+    beforeEach(() => {
+      mockConversationModel.findById.mockResolvedValue(conversationDoc());
+      mockConversationModel.findByIdAndUpdate.mockResolvedValue(
+        conversationDoc(),
+      );
+    });
+
+    it('should store clientMsgId and return it in the response and the message:new payload', async () => {
+      const saved = storedMessage();
+      mockMessageModel.findOne.mockResolvedValue(null);
+      mockMessageModel.create.mockResolvedValue(saved);
+
+      const result = await send();
+
+      expect(mockMessageModel.findOne).toHaveBeenCalledWith({
+        conversationId: convId,
+        senderId: userAId,
+        clientMsgId,
+      });
+      expect(mockMessageModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({ clientMsgId }),
+      );
+      expect(result.data.clientMsgId).toBe(clientMsgId);
+      expect(mockRealtimeService.emitToUser).toHaveBeenCalledTimes(2);
+      expect(mockRealtimeService.emitToUser).toHaveBeenCalledWith(
+        userBId.toString(),
+        'message:new',
+        expect.objectContaining({
+          message: expect.objectContaining({ clientMsgId }),
+        }),
+      );
+    });
+
+    it('should return the stored message for a retried send without creating, counting or emitting again', async () => {
+      const existing = storedMessage();
+      mockMessageModel.findOne.mockResolvedValue(existing);
+
+      const result = await send();
+
+      expect(mockMessageModel.create).not.toHaveBeenCalled();
+      expect(mockConversationModel.findByIdAndUpdate).not.toHaveBeenCalled();
+      expect(mockRealtimeService.emitToUser).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        success: true,
+        message: 'Thành công',
+        data: expect.objectContaining({
+          _id: existing._id.toString(),
+          clientMsgId,
+        }),
+      });
+    });
+
+    it('should return the winning message when a concurrent copy of the send hits the unique index', async () => {
+      const winner = storedMessage();
+      mockMessageModel.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(winner);
+      const duplicateKeyError: any = new Error(
+        'E11000 duplicate key error collection: veltra.messages index: conversationId_1_senderId_1_clientMsgId_1',
+      );
+      duplicateKeyError.code = 11000;
+      mockMessageModel.create.mockRejectedValue(duplicateKeyError);
+
+      const result = await send();
+
+      expect(result.data._id).toBe(winner._id.toString());
+      expect(mockConversationModel.findByIdAndUpdate).not.toHaveBeenCalled();
+      expect(mockRealtimeService.emitToUser).not.toHaveBeenCalled();
+    });
+
+    it('should keep the legacy flow when no clientMsgId is sent', async () => {
+      const saved = storedMessage(false);
+      mockMessageModel.create.mockResolvedValue(saved);
+
+      const result = await send(false);
+
+      expect(mockMessageModel.findOne).not.toHaveBeenCalled();
+      expect(mockMessageModel.create).toHaveBeenCalledWith(
+        expect.not.objectContaining({ clientMsgId: expect.anything() }),
+      );
+      expect(result.data).not.toHaveProperty('clientMsgId');
+      expect(mockRealtimeService.emitToUser).toHaveBeenCalledTimes(2);
+    });
+
+    it('should not swallow a duplicate-key error when no clientMsgId was sent', async () => {
+      const duplicateKeyError: any = new Error('E11000 duplicate key error');
+      duplicateKeyError.code = 11000;
+      mockMessageModel.create.mockRejectedValue(duplicateKeyError);
+
+      await expect(send(false)).rejects.toBe(duplicateKeyError);
+    });
+
+    it('should define a partial unique index on (conversationId, senderId, clientMsgId)', () => {
+      const index = MessageSchema.indexes().find(
+        ([fields]) => (fields as any).clientMsgId === 1,
+      );
+
+      expect(index).toBeDefined();
+      expect(index![0]).toEqual({
+        conversationId: 1,
+        senderId: 1,
+        clientMsgId: 1,
+      });
+      expect(index![1]).toEqual(
+        expect.objectContaining({
+          unique: true,
+          partialFilterExpression: { clientMsgId: { $type: 'string' } },
+        }),
+      );
+    });
+
+    describe('CreateMessageDto.clientMsgId', () => {
+      const errorsFor = async (value: unknown) => {
+        const dto = plainToInstance(CreateMessageDto, {
+          conversationId: convId.toString(),
+          content: 'Hello',
+          clientMsgId: value,
+        });
+        const errors = await validate(dto);
+        return errors.filter((e) => e.property === 'clientMsgId');
+      };
+
+      it('should accept a UUIDv7 or no value', async () => {
+        expect(await errorsFor(clientMsgId)).toHaveLength(0);
+        expect(await errorsFor(undefined)).toHaveLength(0);
+      });
+
+      it('should reject a UUIDv4, a non-string and garbage', async () => {
+        expect(
+          await errorsFor('3b241101-e2bb-4255-8caf-4136c566a962'),
+        ).toHaveLength(1);
+        expect(await errorsFor(123)).toHaveLength(1);
+        expect(await errorsFor('not-a-uuid')).toHaveLength(1);
+        expect(await errorsFor({ $ne: null })).toHaveLength(1);
+      });
     });
   });
 });
