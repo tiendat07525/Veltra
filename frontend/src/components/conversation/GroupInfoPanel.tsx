@@ -1,14 +1,11 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
-import { Check, Crown, Loader2, LogOut, Pencil, UserMinus, UserPlus, X } from 'lucide-react';
+import React, { useState } from 'react';
+import { Check, Loader2, LogOut, Pencil, X } from 'lucide-react';
 import { Conversation, ConversationParticipant } from '@/types/conversation';
-import { UserBasicInfo } from '@/types/user';
-import { friendService } from '@/services/api/friend.service';
 import { UserAvatar } from '@/components/ui/UserAvatar';
-
-// Same cap as the backend (MAX_GROUP_MEMBERS), only used to guide the picker
-const MAX_GROUP_MEMBERS = 100;
+import { GroupMemberList, nameOf } from './GroupMemberList';
+import { AddGroupMembers } from './AddGroupMembers';
 
 interface GroupInfoPanelProps {
   conversation: Conversation;
@@ -27,9 +24,6 @@ interface GroupInfoPanelProps {
 type PendingAction =
   | { kind: 'remove' | 'transfer'; member: ConversationParticipant }
   | { kind: 'leave' };
-
-const nameOf = (user: { displayName?: string; username?: string }) =>
-  user.displayName || user.username || 'Người dùng';
 
 export const GroupInfoPanel: React.FC<GroupInfoPanelProps> = ({
   conversation,
@@ -51,21 +45,9 @@ export const GroupInfoPanel: React.FC<GroupInfoPanelProps> = ({
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(groupName);
-  const [adding, setAdding] = useState(false);
-  const [friends, setFriends] = useState<UserBasicInfo[] | null>(null);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-
-  // Owner first, then by join order as the server returns them
-  const sortedMembers = useMemo(
-    () => [...members].sort((a, b) => Number(b._id === ownerId) - Number(a._id === ownerId)),
-    [members, ownerId]
-  );
 
   // An owner can leave only as the last member (which deletes the group)
   const ownerMustTransfer = isOwner && members.length > 1;
-  const memberIds = new Set(members.map((m) => m._id));
-  const addableFriends = (friends ?? []).filter((f) => !memberIds.has(f._id));
-  const slotsLeft = MAX_GROUP_MEMBERS - members.length;
 
   const run = async (action: () => Promise<void>) => {
     setBusy(true);
@@ -97,31 +79,6 @@ export const GroupInfoPanel: React.FC<GroupInfoPanelProps> = ({
     void run(async () => {
       await onRename(name);
       setEditingName(false);
-    });
-  };
-
-  const openAdd = () => {
-    setAdding(true);
-    setSelectedIds([]);
-    if (friends === null) {
-      friendService
-        .getFriends()
-        .then(setFriends)
-        .catch(() => setFriends([]));
-    }
-  };
-
-  const toggleSelected = (id: string) =>
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : prev.length < slotsLeft ? [...prev, id] : prev
-    );
-
-  const submitAdd = () => {
-    if (selectedIds.length === 0) return;
-    void run(async () => {
-      await onAddMembers(selectedIds);
-      setAdding(false);
-      setSelectedIds([]);
     });
   };
 
@@ -210,132 +167,19 @@ export const GroupInfoPanel: React.FC<GroupInfoPanelProps> = ({
 
           {/* Add members (owner) */}
           {isOwner && (
-            <section>
-              {!adding ? (
-                <button
-                  type="button"
-                  onClick={openAdd}
-                  disabled={slotsLeft <= 0}
-                  className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400 text-xs font-semibold hover:bg-sky-500/20 disabled:opacity-40"
-                >
-                  <UserPlus className="w-4 h-4" />
-                  {slotsLeft > 0 ? 'Thêm thành viên' : `Nhóm đã đủ ${MAX_GROUP_MEMBERS} thành viên`}
-                </button>
-              ) : (
-                <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">Chọn bạn bè</p>
-                    <button
-                      type="button"
-                      onClick={() => setAdding(false)}
-                      className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-white"
-                    >
-                      Hủy
-                    </button>
-                  </div>
-                  {friends === null ? (
-                    <div className="flex justify-center py-3">
-                      <Loader2 className="w-4 h-4 animate-spin text-sky-500" />
-                    </div>
-                  ) : addableFriends.length === 0 ? (
-                    <p className="text-[11px] text-slate-500 py-2 text-center">
-                      Không còn bạn bè nào ngoài nhóm.
-                    </p>
-                  ) : (
-                    <ul className="max-h-48 overflow-y-auto space-y-1">
-                      {addableFriends.map((friend) => {
-                        const checked = selectedIds.includes(friend._id);
-                        return (
-                          <li key={friend._id}>
-                            <label className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => toggleSelected(friend._id)}
-                                className="accent-sky-500"
-                              />
-                              <UserAvatar src={friend.avatarUrl} name={nameOf(friend)} size="sm" />
-                              <span className="text-xs text-slate-800 dark:text-slate-200 truncate">
-                                {nameOf(friend)}
-                              </span>
-                            </label>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                  <button
-                    type="button"
-                    onClick={submitAdd}
-                    disabled={busy || selectedIds.length === 0}
-                    className="w-full py-2 rounded-xl bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white text-xs font-semibold"
-                  >
-                    Thêm {selectedIds.length > 0 ? `(${selectedIds.length})` : ''}
-                  </button>
-                </div>
-              )}
-            </section>
+            <AddGroupMembers members={members} busy={busy} onAdd={(userIds) => run(() => onAddMembers(userIds))} />
           )}
 
-          {/* Members */}
-          <section>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">Thành viên</p>
-            <ul className="space-y-1">
-              {sortedMembers.map((member) => {
-                const memberIsOwner = member._id === ownerId;
-                const isMe = member._id === currentUserId;
-                return (
-                  <li
-                    key={member._id}
-                    className="flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/60"
-                  >
-                    <UserAvatar
-                      src={member.avatarUrl}
-                      name={nameOf(member)}
-                      size="sm"
-                      status="online"
-                      showStatus={!!onlineIds?.has(member._id)}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate">
-                        {nameOf(member)}
-                        {isMe && <span className="ml-1 font-normal text-slate-400">(Bạn)</span>}
-                      </p>
-                      {memberIsOwner && (
-                        <p className="flex items-center gap-1 text-[10px] text-amber-500">
-                          <Crown className="w-3 h-3" /> Trưởng nhóm
-                        </p>
-                      )}
-                    </div>
-                    {isOwner && !isMe && (
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => setPending({ kind: 'transfer', member })}
-                          disabled={busy}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-amber-500 hover:bg-amber-500/10"
-                          title="Chuyển quyền trưởng nhóm"
-                          aria-label={`Chuyển quyền trưởng nhóm cho ${nameOf(member)}`}
-                        >
-                          <Crown className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPending({ kind: 'remove', member })}
-                          disabled={busy}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-500/10"
-                          title="Xóa khỏi nhóm"
-                          aria-label={`Xóa ${nameOf(member)} khỏi nhóm`}
-                        >
-                          <UserMinus className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
+          <GroupMemberList
+            members={members}
+            ownerId={ownerId}
+            currentUserId={currentUserId}
+            isOwner={isOwner}
+            onlineIds={onlineIds}
+            busy={busy}
+            onTransfer={(member) => setPending({ kind: 'transfer', member })}
+            onRemove={(member) => setPending({ kind: 'remove', member })}
+          />
         </div>
 
         {/* Footer: confirmation or leave */}

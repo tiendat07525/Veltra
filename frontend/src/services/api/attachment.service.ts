@@ -2,7 +2,7 @@ import axios from 'axios';
 import api from './api';
 import { AttachmentKind } from '@/types/message';
 
-// Mirrors the server rules (backend/src/messages/attachment.service.ts, security.md §6).
+// Mirrors the server rules (backend/src/messages/attachment.rules.ts, security.md §6).
 // These checks only give fast feedback: the server re-checks the stored file at send.
 const MB = 1024 * 1024;
 export const MAX_ATTACHMENTS_PER_MESSAGE = 10;

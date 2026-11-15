@@ -8,13 +8,6 @@ export interface MessageReaction {
   count?: number;
 }
 
-export interface ReplyPreviewData {
-  messageId: string;
-  senderName: string;
-  content: string;
-  type?: MessageType;
-}
-
 // Group change recorded as a system message; the actor is senderId
 export type SystemAction =
   | 'member_left'
