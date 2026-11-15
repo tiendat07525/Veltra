@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { UsersModule } from 'src/users/users.module';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Message } from './schemas/message.schema';
 import { MessageSchema } from './schemas/message.schema';
@@ -9,6 +8,7 @@ import { Conversation } from 'src/conversation/schemas/conversation.schema';
 import { ConversationSchema } from 'src/conversation/schemas/conversation.schema';
 import { RealtimeModule } from 'src/realtime/realtime.module';
 import { AttachmentService } from './attachment.service';
+import { ConversationModule } from 'src/conversation/conversation.module';
 
 @Module({
   imports: [
@@ -17,7 +17,8 @@ import { AttachmentService } from './attachment.service';
       { name: Message.name, schema: MessageSchema },
     ]),
     RealtimeModule,
-    UsersModule,
+    // findOrCreateDirect when sending to a receiverId
+    ConversationModule,
   ],
 
   controllers: [MessageController],

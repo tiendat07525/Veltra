@@ -3,11 +3,16 @@ import { Types } from 'mongoose';
 import { User } from '../../src/users/schemas/user.schema';
 import { Friend } from '../../src/friend/schema/friend.schema';
 import { RealtimeService } from '../../src/realtime/realtime.service';
+import { ConversationGroupService } from '../../src/conversation/conversation-group.service';
 
-// User/Friend models used by ConversationService when adding users to a group.
+// User/Friend models used when adding users to a group or opening a direct chat.
 // Default: every queried user exists and is a friend (counts equal the query size).
 export const allowAllGroupLookups = () => ({
   userModel: {
+    // Receiver of a direct conversation (ConversationService.findOrCreateDirect)
+    exists: jest.fn<Promise<{ _id: unknown } | null>, [{ _id: unknown }]>(
+      (filter) => Promise.resolve({ _id: filter._id }),
+    ),
     countDocuments: jest.fn((filter: { _id: { $in: unknown[] } }) =>
       Promise.resolve(filter._id.$in.length),
     ),
@@ -23,7 +28,7 @@ export const allowAllGroupLookups = () => ({
   },
 });
 
-// Stubs the writes of a group change (ConversationService.applyGroupChange):
+// Stubs the writes of a group change (ConversationGroupService.applyGroupChange):
 // 1st findOneAndUpdate = the conditional change + $inc lastSeq (returns lastSeq = seq),
 // messageModel.create = the system message, 2nd findOneAndUpdate = lastMessage (returns `result`).
 export const stubGroupChangeWrites = (
@@ -47,12 +52,14 @@ export const stubGroupChangeWrites = (
   );
 };
 
-// Every ConversationService dependency besides the Conversation/Message models.
+// Every ConversationService / ConversationGroupService dependency besides the
+// Conversation/Message models (ConversationGroupService itself is the real one).
 // RealtimeService and the connection are inert defaults; a spec that asserts on them
 // lists its own provider after this spread (the last provider for a token wins).
 export const groupLookupProviders = (
   mocks: ReturnType<typeof allowAllGroupLookups> = allowAllGroupLookups(),
 ) => [
+  ConversationGroupService,
   { provide: getModelToken(User.name), useValue: mocks.userModel },
   { provide: getModelToken(Friend.name), useValue: mocks.friendModel },
   { provide: RealtimeService, useValue: { emitToUser: jest.fn() } },

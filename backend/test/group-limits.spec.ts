@@ -2,10 +2,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
 import { BadRequestException } from '@nestjs/common';
 import { Types } from 'mongoose';
+import { ConversationService } from '../src/conversation/conversation.service';
 import {
-  ConversationService,
+  ConversationGroupService,
   MAX_GROUP_MEMBERS,
-} from '../src/conversation/conversation.service';
+} from '../src/conversation/conversation-group.service';
 import { Conversation } from '../src/conversation/schemas/conversation.schema';
 import { Message } from '../src/messages/schemas/message.schema';
 import {
@@ -21,6 +22,7 @@ interface StoredParticipant {
 
 describe('ConversationService group membership limits', () => {
   let service: ConversationService;
+  let groupService: ConversationGroupService;
   let lookups: ReturnType<typeof allowAllGroupLookups>;
 
   const ownerId = new Types.ObjectId();
@@ -82,6 +84,8 @@ describe('ConversationService group membership limits', () => {
     }).compile();
 
     service = module.get<ConversationService>(ConversationService);
+
+    groupService = module.get(ConversationGroupService);
     jest.clearAllMocks();
     mockConversationModel.create.mockImplementation(
       (data: { participants: StoredParticipant[] }) =>
@@ -166,7 +170,7 @@ describe('ConversationService group membership limits', () => {
 
   describe('addParticipants', () => {
     const add = (userIds: string[]) =>
-      service.addParticipants(
+      groupService.addParticipants(
         conversationId.toString(),
         { userIds },
         ownerId.toString(),

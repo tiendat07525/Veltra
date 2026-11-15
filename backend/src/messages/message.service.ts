@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import {
+  Attachment,
   Message,
   MessageDocument,
   toMessagePayload,
@@ -15,12 +16,20 @@ import {
   Conversation,
   ConversationDocument,
   computeUnreadCounts,
-  getDirectKey,
 } from 'src/conversation/schemas/conversation.schema';
 import { RealtimeService } from 'src/realtime/realtime.service';
-import { UsersService } from 'src/users/users.service';
+import { ConversationService } from 'src/conversation/conversation.service';
 import { isDuplicateKeyError } from '../common/mongo-errors';
-import { AttachmentService, attachmentPreview } from './attachment.service';
+import { AttachmentService } from './attachment.service';
+import { attachmentPreview } from './attachment.rules';
+
+// What one send stores (content already trimmed, files already checked)
+interface NewMessage {
+  senderId: Types.ObjectId;
+  content?: string;
+  attachments: Attachment[];
+  clientMsgId?: string;
+}
 
 @Injectable()
 export class MessageService {
@@ -30,7 +39,7 @@ export class MessageService {
     @InjectModel(Conversation.name)
     private readonly conversationModel: Model<ConversationDocument>,
     private readonly realtimeService: RealtimeService,
-    private readonly usersService: UsersService,
+    private readonly conversationService: ConversationService,
     @InjectConnection()
     private readonly connection: Connection,
     private readonly attachmentService: AttachmentService,
@@ -38,14 +47,14 @@ export class MessageService {
 
   async sendDirectMessage(dto: CreateMessageDto, userId: string) {
     try {
-      const { conversationId, receiverId, clientMsgId } = dto;
+      const { clientMsgId } = dto;
       const content = dto.content?.trim() || undefined;
       const attachmentRefs = dto.attachments ?? [];
       if (!content && attachmentRefs.length === 0) {
         throw new BadRequestException('Tin nhắn không được để trống');
       }
       // Uploads are signed per conversation, so files need an existing one
-      if (attachmentRefs.length > 0 && !conversationId) {
+      if (attachmentRefs.length > 0 && !dto.conversationId) {
         throw new BadRequestException('Cần conversationId để gửi file');
       }
       if (!Types.ObjectId.isValid(userId)) {
@@ -53,111 +62,7 @@ export class MessageService {
       }
       const senderId = new Types.ObjectId(userId);
 
-      let conversation: ConversationDocument | null = null;
-
-      if (conversationId) {
-        if (!Types.ObjectId.isValid(conversationId)) {
-          throw new BadRequestException('Conversation ID không hợp lệ');
-        }
-        conversation = await this.conversationModel.findById(
-          new Types.ObjectId(conversationId),
-        );
-
-        if (!conversation) {
-          throw new NotFoundException('Không tìm thấy hội thoại');
-        }
-
-        const isParticipant = conversation.participants.some(
-          (p) => p.userId?.toString() === senderId.toString(),
-        );
-
-        if (!isParticipant) {
-          throw new BadRequestException('Bạn không có quyền gửi tin nhắn');
-        }
-      }
-
-      if (!conversation) {
-        if (!receiverId) {
-          throw new BadRequestException(
-            'Cần cung cấp conversationId hoặc receiverId',
-          );
-        }
-
-        if (!Types.ObjectId.isValid(receiverId)) {
-          throw new BadRequestException('ID người nhận không hợp lệ');
-        }
-
-        if (senderId.toString() === receiverId) {
-          throw new BadRequestException(
-            'Không thể gửi tin nhắn cho chính mình',
-          );
-        }
-
-        const receiverExists = await this.usersService.findOne(receiverId);
-        if (!receiverExists) {
-          throw new NotFoundException('Người nhận không tồn tại');
-        }
-
-        const receiverObjectId = new Types.ObjectId(receiverId);
-        const directKey = getDirectKey(senderId, receiverObjectId);
-
-        // Find existing direct conversation (supporting both canonical directKey and legacy participant arrays)
-        conversation = await this.conversationModel
-          .findOne({
-            type: 'direct',
-            $or: [
-              { directKey },
-              {
-                participants: {
-                  $all: [
-                    { $elemMatch: { userId: senderId } },
-                    { $elemMatch: { userId: receiverObjectId } },
-                  ],
-                },
-              },
-            ],
-          })
-          .sort({ lastMessageAt: -1, createdAt: -1 });
-
-        if (!conversation) {
-          try {
-            conversation = await this.conversationModel.create({
-              type: 'direct',
-              directKey,
-              participants: [
-                { userId: senderId, joinedAt: new Date() },
-                { userId: receiverObjectId, joinedAt: new Date() },
-              ],
-              lastMessageAt: new Date(),
-            });
-          } catch (createErr: unknown) {
-            // Concurrency handling: if a concurrent request created the direct conversation first,
-            // MongoDB's unique index raises code 11000. Catch it and reuse the winning conversation.
-            if (isDuplicateKeyError(createErr)) {
-              conversation = await this.conversationModel.findOne({
-                type: 'direct',
-                $or: [
-                  { directKey },
-                  {
-                    participants: {
-                      $all: [
-                        { $elemMatch: { userId: senderId } },
-                        { $elemMatch: { userId: receiverObjectId } },
-                      ],
-                    },
-                  },
-                ],
-              });
-
-              if (!conversation) {
-                throw createErr;
-              }
-            } else {
-              throw createErr;
-            }
-          }
-        }
-      }
+      const conversation = await this.resolveConversation(dto, senderId);
 
       // A retry of a send that was already stored returns the stored message:
       // no second message, no unread increment, no second emit
@@ -179,68 +84,17 @@ export class MessageService {
         attachmentRefs,
       );
 
-      const conversationObjectId = conversation._id;
-      let message: MessageDocument;
-      let updatedConversation: ConversationDocument;
+      let stored: {
+        message: MessageDocument;
+        conversation: ConversationDocument;
+      };
       try {
-        // One transaction: take the next seq, store the message, update the conversation.
-        // Any failure (including a duplicate clientMsgId) rolls back the $inc, so seq has no gaps.
-        // Concurrent sends conflict on the conversation document and are retried by Mongoose,
-        // so lastMessage always ends up as the highest seq.
-        ({ message, conversation: updatedConversation } =
-          await this.connection.transaction(async (session) => {
-            const counter = await this.conversationModel.findOneAndUpdate(
-              { _id: conversationObjectId },
-              { $inc: { lastSeq: 1 } },
-              { new: true, session },
-            );
-            if (!counter) {
-              throw new NotFoundException('Không tìm thấy hội thoại');
-            }
-            const seq = counter.lastSeq;
-
-            const [created] = await this.messageModel.create(
-              [
-                {
-                  conversationId: conversationObjectId,
-                  senderId,
-                  ...(content ? { content } : {}),
-                  ...(attachments.length ? { attachments } : {}),
-                  seq,
-                  ...(clientMsgId ? { clientMsgId } : {}),
-                },
-              ],
-              { session },
-            );
-
-            const updated = await this.conversationModel.findOneAndUpdate(
-              { _id: conversationObjectId },
-              {
-                $set: {
-                  seenBy: [],
-                  lastMessageAt: created.createdAt,
-                  lastMessage: {
-                    _id: created._id,
-                    content: created.content || attachmentPreview(attachments),
-                    senderId,
-                    createdAt: created.createdAt,
-                    seq,
-                  },
-                },
-                // The sender has read their own message
-                $max: { 'participants.$[me].lastReadSeq': seq },
-              },
-              {
-                new: true,
-                session,
-                arrayFilters: [{ 'me.userId': senderId }],
-              },
-            );
-            if (!updated) {
-              throw new Error('Không thể cập nhật conversation');
-            }
-            return { message: created, conversation: updated };
-          }));
+        stored = await this.persistMessage(conversation._id, {
+          senderId,
+          content,
+          attachments,
+          clientMsgId,
+        });
       } catch (createErr: unknown) {
         // Two copies of the same send passed the lookup together; the unique index let one in
         if (clientMsgId && isDuplicateKeyError(createErr)) {
@@ -255,34 +109,156 @@ export class MessageService {
         }
         throw createErr;
       }
-      conversation = updatedConversation;
 
       // Emitted only after the transaction committed
-      const messagePayload = toMessagePayload(message);
+      this.emitNewMessage(stored.message, stored.conversation);
 
-      const conversationPayload = {
-        _id: conversation._id.toString(),
-        lastMessage: conversation.lastMessage,
-        lastMessageAt: conversation.lastMessageAt,
-        lastSeq: conversation.lastSeq,
-        unreadCounts: computeUnreadCounts(conversation),
-      };
-
-      conversation.participants?.forEach((p) => {
-        const memberId = p.userId?.toString();
-        if (memberId) {
-          this.realtimeService.emitToUser(memberId, 'message:new', {
-            message: messagePayload,
-            conversation: conversationPayload,
-          });
-        }
-      });
-
-      return this.toSendResponse(message);
+      return this.toSendResponse(stored.message);
     } catch (error) {
       console.error('Lỗi gửi tin nhắn trực tiếp: ', error);
       throw error;
     }
+  }
+
+  // The conversation to send into: the given one (sender must be a member),
+  // or the direct conversation with receiverId (created if missing)
+  private async resolveConversation(
+    dto: CreateMessageDto,
+    senderId: Types.ObjectId,
+  ) {
+    const { conversationId, receiverId } = dto;
+
+    if (conversationId) {
+      if (!Types.ObjectId.isValid(conversationId)) {
+        throw new BadRequestException('Conversation ID không hợp lệ');
+      }
+      const conversation = await this.conversationModel.findById(
+        new Types.ObjectId(conversationId),
+      );
+
+      if (!conversation) {
+        throw new NotFoundException('Không tìm thấy hội thoại');
+      }
+
+      const isParticipant = conversation.participants.some(
+        (p) => p.userId?.toString() === senderId.toString(),
+      );
+
+      if (!isParticipant) {
+        throw new BadRequestException('Bạn không có quyền gửi tin nhắn');
+      }
+      return conversation;
+    }
+
+    if (!receiverId) {
+      throw new BadRequestException(
+        'Cần cung cấp conversationId hoặc receiverId',
+      );
+    }
+
+    if (!Types.ObjectId.isValid(receiverId)) {
+      throw new BadRequestException('ID người nhận không hợp lệ');
+    }
+
+    if (senderId.toString() === receiverId) {
+      throw new BadRequestException('Không thể gửi tin nhắn cho chính mình');
+    }
+
+    // 404 "Người nhận không tồn tại" when the receiver does not exist
+    return this.conversationService.findOrCreateDirect(
+      senderId,
+      new Types.ObjectId(receiverId),
+    );
+  }
+
+  /**
+   * One transaction: take the next seq, store the message, update the conversation.
+   * Any failure (including a duplicate clientMsgId) rolls back the $inc, so seq has no gaps.
+   * Concurrent sends conflict on the conversation document and are retried by Mongoose,
+   * so lastMessage always ends up as the highest seq.
+   */
+  private persistMessage(conversationId: Types.ObjectId, input: NewMessage) {
+    const { senderId, content, attachments, clientMsgId } = input;
+
+    return this.connection.transaction(async (session) => {
+      const counter = await this.conversationModel.findOneAndUpdate(
+        { _id: conversationId },
+        { $inc: { lastSeq: 1 } },
+        { new: true, session },
+      );
+      if (!counter) {
+        throw new NotFoundException('Không tìm thấy hội thoại');
+      }
+      const seq = counter.lastSeq;
+
+      const [created] = await this.messageModel.create(
+        [
+          {
+            conversationId,
+            senderId,
+            ...(content ? { content } : {}),
+            ...(attachments.length ? { attachments } : {}),
+            seq,
+            ...(clientMsgId ? { clientMsgId } : {}),
+          },
+        ],
+        { session },
+      );
+
+      const updated = await this.conversationModel.findOneAndUpdate(
+        { _id: conversationId },
+        {
+          $set: {
+            seenBy: [],
+            lastMessageAt: created.createdAt,
+            lastMessage: {
+              _id: created._id,
+              content: created.content || attachmentPreview(attachments),
+              senderId,
+              createdAt: created.createdAt,
+              seq,
+            },
+          },
+          // The sender has read their own message
+          $max: { 'participants.$[me].lastReadSeq': seq },
+        },
+        {
+          new: true,
+          session,
+          arrayFilters: [{ 'me.userId': senderId }],
+        },
+      );
+      if (!updated) {
+        throw new Error('Không thể cập nhật conversation');
+      }
+      return { message: created, conversation: updated };
+    });
+  }
+
+  // message:new to every member of the stored conversation
+  private emitNewMessage(
+    message: MessageDocument,
+    conversation: ConversationDocument,
+  ) {
+    const messagePayload = toMessagePayload(message);
+
+    const conversationPayload = {
+      _id: conversation._id.toString(),
+      lastMessage: conversation.lastMessage,
+      lastMessageAt: conversation.lastMessageAt,
+      lastSeq: conversation.lastSeq,
+      unreadCounts: computeUnreadCounts(conversation),
+    };
+
+    conversation.participants?.forEach((p) => {
+      const memberId = p.userId?.toString();
+      if (memberId) {
+        this.realtimeService.emitToUser(memberId, 'message:new', {
+          message: messagePayload,
+          conversation: conversationPayload,
+        });
+      }
+    });
   }
 
   private findByClientMsgId(

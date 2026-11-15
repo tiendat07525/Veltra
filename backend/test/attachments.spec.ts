@@ -7,12 +7,12 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { Types } from 'mongoose';
 import { v2 as cloudinary } from 'cloudinary';
+import { AttachmentService } from '../src/messages/attachment.service';
 import {
-  AttachmentService,
   attachmentPreview,
   PUBLIC_ID_PATTERN,
   sanitizeFileName,
-} from '../src/messages/attachment.service';
+} from '../src/messages/attachment.rules';
 import { MessageService } from '../src/messages/message.service';
 import { CreateMessageDto } from '../src/messages/dto/create-message.dto';
 import type { Attachment } from '../src/messages/schemas/message.schema';

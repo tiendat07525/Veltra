@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConversationController } from './conversation.controller';
 import { ConversationService } from './conversation.service';
+import { ConversationGroupService } from './conversation-group.service';
 import { MongooseModule } from '@nestjs/mongoose';
 import {
   Conversation,
@@ -18,14 +19,14 @@ import { RealtimeModule } from '../realtime/realtime.module';
     MongooseModule.forFeature([
       { name: Conversation.name, schema: ConversationSchema },
       { name: Message.name, schema: MessageSchema },
-      // Read-only lookups when adding users to a group
+      // Read-only lookups: users and friendships when adding to a group, receiver of a direct chat
       { name: User.name, schema: UserSchema },
       { name: Friend.name, schema: FriendSchema },
     ]),
   ],
 
   controllers: [ConversationController],
-  providers: [ConversationService],
+  providers: [ConversationService, ConversationGroupService],
   exports: [ConversationService],
 })
 export class ConversationModule {}

@@ -1,165 +1,78 @@
+'use client';
+
 import React from 'react';
-import {
-  Phone,
-  Video,
-  Info,
-  Search,
-  ChevronLeft,
-  X,
-} from 'lucide-react';
-import { Conversation } from '@/types/conversation';
-import { User } from '@/types/user';
+import { ArrowLeft, Info } from 'lucide-react';
+import { Conversation, ConversationParticipant } from '@/types/conversation';
 import { UserAvatar } from '@/components/ui/UserAvatar';
-import { OnlineStatusDot } from '@/components/ui/OnlineStatusDot';
 
 interface ChatHeaderProps {
   conversation: Conversation;
-  partner?: User | null;
-  onBackMobile?: () => void;
-  onToggleInfo: () => void;
-  onStartVoiceCall: () => void;
-  onStartVideoCall: () => void;
-  searchQuery: string;
-  onSearchChange: (val: string) => void;
-  showSearchInput: boolean;
-  onToggleSearchInput: () => void;
-  isInfoOpen?: boolean;
+  conversationName: string;
+  partner: ConversationParticipant | null;
+  currentUserId: string;
+  onlineIds?: Set<string>;
+  onBackMobile: () => void;
+  // Groups only: opens the group info panel
+  onOpenGroupInfo?: () => void;
 }
 
+// Name, avatar and online state of the open conversation
 export const ChatHeader: React.FC<ChatHeaderProps> = ({
   conversation,
+  conversationName,
   partner,
+  currentUserId,
+  onlineIds,
   onBackMobile,
-  onToggleInfo,
-  onStartVoiceCall,
-  onStartVideoCall,
-  searchQuery,
-  onSearchChange,
-  showSearchInput,
-  onToggleSearchInput,
-  isInfoOpen = false,
+  onOpenGroupInfo,
 }) => {
-  const isGroup = conversation.type === 'group';
+  const otherOnlineCount = conversation.participants.filter(
+    (p) => p._id !== currentUserId && onlineIds?.has(p._id)
+  ).length;
+  const partnerOnline = !!partner && !!onlineIds?.has(partner._id);
 
   return (
-    <header className="h-16 px-3 sm:px-5 border-b border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md flex items-center justify-between shrink-0 z-20">
-      {/* Left: Back (on mobile) + Avatar + Info */}
-      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-        {onBackMobile && (
-          <button
-            type="button"
-            onClick={onBackMobile}
-            className="md:hidden p-1.5 -ml-1 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            title="Quay lại danh sách trò chuyện"
-          >
-            <ChevronLeft className="w-6 h-6" />
-          </button>
-        )}
+    <header className="h-16 px-4 flex items-center gap-3 border-b border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
+      {/* Back button (mobile) */}
+      <button
+        type="button"
+        onClick={onBackMobile}
+        className="md:hidden p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+      >
+        <ArrowLeft className="w-5 h-5" />
+      </button>
 
-        <div className="relative cursor-pointer" onClick={onToggleInfo}>
-          <UserAvatar
-            src={isGroup ? undefined : partner?.avatarUrl}
-            name={isGroup ? (conversation.group?.name || 'Nhóm') : (partner?.displayName || partner?.username || 'Người dùng')}
-            size="md"
-            status={partner?.onlineStatus}
-            showStatus={!isGroup}
-          />
-        </div>
-
-        <div className="min-w-0 cursor-pointer" onClick={onToggleInfo}>
-          <div className="flex items-center gap-1.5">
-            <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white truncate">
-              {isGroup ? (conversation.group?.name || 'Nhóm trò chuyện') : (partner?.displayName || partner?.username || 'Người dùng')}
-            </h2>
-          </div>
-
-          <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-            {isGroup ? (
-              <span>{conversation.participants.length} thành viên</span>
-            ) : (
-              <span className="flex items-center gap-1.5">
-                <OnlineStatusDot status={partner?.onlineStatus || 'Offline'} size="sm" />
-                {partner?.onlineStatus === 'Online' ? (
-                  <span className="text-emerald-500 font-medium">Trực tuyến</span>
-                ) : (
-                  <span>{partner?.lastSeen ? `Hoạt động ${partner.lastSeen}` : 'Ngoại tuyến'}</span>
-                )}
-              </span>
-            )}
-          </div>
-        </div>
+      <UserAvatar
+        src={partner?.avatarUrl}
+        name={conversationName}
+        size="md"
+        status={partnerOnline ? 'online' : 'offline'}
+        showStatus={conversation.type !== 'group' && partnerOnline}
+      />
+      <div className="min-w-0 flex-1">
+        <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">{conversationName}</h3>
+        <p className="text-[11px] text-slate-500">
+          {conversation.type === 'group'
+            ? `${conversation.participants.length} thành viên${
+                otherOnlineCount > 0 ? ` · ${otherOnlineCount} đang hoạt động` : ''
+              }`
+            : partnerOnline
+              ? 'Đang hoạt động'
+              : 'Ngoại tuyến'}
+        </p>
       </div>
 
-      {/* Center: In-Chat Search Input if activated */}
-      {showSearchInput && (
-        <div className="hidden sm:flex items-center flex-1 max-w-xs mx-4 relative animate-in fade-in slide-in-from-top-2">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Tìm kiếm trong cuộc trò chuyện..."
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full pl-9 pr-8 py-1.5 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:ring-1.5 focus:ring-sky-500 focus:outline-hidden"
-            autoFocus
-          />
-          <button
-            type="button"
-            onClick={onToggleSearchInput}
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
+      {conversation.type === 'group' && onOpenGroupInfo && (
+        <button
+          type="button"
+          onClick={onOpenGroupInfo}
+          className="p-2 rounded-xl text-slate-400 hover:text-sky-500 hover:bg-sky-500/10 transition-colors"
+          title="Thông tin nhóm"
+          aria-label="Thông tin nhóm"
+        >
+          <Info className="w-5 h-5" />
+        </button>
       )}
-
-      {/* Right: Actions */}
-      <div className="flex items-center gap-1 sm:gap-1.5 text-slate-500 dark:text-slate-400">
-        <button
-          type="button"
-          onClick={onToggleSearchInput}
-          title="Tìm kiếm"
-          className={`p-2 rounded-xl transition-colors ${
-            showSearchInput
-              ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400'
-              : 'hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-200'
-          }`}
-        >
-          <Search className="w-4 h-4 sm:w-5 sm:h-5" />
-        </button>
-
-        <button
-          type="button"
-          onClick={onStartVoiceCall}
-          title="Gọi thoại (TODO: Backend)"
-          className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-sky-500 opacity-60 transition-colors"
-        >
-          <Phone className="w-4 h-4 sm:w-5 sm:h-5" />
-        </button>
-
-        <button
-          type="button"
-          onClick={onStartVideoCall}
-          title="Gọi video (TODO: Backend)"
-          className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-sky-500 opacity-60 transition-colors"
-        >
-          <Video className="w-4 h-4 sm:w-5 sm:h-5" />
-        </button>
-
-        <div className="w-px h-5 bg-slate-200 dark:bg-slate-800 mx-1" />
-
-        <button
-          type="button"
-          onClick={onToggleInfo}
-          title="Thông tin cuộc trò chuyện"
-          className={`p-2 rounded-xl transition-colors ${
-            isInfoOpen
-              ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400'
-              : 'hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-200'
-          }`}
-        >
-          <Info className="w-4 h-4 sm:w-5 sm:h-5" />
-        </button>
-      </div>
     </header>
   );
 };

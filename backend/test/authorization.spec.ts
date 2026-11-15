@@ -1,12 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getConnectionToken, getModelToken } from '@nestjs/mongoose';
 import { ConversationService } from '../src/conversation/conversation.service';
+import { ConversationGroupService } from '../src/conversation/conversation-group.service';
 import { ConversationController } from '../src/conversation/conversation.controller';
 import { AttachmentService } from '../src/messages/attachment.service';
 import { MessageService } from '../src/messages/message.service';
 import { Conversation } from '../src/conversation/schemas/conversation.schema';
 import { Message } from '../src/messages/schemas/message.schema';
-import { UsersService } from 'src/users/users.service';
 import { RealtimeGateway } from '../src/realtime/realtime.gateway';
 import { RealtimeService } from '../src/realtime/realtime.service';
 import { UpdateConversationDto } from '../src/conversation/dto/update-conversation.dto';
@@ -28,6 +28,7 @@ import {
 
 describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
   let conversationService: ConversationService;
+  let groupService: ConversationGroupService;
   let conversationController: ConversationController;
   let messageService: MessageService;
 
@@ -51,10 +52,6 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
     findById: jest.fn(),
     create: jest.fn(),
     deleteMany: jest.fn(),
-  };
-
-  const mockUsersService = {
-    findOne: jest.fn(),
   };
 
   const mockRealtimeGateway = {
@@ -93,10 +90,6 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
           },
         },
         {
-          provide: UsersService,
-          useValue: mockUsersService,
-        },
-        {
           provide: RealtimeGateway,
           useValue: mockRealtimeGateway,
         },
@@ -116,6 +109,8 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
     }).compile();
 
     conversationService = module.get<ConversationService>(ConversationService);
+
+    groupService = module.get(ConversationGroupService);
     conversationController = module.get<ConversationController>(
       ConversationController,
     );
@@ -258,7 +253,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
       );
 
       const updateDto: UpdateConversationDto = { groupName: 'New Name' };
-      const result = await conversationService.update(
+      const result = await groupService.update(
         validConversationId,
         updateDto,
         creatorUserId,
@@ -281,11 +276,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
         groupName: 'Hacked Group Name',
       };
       await expect(
-        conversationService.update(
-          validConversationId,
-          updateDto,
-          memberUserId,
-        ),
+        groupService.update(validConversationId, updateDto, memberUserId),
       ).rejects.toThrow(
         new ForbiddenException('Chỉ trưởng nhóm mới có quyền đổi tên nhóm'),
       );
@@ -330,7 +321,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
         await mockConversationModel.findOne(),
       );
 
-      const result = await conversationService.addParticipants(
+      const result = await groupService.addParticipants(
         validConversationId,
         { userIds: [newParticipantId] },
         creatorUserId,
@@ -348,7 +339,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
       });
 
       await expect(
-        conversationService.addParticipants(
+        groupService.addParticipants(
           validConversationId,
           { userIds: [newParticipantId] },
           memberUserId,
@@ -456,7 +447,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
     describe('1. Malformed conversation ID rejection (400 Bad Request)', () => {
       it('should reject malformed conversationId in ConversationService.update without querying DB', async () => {
         await expect(
-          conversationService.update(
+          groupService.update(
             malformedId,
             { groupName: 'New Group Name' },
             creatorUserId,
@@ -487,7 +478,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
 
       it('should reject malformed conversationId in ConversationService.addParticipants without querying DB', async () => {
         await expect(
-          conversationService.addParticipants(
+          groupService.addParticipants(
             malformedId,
             { userIds: [memberUserId] },
             creatorUserId,
@@ -563,7 +554,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
     describe('2. Malformed participant/member ID rejection (400 Bad Request)', () => {
       it('should reject malformed member ID in ConversationService.addParticipants without querying DB', async () => {
         await expect(
-          conversationService.addParticipants(
+          groupService.addParticipants(
             validConversationId,
             { userIds: [malformedId] },
             creatorUserId,
@@ -575,7 +566,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
 
       it('should reject array containing both valid and malformed member IDs in addParticipants', async () => {
         await expect(
-          conversationService.addParticipants(
+          groupService.addParticipants(
             validConversationId,
             { userIds: [memberUserId, malformedId] },
             creatorUserId,
@@ -621,7 +612,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
           new BadRequestException('ID người nhận không hợp lệ'),
         );
 
-        expect(mockUsersService.findOne).not.toHaveBeenCalled();
+        expect(mockConversationModel.findOne).not.toHaveBeenCalled();
       });
 
       it('should fail DTO validation on AddParticipantDto when userIds contains malformed MongoId', async () => {
@@ -667,7 +658,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
         mockConversationModel.findOne.mockResolvedValue(null);
 
         await expect(
-          conversationService.update(
+          groupService.update(
             nonexistentValidObjectId,
             { groupName: 'New Name' },
             creatorUserId,
@@ -687,7 +678,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
         mockConversationModel.findOne.mockResolvedValue(null);
 
         await expect(
-          conversationService.addParticipants(
+          groupService.addParticipants(
             nonexistentValidObjectId,
             { userIds: [memberUserId] },
             creatorUserId,
@@ -786,7 +777,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
           groupConversation,
         );
 
-        const result = await conversationService.update(
+        const result = await groupService.update(
           validConversationId,
           { groupName: 'Updated Name' },
           creatorUserId,
@@ -848,7 +839,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
           ],
         });
 
-        const result = await conversationService.addParticipants(
+        const result = await groupService.addParticipants(
           validConversationId,
           { userIds: [newUserId] },
           creatorUserId,
@@ -877,7 +868,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
         });
 
         await expect(
-          conversationService.update(
+          groupService.update(
             validConversationId,
             { groupName: 'Malicious Rename' },
             memberUserId,
@@ -902,7 +893,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
         });
 
         await expect(
-          conversationService.addParticipants(
+          groupService.addParticipants(
             validConversationId,
             { userIds: [outsiderUserId] },
             memberUserId,
@@ -919,7 +910,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
         mockConversationModel.findOne.mockResolvedValue(null);
 
         await expect(
-          conversationService.update(
+          groupService.update(
             validConversationId,
             { groupName: 'Hacked by Outsider' },
             outsiderUserId,
@@ -933,7 +924,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
         mockConversationModel.findOne.mockResolvedValue(null);
 
         await expect(
-          conversationService.addParticipants(
+          groupService.addParticipants(
             validConversationId,
             { userIds: [outsiderUserId] },
             outsiderUserId,
@@ -974,7 +965,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
         mockConversationModel.findOne.mockResolvedValue(groupConversation);
 
         // Attempt to add memberUserId who is already in the group
-        await conversationService.addParticipants(
+        await groupService.addParticipants(
           validConversationId,
           { userIds: [memberUserId] },
           creatorUserId,
@@ -1021,7 +1012,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
         );
 
         // Send duplicate IDs in payload: [newUserId, newUserId]
-        await conversationService.addParticipants(
+        await groupService.addParticipants(
           validConversationId,
           { userIds: [newUserId, newUserId] },
           creatorUserId,
@@ -1060,7 +1051,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
           groupConversation,
         );
 
-        await conversationService.update(
+        await groupService.update(
           validConversationId,
           { groupName: '   Trimmed Name   ' },
           creatorUserId,
@@ -1081,7 +1072,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
 
       it('should reject malformed userId in ConversationService.update', async () => {
         await expect(
-          conversationService.update(
+          groupService.update(
             validConversationId,
             { groupName: 'Test' },
             malformedId,
@@ -1091,7 +1082,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
 
       it('should reject malformed userId in ConversationService.addParticipants', async () => {
         await expect(
-          conversationService.addParticipants(
+          groupService.addParticipants(
             validConversationId,
             { userIds: [memberUserId] },
             malformedId,
