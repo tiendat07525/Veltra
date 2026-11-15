@@ -33,6 +33,66 @@ export class SystemEvent {
 
 export const SystemEventSchema = SchemaFactory.createForClass(SystemEvent);
 
+export type AttachmentKind = 'image' | 'video' | 'audio' | 'file';
+
+// A file stored in Cloudinary (attachment.service.ts); checked against the real asset at send
+@Schema({ _id: false })
+export class Attachment {
+  @Prop({
+    type: String,
+    enum: ['image', 'video', 'audio', 'file'],
+    required: true,
+  })
+  kind: AttachmentKind;
+
+  // Delivery URL built by the server (images: f_auto,q_auto, no EXIF)
+  @Prop({ type: String, required: true })
+  url: string;
+
+  // veltra/{conversationId}/{uploaderId}/{uuid}[.ext]; server-only (never in API payloads)
+  @Prop({ type: String, required: true })
+  publicId: string;
+
+  @Prop({ type: String, enum: ['image', 'video', 'raw'], required: true })
+  resourceType: 'image' | 'video' | 'raw';
+
+  @Prop({ type: String, required: true })
+  format: string;
+
+  @Prop({ type: Number, required: true })
+  bytes: number;
+
+  // Original file name for display / download (sanitized)
+  @Prop({ type: String, required: true })
+  name: string;
+
+  @Prop({ type: Number })
+  width?: number;
+
+  @Prop({ type: Number })
+  height?: number;
+
+  // Seconds (video / audio)
+  @Prop({ type: Number })
+  duration?: number;
+}
+
+export const AttachmentSchema = SchemaFactory.createForClass(Attachment);
+
+// What clients receive for an attachment (no publicId / resourceType)
+export function toAttachmentPayload(attachment: Attachment) {
+  return {
+    kind: attachment.kind,
+    url: attachment.url,
+    name: attachment.name,
+    format: attachment.format,
+    bytes: attachment.bytes,
+    ...(attachment.width ? { width: attachment.width } : {}),
+    ...(attachment.height ? { height: attachment.height } : {}),
+    ...(attachment.duration ? { duration: attachment.duration } : {}),
+  };
+}
+
 @Schema({
   timestamps: true,
 })
@@ -91,6 +151,10 @@ export class Message {
   @Prop({ type: SystemEventSchema })
   system?: SystemEvent;
 
+  // Absent on messages without files (and on revoked ones: the files are deleted)
+  @Prop({ type: [AttachmentSchema], default: undefined })
+  attachments?: Attachment[];
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -106,6 +170,9 @@ export function toMessagePayload(message: MessageDocument) {
     senderId: raw.senderId.toString(),
     content: raw.content,
     ...(raw.clientMsgId ? { clientMsgId: raw.clientMsgId } : {}),
+    ...(raw.attachments?.length
+      ? { attachments: raw.attachments.map(toAttachmentPayload) }
+      : {}),
     ...(raw.type === 'system' && raw.system
       ? {
           type: 'system' as const,

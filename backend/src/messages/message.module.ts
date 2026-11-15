@@ -8,6 +8,7 @@ import { MessageService } from './message.service';
 import { Conversation } from 'src/conversation/schemas/conversation.schema';
 import { ConversationSchema } from 'src/conversation/schemas/conversation.schema';
 import { RealtimeModule } from 'src/realtime/realtime.module';
+import { AttachmentService } from './attachment.service';
 
 @Module({
   imports: [
@@ -20,7 +21,7 @@ import { RealtimeModule } from 'src/realtime/realtime.module';
   ],
 
   controllers: [MessageController],
-  providers: [MessageService],
+  providers: [MessageService, AttachmentService],
   exports: [MessageService],
 })
 export class MessageModule {}

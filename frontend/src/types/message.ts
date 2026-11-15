@@ -23,6 +23,23 @@ export type SystemAction =
   | 'members_added'
   | 'group_renamed';
 
+export type AttachmentKind = 'image' | 'video' | 'audio' | 'file';
+
+// A file on a message (stored in Cloudinary). The server never sends its storage id.
+export interface MessageAttachment {
+  kind: AttachmentKind;
+  // https://res.cloudinary.com/… for stored files; blob: preview (or '') while an optimistic upload runs
+  url: string;
+  name: string;
+  bytes: number;
+  format?: string;
+  width?: number;
+  height?: number;
+  duration?: number;
+  // Client-only, optimistic messages: upload progress 0..1
+  progress?: number;
+}
+
 export interface Message {
   _id: string;
   id?: string;
@@ -41,6 +58,8 @@ export interface Message {
   // Absent = text. 'system' messages are rendered as a centered note from `content` (server-built text)
   type?: MessageType;
   system?: { action: SystemAction; targetIds: string[] };
+  // Absent = no files. Cleared when the message is revoked (the files are deleted)
+  attachments?: MessageAttachment[];
   status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   callStatus?: 'missed' | 'completed' | 'declined';
   replyTo?: {

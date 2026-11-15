@@ -20,6 +20,7 @@ import {
   MessageDocument,
   SystemAction,
   toMessagePayload,
+  toAttachmentPayload,
 } from '../messages/schemas/message.schema';
 import { AddParticipantDto, TransferOwnerDto } from './dto/add-participant.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
@@ -522,6 +523,10 @@ export class ConversationService {
       _id: msg._id?.toString(),
       conversationId: msg.conversationId?.toString(),
       senderId: msg.senderId?.toString(),
+      // publicId / resourceType stay on the server
+      attachments: msg.attachments?.length
+        ? msg.attachments.map(toAttachmentPayload)
+        : undefined,
     }));
 
     // The extra row only signals that older messages exist; the client pages
