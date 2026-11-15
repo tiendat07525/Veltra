@@ -10,7 +10,11 @@ import { FriendsTab } from './FriendsTab';
 import { FriendRequestsTab } from './FriendRequestsTab';
 import { UserSearchTab, useUserSearch } from './UserSearchTab';
 
+export type ContactsTab = 'friends' | 'requests' | 'search';
+
 interface ContactsViewProps {
+  // Tab shown when the view opens (e.g. /contacts?tab=requests from a notification)
+  initialTab?: ContactsTab;
   onStartChat: (user: UserBasicInfo) => void;
   onVoiceCall?: (user: UserBasicInfo) => void;
   onVideoCall?: (user: UserBasicInfo) => void;
@@ -18,13 +22,12 @@ interface ContactsViewProps {
   onlineIds?: Set<string>;
 }
 
-type TabType = 'friends' | 'requests' | 'search';
-
 export const ContactsView: React.FC<ContactsViewProps> = ({
+  initialTab,
   onStartChat,
   onlineIds,
 }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('friends');
+  const [activeTab, setActiveTab] = useState<ContactsTab>(initialTab ?? 'friends');
   const [currentUser, setCurrentUser] = useState<CurrentUserProfile | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [removingFriendId, setRemovingFriendId] = useState<string | null>(null);
@@ -94,7 +97,7 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
     }
   };
 
-  const tabs: { id: TabType; label: string; count?: number }[] = [
+  const tabs: { id: ContactsTab; label: string; count?: number }[] = [
     { id: 'friends', label: 'Bạn bè', count: friendsHook.friends.length },
     { id: 'requests', label: 'Lời mời', count: friendsHook.receivedRequests.length },
     { id: 'search', label: 'Tìm bạn' },

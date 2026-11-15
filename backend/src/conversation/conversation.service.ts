@@ -22,6 +22,7 @@ import {
 import { isDuplicateKeyError } from '../common/mongo-errors';
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { RealtimeService } from '../realtime/realtime.service';
+import { NotificationService } from '../notification/notification.service';
 import {
   ConversationGroupService,
   MAX_GROUP_MEMBERS,
@@ -47,6 +48,7 @@ export class ConversationService {
     private readonly userModel: Model<UserDocument>,
     private readonly realtimeService: RealtimeService,
     private readonly groupService: ConversationGroupService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async create(dto: CreateConversationDto, userId: string) {
@@ -209,8 +211,24 @@ export class ConversationService {
     });
 
     await conversation.populate(conversationUserPopulate());
+    const formatted = formatConversation(conversation);
 
-    return formatConversation(conversation);
+    // Members see the new group right away (the creator's other tabs too)
+    for (const memberId of [userId, ...invitedIds]) {
+      this.realtimeService.emitToUser(
+        memberId.toString(),
+        'conversation:updated',
+        { conversation: formatted },
+      );
+    }
+    await this.notificationService.notify(invitedIds, {
+      type: 'group_added',
+      actorId: userId,
+      conversationId: conversation._id,
+      groupName: conversation.group?.name,
+    });
+
+    return formatted;
   }
 
   async findAll(userId: string) {

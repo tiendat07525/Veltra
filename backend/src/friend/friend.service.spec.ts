@@ -4,6 +4,7 @@ import { getModelToken } from '@nestjs/mongoose';
 import { Friend } from './schema/friend.schema';
 import { FriendRequest } from './schema/friend-request.schema';
 import { User } from 'src/users/schemas/user.schema';
+import { NotificationService } from 'src/notification/notification.service';
 import {
   BadRequestException,
   ForbiddenException,
@@ -33,6 +34,11 @@ describe('FriendService (FULLAUDIT-007: Recipient Existence & Authorization)', (
     findById: jest.fn(),
   };
 
+  const mockNotificationService = {
+    notify: jest.fn(),
+    removeFriendRequestNotifications: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -49,6 +55,7 @@ describe('FriendService (FULLAUDIT-007: Recipient Existence & Authorization)', (
           provide: getModelToken(User.name),
           useValue: mockUserModel,
         },
+        { provide: NotificationService, useValue: mockNotificationService },
       ],
     }).compile();
 
@@ -90,6 +97,16 @@ describe('FriendService (FULLAUDIT-007: Recipient Existence & Authorization)', (
         new Types.ObjectId(recipientId),
       );
       expect(mockFriendRequestModel.create).toHaveBeenCalled();
+      // The recipient is notified after the request is stored
+      expect(mockNotificationService.notify).toHaveBeenCalledWith(
+        [new Types.ObjectId(recipientId)],
+        { type: 'friend_request', actorId: new Types.ObjectId(senderId) },
+      );
+      expect(
+        mockFriendRequestModel.create.mock.invocationCallOrder[0],
+      ).toBeLessThan(
+        mockNotificationService.notify.mock.invocationCallOrder[0],
+      );
     });
 
     it('should throw NotFoundException when recipient user does not exist in database', async () => {
@@ -104,6 +121,7 @@ describe('FriendService (FULLAUDIT-007: Recipient Existence & Authorization)', (
         new Types.ObjectId(recipientId),
       );
       expect(mockFriendRequestModel.create).not.toHaveBeenCalled();
+      expect(mockNotificationService.notify).not.toHaveBeenCalled();
     });
 
     it('should throw BadRequestException when recipient ID is malformed', async () => {
@@ -153,6 +171,7 @@ describe('FriendService (FULLAUDIT-007: Recipient Existence & Authorization)', (
           'Bạn đã gửi hoặc nhận lời mời kết bạn với người này',
         ),
       );
+      expect(mockNotificationService.notify).not.toHaveBeenCalled();
     });
   });
 
@@ -178,6 +197,17 @@ describe('FriendService (FULLAUDIT-007: Recipient Existence & Authorization)', (
       expect(mockFriendRequestModel.findByIdAndDelete).toHaveBeenCalledWith(
         requestId,
       );
+      // The sender is told; the accepter's friend_request notification is removed
+      expect(mockNotificationService.notify).toHaveBeenCalledWith(
+        [new Types.ObjectId(senderId)],
+        { type: 'friend_accepted', actorId: new Types.ObjectId(userId) },
+      );
+      expect(
+        mockNotificationService.removeFriendRequestNotifications,
+      ).toHaveBeenCalledWith(
+        new Types.ObjectId(userId),
+        new Types.ObjectId(senderId),
+      );
     });
 
     it('should throw ForbiddenException if accepting a request not addressed to caller', async () => {
@@ -192,6 +222,10 @@ describe('FriendService (FULLAUDIT-007: Recipient Existence & Authorization)', (
       ).rejects.toThrow(
         new ForbiddenException('Bạn không có quyền chấp nhận lời mời này'),
       );
+      expect(mockNotificationService.notify).not.toHaveBeenCalled();
+      expect(
+        mockNotificationService.removeFriendRequestNotifications,
+      ).not.toHaveBeenCalled();
     });
 
     it('should throw NotFoundException if request does not exist', async () => {
@@ -208,10 +242,12 @@ describe('FriendService (FULLAUDIT-007: Recipient Existence & Authorization)', (
   describe('declineFriendRequest', () => {
     const userId = new Types.ObjectId().toString();
     const requestId = new Types.ObjectId().toString();
+    const senderId = new Types.ObjectId().toString();
 
     it('should decline friend request successfully', async () => {
       mockFriendRequestModel.findById.mockResolvedValue({
         _id: new Types.ObjectId(requestId),
+        from: new Types.ObjectId(senderId),
         to: new Types.ObjectId(userId),
       });
       mockFriendRequestModel.findByIdAndDelete.mockResolvedValue({});
@@ -222,6 +258,30 @@ describe('FriendService (FULLAUDIT-007: Recipient Existence & Authorization)', (
       expect(mockFriendRequestModel.findByIdAndDelete).toHaveBeenCalledWith(
         requestId,
       );
+      // No notification to the sender; the decliner's notification is removed
+      expect(mockNotificationService.notify).not.toHaveBeenCalled();
+      expect(
+        mockNotificationService.removeFriendRequestNotifications,
+      ).toHaveBeenCalledWith(
+        new Types.ObjectId(userId),
+        new Types.ObjectId(senderId),
+      );
+    });
+
+    it('should not touch notifications when declining a request addressed to someone else', async () => {
+      mockFriendRequestModel.findById.mockResolvedValue({
+        _id: new Types.ObjectId(requestId),
+        from: new Types.ObjectId(senderId),
+        to: new Types.ObjectId(),
+      });
+
+      await expect(
+        service.declineFriendRequest(requestId, userId),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockFriendRequestModel.findByIdAndDelete).not.toHaveBeenCalled();
+      expect(
+        mockNotificationService.removeFriendRequestNotifications,
+      ).not.toHaveBeenCalled();
     });
   });
 

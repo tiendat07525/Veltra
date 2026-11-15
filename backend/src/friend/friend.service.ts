@@ -12,6 +12,7 @@ import {
 import { Model, Types } from 'mongoose';
 import { Friend, FriendDocument } from './schema/friend.schema';
 import { User, UserDocument } from 'src/users/schemas/user.schema';
+import { NotificationService } from 'src/notification/notification.service';
 
 import { SendFriendRequestDto } from './dto/send-friend-request.dto';
 
@@ -24,6 +25,7 @@ export class FriendService {
     private readonly friendRequestModel: Model<FriendRequestDocument>,
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async sendFriendRequest(dto: SendFriendRequestDto, userId: string) {
@@ -84,6 +86,12 @@ export class FriendService {
       to: receiverId,
       message,
     });
+
+    await this.notificationService.notify([receiverId], {
+      type: 'friend_request',
+      actorId: currentUserId,
+    });
+
     return {
       status: true,
       message: 'Gửi lời mời kết bạn thành công',
@@ -125,6 +133,18 @@ export class FriendService {
 
     await this.friendRequestModel.findByIdAndDelete(requestId);
 
+    await Promise.all([
+      this.notificationService.notify([request.from], {
+        type: 'friend_accepted',
+        actorId: currentUserId,
+      }),
+      // The request is handled: its notification is no longer useful
+      this.notificationService.removeFriendRequestNotifications(
+        currentUserId,
+        request.from,
+      ),
+    ]);
+
     return {
       status: true,
       message: 'Chấp nhận lời mời kết bạn thành công',
@@ -151,6 +171,11 @@ export class FriendService {
     }
 
     await this.friendRequestModel.findByIdAndDelete(requestId);
+
+    await this.notificationService.removeFriendRequestNotifications(
+      currentUserId,
+      request.from,
+    );
 
     return {
       status: true,

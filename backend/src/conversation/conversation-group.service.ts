@@ -23,6 +23,8 @@ import { UpdateConversationDto } from './dto/update-conversation.dto';
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { Friend, FriendDocument } from '../friend/schema/friend.schema';
 import { RealtimeService } from '../realtime/realtime.service';
+import { NotificationService } from '../notification/notification.service';
+import type { NotificationType } from '../notification/schemas/notification.schema';
 import {
   conversationUserPopulate,
   formatConversation,
@@ -51,6 +53,8 @@ interface GroupChange {
   removedIds?: Types.ObjectId[];
   // New members: start at lastReadSeq = seq − 1, so only this system message is unread
   addedIds?: Types.ObjectId[];
+  // Stored notification for the users the change is about (sent after the events)
+  notification?: { type: NotificationType; recipientIds: Types.ObjectId[] };
 }
 
 /**
@@ -69,6 +73,7 @@ export class ConversationGroupService {
     @InjectModel(Friend.name)
     private readonly friendModel: Model<FriendDocument>,
     private readonly realtimeService: RealtimeService,
+    private readonly notificationService: NotificationService,
     @InjectConnection()
     private readonly connection: Connection,
   ) {}
@@ -207,6 +212,7 @@ export class ConversationGroupService {
       targetIds: addedIds,
       content: `${nameOf(actorId)} đã thêm ${formatNameList(addedIds.map(nameOf))} vào nhóm`,
       addedIds,
+      notification: { type: 'group_added', recipientIds: addedIds },
     });
   }
 
@@ -303,6 +309,7 @@ export class ConversationGroupService {
       targetIds: [targetId],
       content: `${nameOf(actorId)} đã xóa ${nameOf(targetId)} khỏi nhóm`,
       removedIds: [targetId],
+      notification: { type: 'group_removed', recipientIds: [targetId] },
     });
   }
 
@@ -344,6 +351,7 @@ export class ConversationGroupService {
       action: 'owner_transferred',
       targetIds: [targetId],
       content: `${nameOf(actorId)} đã chuyển quyền trưởng nhóm cho ${nameOf(targetId)}`,
+      notification: { type: 'group_owner', recipientIds: [targetId] },
     });
   }
 
@@ -400,7 +408,8 @@ export class ConversationGroupService {
    * Applies a group change and records it as a system message in one transaction:
    * conditional update + $inc lastSeq → system message with that seq → lastMessage.
    * Emits only after the commit: conversation:updated and message:new to the members
-   * of the stored conversation, conversation:removed to members who lost access.
+   * of the stored conversation, conversation:removed to members who lost access,
+   * then the stored notification (if any) to the users the change is about.
    */
   private async applyGroupChange(
     conversationId: Types.ObjectId,
@@ -501,6 +510,15 @@ export class ConversationGroupService {
         'conversation:removed',
         { conversationId: conversation._id.toString() },
       );
+    }
+
+    if (change.notification) {
+      await this.notificationService.notify(change.notification.recipientIds, {
+        type: change.notification.type,
+        actorId: change.actorId,
+        conversationId: conversation._id,
+        groupName: conversation.group?.name,
+      });
     }
 
     return formatted;

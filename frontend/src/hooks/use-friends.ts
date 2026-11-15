@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { friendService } from '@/services/api/friend.service';
 import { FriendRequest, FriendshipStatus } from '@/types/friend';
 import { UserBasicInfo } from '@/types/user';
+import { NotificationNewEvent } from '@/types/notification';
+import { socketService } from '@/services/socket/socket.service';
 
 function getErrorMessage(err: unknown, fallback: string): string {
   if (err && typeof err === 'object' && 'response' in err) {
@@ -52,6 +54,19 @@ export function useFriends() {
       fetchAll();
     });
   }, [fetchAll]);
+
+  // Friend requests / friendships changed by the other user arrive as stored notifications:
+  // reload in the background (no loading state) so an open contacts view stays current
+  useEffect(() => {
+    const handleNotification = (event: NotificationNewEvent) => {
+      const type = event?.notification?.type;
+      if (type === 'friend_request' || type === 'friend_accepted') {
+        void Promise.all([fetchFriends(), fetchFriendRequests()]);
+      }
+    };
+    socketService.on('notification:new', handleNotification);
+    return () => socketService.off('notification:new', handleNotification);
+  }, [fetchFriends, fetchFriendRequests]);
 
   const getFriendshipStatus = useCallback(
     (targetUserId: string, currentUserId: string): { status: FriendshipStatus; requestId?: string } => {
