@@ -4,7 +4,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
-import { Message, MessageDocument } from './schemas/message.schema';
+import {
+  Message,
+  MessageDocument,
+  toMessagePayload,
+} from './schemas/message.schema';
 import { Connection, Model, Types } from 'mongoose';
 import { CreateMessageDto } from './dto/create-message.dto';
 import {
@@ -235,7 +239,7 @@ export class MessageService {
       conversation = updatedConversation;
 
       // Emitted only after the transaction committed
-      const messagePayload = this.toMessagePayload(message);
+      const messagePayload = toMessagePayload(message);
 
       const conversationPayload = {
         _id: conversation._id.toString(),
@@ -270,26 +274,11 @@ export class MessageService {
     return this.messageModel.findOne({ conversationId, senderId, clientMsgId });
   }
 
-  // Shape shared by the REST response and the `message:new` event
-  private toMessagePayload(message: MessageDocument) {
-    const raw = message.toObject ? message.toObject() : message;
-    return {
-      _id: raw._id.toString(),
-      conversationId: raw.conversationId.toString(),
-      senderId: raw.senderId.toString(),
-      content: raw.content,
-      ...(raw.clientMsgId ? { clientMsgId: raw.clientMsgId } : {}),
-      seq: raw.seq,
-      createdAt: raw.createdAt,
-      updatedAt: raw.updatedAt,
-    };
-  }
-
   private toSendResponse(message: MessageDocument) {
     return {
       success: true,
       message: 'Thành công',
-      data: this.toMessagePayload(message),
+      data: toMessagePayload(message),
     };
   }
 
@@ -311,6 +300,10 @@ export class MessageService {
 
     if (message.senderId.toString() !== userId) {
       throw new BadRequestException('Bạn không có quyền thu hồi tin nhắn này');
+    }
+
+    if (message.type === 'system') {
+      throw new BadRequestException('Không thể thu hồi tin hệ thống');
     }
 
     if (message.isRevoked) {

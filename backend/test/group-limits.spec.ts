@@ -11,6 +11,7 @@ import { Message } from '../src/messages/schemas/message.schema';
 import {
   allowAllGroupLookups,
   groupLookupProviders,
+  stubGroupChangeWrites,
 } from './helpers/group-lookup-mocks';
 
 interface StoredParticipant {
@@ -30,7 +31,21 @@ describe('ConversationService group membership limits', () => {
   const mockConversationModel = {
     create: jest.fn(),
     findOne: jest.fn(),
+    findOneAndUpdate: jest.fn(),
   };
+  const mockMessageModel = { create: jest.fn() };
+
+  // Update document of the n-th findOneAndUpdate call (0 = the membership change)
+  const writeCall = (n: number) =>
+    mockConversationModel.findOneAndUpdate.mock.calls[n] as [
+      Record<string, unknown>,
+      Record<string, any>,
+      { arrayFilters?: Record<string, unknown>[] },
+    ];
+  const pushedIds = () =>
+    (writeCall(0)[1].$push.participants.$each as StoredParticipant[]).map((p) =>
+      p.userId.toString(),
+    );
 
   // Group document holding `memberCount` members, the owner first
   const makeGroupDocument = (memberCount: number) => {
@@ -61,7 +76,7 @@ describe('ConversationService group membership limits', () => {
           provide: getModelToken(Conversation.name),
           useValue: mockConversationModel,
         },
-        { provide: getModelToken(Message.name), useValue: {} },
+        { provide: getModelToken(Message.name), useValue: mockMessageModel },
         ...groupLookupProviders(lookups),
       ],
     }).compile();
@@ -160,6 +175,7 @@ describe('ConversationService group membership limits', () => {
     it('should only check and add users who are not members yet', async () => {
       const doc = makeGroupDocument(3);
       mockConversationModel.findOne.mockResolvedValue(doc);
+      stubGroupChangeWrites(mockConversationModel, mockMessageModel, doc);
       const existing = doc.participants[1].userId.toString();
       const [fresh] = newIds(1);
 
@@ -167,21 +183,61 @@ describe('ConversationService group membership limits', () => {
 
       const userFilter = lookups.userModel.countDocuments.mock.calls[0][0];
       expect(userFilter._id.$in.map(String)).toEqual([fresh]);
-      expect(doc.participants).toHaveLength(4);
-      expect(doc.save).toHaveBeenCalled();
+      expect(pushedIds()).toEqual([fresh]);
+      // Written only if none of them joined in the meantime and the caller is still owner
+      expect(writeCall(0)[0]).toMatchObject({
+        'group.createdBy': ownerId,
+        'participants.userId': { $nin: [new Types.ObjectId(fresh)] },
+      });
+      expect(doc.save).not.toHaveBeenCalled();
     });
 
-    it('should start new members at lastReadSeq = lastSeq so earlier messages are not unread', async () => {
-      const doc = { ...makeGroupDocument(2), lastSeq: 12 };
+    it('should start new members at lastReadSeq = seq − 1 so only the system message is unread', async () => {
+      const doc = makeGroupDocument(2);
       mockConversationModel.findOne.mockResolvedValue(doc);
+      stubGroupChangeWrites(mockConversationModel, mockMessageModel, doc, 13);
       const [fresh] = newIds(1);
 
       await add([fresh]);
 
-      const added = doc.participants.find(
-        (p) => p.userId.toString() === fresh,
-      ) as StoredParticipant & { lastReadSeq?: number };
-      expect(added.lastReadSeq).toBe(12);
+      expect(
+        (
+          writeCall(0)[1].$push.participants.$each as { lastReadSeq: number }[]
+        )[0].lastReadSeq,
+      ).toBe(0);
+      const [, lastMessageUpdate, options] = writeCall(1);
+      expect(lastMessageUpdate.$max).toEqual({
+        'participants.$[me].lastReadSeq': 13,
+        'participants.$[added].lastReadSeq': 12,
+      });
+      expect(options.arrayFilters).toEqual([
+        { 'me.userId': ownerId },
+        { 'added.userId': { $in: [new Types.ObjectId(fresh)] } },
+      ]);
+    });
+
+    it('should record a members_added system message naming the new members', async () => {
+      const doc = makeGroupDocument(2);
+      mockConversationModel.findOne.mockResolvedValue(doc);
+      stubGroupChangeWrites(mockConversationModel, mockMessageModel, doc, 4);
+      const added = newIds(5);
+
+      await add(added);
+
+      const [[systemMessage]] = mockMessageModel.create.mock.calls[0] as [
+        [Record<string, any>],
+      ];
+      expect(systemMessage).toMatchObject({
+        senderId: ownerId,
+        type: 'system',
+        seq: 4,
+        system: { action: 'members_added' },
+      });
+      expect(systemMessage.system.targetIds.map(String)).toEqual(added);
+      // Names not found in the mock → "Người dùng"; more than 3 are summarized
+      expect(systemMessage.content).toBe(
+        'Người dùng đã thêm Người dùng, Người dùng, Người dùng và 2 người khác vào nhóm',
+      );
     });
 
     it('should skip lookups when every user is already a member', async () => {
@@ -217,13 +273,18 @@ describe('ConversationService group membership limits', () => {
       expect(doc.save).not.toHaveBeenCalled();
     });
 
-    it(`should fill a group up to ${MAX_GROUP_MEMBERS} members`, async () => {
+    it(`should fill a group up to ${MAX_GROUP_MEMBERS} members, re-checking the cap in the write`, async () => {
       const doc = makeGroupDocument(MAX_GROUP_MEMBERS - 2);
       mockConversationModel.findOne.mockResolvedValue(doc);
+      stubGroupChangeWrites(mockConversationModel, mockMessageModel, doc);
 
       await add(newIds(2));
 
-      expect(doc.participants).toHaveLength(MAX_GROUP_MEMBERS);
+      expect(pushedIds()).toHaveLength(2);
+      // A concurrent add that filled the group makes the write match nothing
+      expect(writeCall(0)[0]).toMatchObject({
+        [`participants.${MAX_GROUP_MEMBERS - 2}`]: { $exists: false },
+      });
     });
 
     it(`should reject adding beyond ${MAX_GROUP_MEMBERS} members`, async () => {

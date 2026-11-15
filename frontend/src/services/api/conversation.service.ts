@@ -39,5 +39,17 @@ export const conversationService = {
   },
   async deleteConversation(conversationId: string): Promise<void> {
     await api.delete(`/conversation/${conversationId}`);
+  },
+  // An owner must transfer ownership first (400) unless they are the last member (group deleted)
+  async leaveGroup(conversationId: string): Promise<void> {
+    await api.post(`/conversation/${conversationId}/leave`);
+  },
+  async removeParticipant(conversationId: string, userId: string): Promise<Conversation> {
+    const res = await api.delete(`/conversation/${conversationId}/participants/${userId}`);
+    return res.data;
+  },
+  async transferOwnership(conversationId: string, userId: string): Promise<Conversation> {
+    const res = await api.patch(`/conversation/${conversationId}/owner`, { userId });
+    return res.data;
   }
 };

@@ -15,6 +15,14 @@ export interface ReplyPreviewData {
   type?: MessageType;
 }
 
+// Group change recorded as a system message; the actor is senderId
+export type SystemAction =
+  | 'member_left'
+  | 'member_removed'
+  | 'owner_transferred'
+  | 'members_added'
+  | 'group_renamed';
+
 export interface Message {
   _id: string;
   id?: string;
@@ -30,7 +38,9 @@ export interface Message {
   fileName?: string;
   fileSize?: string;
   duration?: number;
+  // Absent = text. 'system' messages are rendered as a centered note from `content` (server-built text)
   type?: MessageType;
+  system?: { action: SystemAction; targetIds: string[] };
   status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   callStatus?: 'missed' | 'completed' | 'declined';
   replyTo?: {

@@ -9,6 +9,7 @@ import { useRouter, usePathname } from '@/lib/navigation';
 import { MainSidebar, NavTab } from '@/components/layout/MainSidebar';
 import { ConversationSidebar } from '@/components/conversation/ConversationSidebar';
 import { ChatWindow } from '@/components/chat/ChatWindow';
+import { GroupInfoPanel } from '@/components/conversation/GroupInfoPanel';
 import { ContactsView } from '@/components/contacts/ContactsView';
 import { NotificationsView } from '@/components/common/NotificationsView';
 import { SettingsView } from '@/components/common/SettingsView';
@@ -92,6 +93,25 @@ export function VeltraClientApp() {
       type,
     });
     setTimeout(() => setToast(null), 3000);
+  };
+
+  // Group info panel: open for one conversation id, so it hides by itself when that
+  // conversation is no longer the open one (switched, left, removed, deleted)
+  const [groupInfoFor, setGroupInfoFor] = useState<string | null>(null);
+  const groupInfoConversation =
+    chat.activeConversation?.type === 'group' && chat.activeConversation._id === groupInfoFor
+      ? chat.activeConversation
+      : null;
+
+  // Runs a group change and reports it; never throws (the panel only tracks busy state)
+  const runGroupAction = async (action: () => Promise<void>, success: string) => {
+    try {
+      await action();
+      showToast(success, 'success');
+    } catch (err: unknown) {
+      const apiErr = err as { response?: { data?: { message?: string } } };
+      showToast(apiErr?.response?.data?.message || 'Không thể cập nhật nhóm', 'error');
+    }
   };
 
   // Select conversation
@@ -262,8 +282,36 @@ export function VeltraClientApp() {
                 messagesError={chat.messagesHook.error}
                 onRefreshMessages={chat.messagesHook.refetch}
                 onRevokeMessage={(id) => chat.messagesHook.revokeMessage(id).catch(err => showToast(err?.response?.data?.message || 'Lỗi thu hồi tin nhắn', 'error'))}
+                onOpenGroupInfo={() => setGroupInfoFor(chat.activeConversationId)}
               />
             </div>
+
+            {groupInfoConversation && (
+              <GroupInfoPanel
+                conversation={groupInfoConversation}
+                currentUserId={chat.currentUser?._id || ''}
+                onClose={() => setGroupInfoFor(null)}
+                onRename={(name) =>
+                  runGroupAction(() => chat.renameGroup(groupInfoConversation._id, name), 'Đã đổi tên nhóm')
+                }
+                onAddMembers={(userIds) =>
+                  runGroupAction(() => chat.addMembers(groupInfoConversation._id, userIds), 'Đã thêm thành viên')
+                }
+                onRemoveMember={(userId) =>
+                  runGroupAction(() => chat.removeMember(groupInfoConversation._id, userId), 'Đã xóa thành viên khỏi nhóm')
+                }
+                onTransferOwner={(userId) =>
+                  runGroupAction(() => chat.transferOwner(groupInfoConversation._id, userId), 'Đã chuyển quyền trưởng nhóm')
+                }
+                onLeave={() =>
+                  runGroupAction(async () => {
+                    await chat.leaveGroup(groupInfoConversation._id);
+                    setGroupInfoFor(null);
+                    if (isMobile) setMobileViewChat(false);
+                  }, 'Đã rời nhóm')
+                }
+              />
+            )}
           </div>
         )}
 

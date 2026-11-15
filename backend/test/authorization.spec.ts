@@ -20,7 +20,10 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
-import { groupLookupProviders } from './helpers/group-lookup-mocks';
+import {
+  groupLookupProviders,
+  stubGroupChangeWrites,
+} from './helpers/group-lookup-mocks';
 
 describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
   let conversationService: ConversationService;
@@ -39,6 +42,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
     create: jest.fn(),
     findByIdAndUpdate: jest.fn(),
     findByIdAndDelete: jest.fn(),
+    findOneAndUpdate: jest.fn(),
   };
 
   const mockMessageModel = {
@@ -80,8 +84,13 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
           useValue: mockMessageModel,
         },
         ...groupLookupProviders(),
-        // MessageService sends inside a transaction; these tests never reach it
-        { provide: getConnectionToken(), useValue: { transaction: jest.fn() } },
+        // Sends and group changes run inside a transaction: run the callback directly
+        {
+          provide: getConnectionToken(),
+          useValue: {
+            transaction: jest.fn((fn: (session: object) => unknown) => fn({})),
+          },
+        },
         {
           provide: UsersService,
           useValue: mockUsersService,
@@ -162,6 +171,10 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
         _id: new Types.ObjectId(validConversationId),
         type: 'group',
         group: { createdBy: new Types.ObjectId(creatorUserId) },
+        participants: [
+          { userId: new Types.ObjectId(creatorUserId) },
+          { userId: new Types.ObjectId(memberUserId) },
+        ],
       });
       mockConversationModel.findByIdAndDelete.mockResolvedValue({});
       mockMessageModel.deleteMany.mockResolvedValue({});
@@ -175,6 +188,14 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
       expect(mockConversationModel.findByIdAndDelete).toHaveBeenCalledWith(
         validConversationId,
       );
+      // Every member drops the group from their list
+      for (const id of [creatorUserId, memberUserId]) {
+        expect(mockRealtimeService.emitToUser).toHaveBeenCalledWith(
+          id,
+          'conversation:removed',
+          { conversationId: validConversationId },
+        );
+      }
     });
 
     it('should reject non-creator member attempting to delete group conversation (403 Forbidden)', async () => {
@@ -220,6 +241,12 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
           }),
         }),
       });
+
+      stubGroupChangeWrites(
+        mockConversationModel,
+        mockMessageModel,
+        await mockConversationModel.findOne(),
+      );
 
       const updateDto: UpdateConversationDto = { groupName: 'New Name' };
       const result = await conversationService.update(
@@ -288,6 +315,11 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
           }),
         }),
       });
+      stubGroupChangeWrites(
+        mockConversationModel,
+        mockMessageModel,
+        await mockConversationModel.findOne(),
+      );
 
       const result = await conversationService.addParticipants(
         validConversationId,
@@ -319,6 +351,27 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
   });
 
   describe('Message Revocation Access Control & Sender Verification', () => {
+    it('should refuse to revoke a system message, even for its actor', async () => {
+      const systemMessage = {
+        _id: new Types.ObjectId(validMessageId),
+        senderId: new Types.ObjectId(creatorUserId),
+        conversationId: new Types.ObjectId(validConversationId),
+        type: 'system',
+        isRevoked: false,
+        content: 'An đã rời nhóm',
+        save: jest.fn(),
+      };
+      mockMessageModel.findById.mockResolvedValue(systemMessage);
+
+      await expect(
+        messageService.revokeMessage(validMessageId, creatorUserId),
+      ).rejects.toThrow(
+        new BadRequestException('Không thể thu hồi tin hệ thống'),
+      );
+      expect(systemMessage.save).not.toHaveBeenCalled();
+      expect(mockRealtimeService.emitToUser).not.toHaveBeenCalled();
+    });
+
     it('should allow message sender to revoke their own message', async () => {
       const mockMessageDoc = {
         _id: new Types.ObjectId(validMessageId),
@@ -718,6 +771,11 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
         };
 
         mockConversationModel.findOne.mockResolvedValue(groupConversation);
+        stubGroupChangeWrites(
+          mockConversationModel,
+          mockMessageModel,
+          groupConversation,
+        );
 
         const result = await conversationService.update(
           validConversationId,
@@ -725,8 +783,16 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
           creatorUserId,
         );
 
-        expect(groupConversation.group.name).toBe('Updated Name');
-        expect(mockSave).toHaveBeenCalled();
+        // Written with the owner condition, in the same transaction as the system message
+        expect(mockConversationModel.findOneAndUpdate.mock.calls[0][0]).toEqual(
+          expect.objectContaining({
+            'group.createdBy': new Types.ObjectId(creatorUserId),
+          }),
+        );
+        expect(
+          mockConversationModel.findOneAndUpdate.mock.calls[0][1].$set,
+        ).toEqual({ 'group.name': 'Updated Name' });
+        expect(mockSave).not.toHaveBeenCalled();
         expect(result).toBeDefined();
         expect(result.group?.name).toBe('Updated Name');
       });
@@ -764,6 +830,14 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
         };
 
         mockConversationModel.findOne.mockResolvedValue(groupConversation);
+        // Stored group after the $push
+        stubGroupChangeWrites(mockConversationModel, mockMessageModel, {
+          ...groupConversation,
+          participants: [
+            ...groupConversation.participants,
+            { userId: new Types.ObjectId(newUserId), joinedAt: new Date() },
+          ],
+        });
 
         const result = await conversationService.addParticipants(
           validConversationId,
@@ -771,7 +845,9 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
           creatorUserId,
         );
 
-        expect(mockSave).toHaveBeenCalled();
+        const pushed = mockConversationModel.findOneAndUpdate.mock.calls[0][1]
+          .$push.participants.$each as { userId: Types.ObjectId }[];
+        expect(pushed.map((p) => p.userId.toString())).toEqual([newUserId]);
         expect(result.participants.length).toBe(2);
       });
     });
@@ -895,9 +971,11 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
           creatorUserId,
         );
 
-        // Participants array should NOT grow
+        // Nothing to add: no write, no system message
         expect(groupConversation.participants.length).toBe(2);
-        expect(mockSave).toHaveBeenCalled();
+        expect(mockConversationModel.findOneAndUpdate).not.toHaveBeenCalled();
+        expect(mockMessageModel.create).not.toHaveBeenCalled();
+        expect(mockSave).not.toHaveBeenCalled();
       });
 
       it('should deduplicate multiple occurrences of the same user ID in userIds payload', async () => {
@@ -927,6 +1005,11 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
         };
 
         mockConversationModel.findOne.mockResolvedValue(groupConversation);
+        stubGroupChangeWrites(
+          mockConversationModel,
+          mockMessageModel,
+          groupConversation,
+        );
 
         // Send duplicate IDs in payload: [newUserId, newUserId]
         await conversationService.addParticipants(
@@ -936,8 +1019,9 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
         );
 
         // Only one new participant should be pushed
-        expect(groupConversation.participants.length).toBe(2);
-        expect(mockSave).toHaveBeenCalled();
+        const pushed = mockConversationModel.findOneAndUpdate.mock.calls[0][1]
+          .$push.participants.$each as { userId: Types.ObjectId }[];
+        expect(pushed.map((p) => p.userId.toString())).toEqual([newUserId]);
       });
 
       it('should trim leading and trailing whitespace from groupName on update', async () => {
@@ -961,6 +1045,11 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
         };
 
         mockConversationModel.findOne.mockResolvedValue(groupConversation);
+        stubGroupChangeWrites(
+          mockConversationModel,
+          mockMessageModel,
+          groupConversation,
+        );
 
         await conversationService.update(
           validConversationId,
@@ -968,8 +1057,9 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
           creatorUserId,
         );
 
-        expect(groupConversation.group.name).toBe('Trimmed Name');
-        expect(mockSave).toHaveBeenCalled();
+        expect(
+          mockConversationModel.findOneAndUpdate.mock.calls[0][1].$set,
+        ).toEqual({ 'group.name': 'Trimmed Name' });
       });
     });
 

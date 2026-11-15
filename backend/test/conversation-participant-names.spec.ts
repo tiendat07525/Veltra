@@ -4,7 +4,10 @@ import { Types } from 'mongoose';
 import { ConversationService } from '../src/conversation/conversation.service';
 import { Conversation } from '../src/conversation/schemas/conversation.schema';
 import { Message } from '../src/messages/schemas/message.schema';
-import { groupLookupProviders } from './helpers/group-lookup-mocks';
+import {
+  groupLookupProviders,
+  stubGroupChangeWrites,
+} from './helpers/group-lookup-mocks';
 
 interface PopulatedUser {
   _id: Types.ObjectId;
@@ -49,7 +52,9 @@ describe('ConversationService participant user fields', () => {
   const mockConversationModel = {
     find: jest.fn(),
     findOne: jest.fn(),
+    findOneAndUpdate: jest.fn(),
   };
+  const mockMessageModel = { create: jest.fn() };
 
   // Mongoose group document: participants hold raw ObjectIds until populate() runs
   const makeGroupDocument = () => {
@@ -88,7 +93,7 @@ describe('ConversationService participant user fields', () => {
           provide: getModelToken(Conversation.name),
           useValue: mockConversationModel,
         },
-        { provide: getModelToken(Message.name), useValue: {} },
+        { provide: getModelToken(Message.name), useValue: mockMessageModel },
         ...groupLookupProviders(),
       ],
     }).compile();
@@ -127,6 +132,8 @@ describe('ConversationService participant user fields', () => {
   it('update populates participants after renaming the group', async () => {
     const doc = makeGroupDocument();
     mockConversationModel.findOne.mockResolvedValue(doc);
+    // The stored group returned by the write is what gets populated
+    stubGroupChangeWrites(mockConversationModel, mockMessageModel, doc);
 
     const result = await service.update(
       conversationId.toString(),
@@ -134,7 +141,6 @@ describe('ConversationService participant user fields', () => {
       ownerId.toString(),
     );
 
-    expect(doc.save).toHaveBeenCalled();
     expect(doc.populate).toHaveBeenCalledWith(expectedSelects);
     expect(result.participants[0]).toMatchObject({
       _id: memberId,
@@ -146,6 +152,10 @@ describe('ConversationService participant user fields', () => {
     const doc = makeGroupDocument();
     mockConversationModel.findOne.mockResolvedValue(doc);
     const newUserId = new Types.ObjectId();
+    // Stored group after the $push: the new member is in it, not yet populated
+    const stored = makeGroupDocument();
+    stored.participants.push({ userId: newUserId, joinedAt: new Date() });
+    stubGroupChangeWrites(mockConversationModel, mockMessageModel, stored);
 
     const result = await service.addParticipants(
       conversationId.toString(),
@@ -153,7 +163,7 @@ describe('ConversationService participant user fields', () => {
       ownerId.toString(),
     );
 
-    expect(doc.populate).toHaveBeenCalledWith(expectedSelects);
+    expect(stored.populate).toHaveBeenCalledWith(expectedSelects);
     const participants = result.participants as FormattedParticipant[];
     expect(participants.map((p) => p.username)).toEqual([
       'no_display_name',

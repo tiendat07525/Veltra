@@ -6,3 +6,9 @@ export class AddParticipantDto {
   @IsMongoId({ each: true })
   userIds: string[];
 }
+
+// PATCH /conversation/:id/owner — the member who becomes the group owner
+export class TransferOwnerDto {
+  @IsMongoId()
+  userId: string;
+}
