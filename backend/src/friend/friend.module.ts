@@ -9,9 +9,12 @@ import {
 } from './schema/friend-request.schema';
 import { FriendController } from './friend.controller';
 import { FriendService } from './friend.service';
+import { NotificationModule } from 'src/notification/notification.module';
 
 @Module({
   imports: [
+    // friend_request / friend_accepted notifications
+    NotificationModule,
     MongooseModule.forFeature([
       {
         name: Friend.name,

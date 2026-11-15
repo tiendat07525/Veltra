@@ -4,6 +4,7 @@ import { User } from '../../src/users/schemas/user.schema';
 import { Friend } from '../../src/friend/schema/friend.schema';
 import { RealtimeService } from '../../src/realtime/realtime.service';
 import { ConversationGroupService } from '../../src/conversation/conversation-group.service';
+import { NotificationService } from '../../src/notification/notification.service';
 
 // User/Friend models used when adding users to a group or opening a direct chat.
 // Default: every queried user exists and is a friend (counts equal the query size).
@@ -54,7 +55,7 @@ export const stubGroupChangeWrites = (
 
 // Every ConversationService / ConversationGroupService dependency besides the
 // Conversation/Message models (ConversationGroupService itself is the real one).
-// RealtimeService and the connection are inert defaults; a spec that asserts on them
+// RealtimeService, NotificationService and the connection are inert defaults; a spec that asserts on them
 // lists its own provider after this spread (the last provider for a token wins).
 export const groupLookupProviders = (
   mocks: ReturnType<typeof allowAllGroupLookups> = allowAllGroupLookups(),
@@ -63,6 +64,13 @@ export const groupLookupProviders = (
   { provide: getModelToken(User.name), useValue: mocks.userModel },
   { provide: getModelToken(Friend.name), useValue: mocks.friendModel },
   { provide: RealtimeService, useValue: { emitToUser: jest.fn() } },
+  {
+    provide: NotificationService,
+    useValue: {
+      notify: jest.fn(),
+      removeFriendRequestNotifications: jest.fn(),
+    },
+  },
   {
     provide: getConnectionToken(),
     useValue: {
