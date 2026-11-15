@@ -6,7 +6,12 @@ import { CurrentUserProfile } from '@/types/user';
 import { ConversationParticipant } from '@/types/conversation';
 import { authService } from '@/services/api/auth.service';
 
-export function useChat(enabled: boolean = true, initialConversationId?: string) {
+// mutedConversationIds (settings) are left out of totalUnreadCount (sidebar badge, tab title)
+export function useChat(
+  enabled: boolean = true,
+  initialConversationId?: string,
+  mutedConversationIds?: Set<string>
+) {
   const [currentUser, setCurrentUser] = useState<CurrentUserProfile | null>(null);
   const [currentUserLoading, setCurrentUserLoading] = useState<boolean>(true);
 
@@ -90,10 +95,11 @@ export function useChat(enabled: boolean = true, initialConversationId?: string)
   const totalUnreadCount = useMemo(() => {
     if (!currentUser) return 0;
     return conversationsHook.allConversations.reduce((sum, c) => {
+      if (mutedConversationIds?.has(c._id)) return sum;
       const count = c.unreadCounts?.[currentUser._id] || 0;
       return sum + count;
     }, 0);
-  }, [conversationsHook.allConversations, currentUser]);
+  }, [conversationsHook.allConversations, currentUser, mutedConversationIds]);
 
   return {
     ...conversationsHook,

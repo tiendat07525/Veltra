@@ -4,7 +4,7 @@ import React from 'react';
 import { Conversation } from '@/types/conversation';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { formatTime } from '@/lib/utils';
-import { Trash2 } from 'lucide-react';
+import { BellOff, Trash2 } from 'lucide-react';
 
 interface ConversationItemProps {
   conversation: Conversation;
@@ -15,6 +15,8 @@ interface ConversationItemProps {
   isOnline?: boolean;
   // Other members typing in this conversation (from the `typing` event)
   typingUserIds?: string[];
+  // Muted in settings: grey unread count, not counted in the badges
+  isMuted?: boolean;
 }
 
 export const ConversationItem: React.FC<ConversationItemProps> = ({
@@ -25,6 +27,7 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
   onDelete,
   isOnline = false,
   typingUserIds,
+  isMuted = false,
 }) => {
   const isGroup = conversation.type === 'group';
 
@@ -84,17 +87,25 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
       {/* Name + Last Message */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-1 mb-1">
-          <h4
-            className={`text-sm truncate ${
-              hasUnread ? 'font-bold text-slate-950 dark:text-white' : 'font-medium'
-            }`}
-          >
-            {displayName}
-          </h4>
+          <div className="flex items-center gap-1 min-w-0">
+            <h4
+              className={`text-sm truncate ${
+                hasUnread ? 'font-bold text-slate-950 dark:text-white' : 'font-medium'
+              }`}
+            >
+              {displayName}
+            </h4>
+            {isMuted && (
+              <BellOff
+                className="w-3 h-3 shrink-0 text-slate-400 dark:text-slate-500"
+                aria-label="Đã tắt thông báo"
+              />
+            )}
+          </div>
 
           <span
             className={`text-[11px] shrink-0 ${
-              hasUnread
+              hasUnread && !isMuted
                 ? 'font-bold text-sky-600 dark:text-sky-400'
                 : 'text-slate-400 dark:text-slate-500'
             }`}
@@ -117,7 +128,11 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
           </p>
 
           {hasUnread && (
-            <span className="shrink-0 flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 text-[11px] font-bold rounded-full bg-sky-500 text-white shadow-xs">
+            <span
+              className={`shrink-0 flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 text-[11px] font-bold rounded-full text-white shadow-xs ${
+                isMuted ? 'bg-slate-400 dark:bg-slate-600' : 'bg-sky-500'
+              }`}
+            >
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
           )}

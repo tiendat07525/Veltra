@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useChat } from '@/hooks/use-chat';
 import { useTheme } from '@/hooks/use-theme';
 import { useMobile } from '@/hooks/use-mobile';
@@ -19,6 +19,7 @@ import { Loader2 } from 'lucide-react';
 import { useAuthBootstrap } from '@/hooks/use-auth-bootstrap';
 import { useNotifications } from '@/hooks/use-notifications';
 import { useBrowserNotifications } from '@/hooks/use-browser-notifications';
+import { useSettings } from '@/hooks/use-settings';
 import { NotificationItem } from '@/types/notification';
 
 export function VeltraClientApp() {
@@ -48,8 +49,18 @@ export function VeltraClientApp() {
   const { isInitializing, isAuthenticated, markAuthenticated, logout } = useAuthBootstrap(pathname);
 
   const authReady = !isInitializing && isAuthenticated;
-  const chat = useChat(authReady);
+  const settingsHook = useSettings(authReady);
+  const { mutedConversationIds: mutedList } = settingsHook.settings;
+  const mutedConversationIds = useMemo(() => new Set(mutedList), [mutedList]);
+  const chat = useChat(authReady, undefined, mutedConversationIds);
   const notifications = useNotifications(authReady);
+
+  const setConversationMuted = (conversationId: string, muted: boolean) => {
+    settingsHook.setMuted(conversationId, muted).catch((err: unknown) => {
+      const apiErr = err as { response?: { data?: { message?: string } } };
+      showToast(apiErr?.response?.data?.message || 'Không thể thay đổi thông báo của cuộc trò chuyện', 'error');
+    });
+  };
 
   // Toast state
   const [toast, setToast] = useState<{
@@ -134,6 +145,10 @@ export function VeltraClientApp() {
     enabled: authReady,
     currentUserId: chat.currentUser?._id ?? null,
     conversations: chat.allConversations,
+    // A conversation counts as "open" only while the chat tab shows it
+    activeConversationId: activeTab === 'chat' ? chat.activeConversationId : null,
+    settings: settingsHook.settings,
+    mutedConversationIds,
     unreadTotal: authReady ? chat.totalUnreadCount + notifications.unreadCount : 0,
     onOpenConversation: openConversation,
     onOpenNotification: handleOpenNotification,
@@ -205,6 +220,9 @@ export function VeltraClientApp() {
             mobileViewChat={mobileViewChat}
             setMobileViewChat={setMobileViewChat}
             showToast={showToast}
+            enterToSend={settingsHook.settings.chat.enterToSend}
+            mutedConversationIds={mutedConversationIds}
+            onSetMuted={setConversationMuted}
           />
         )}
 
@@ -233,6 +251,10 @@ export function VeltraClientApp() {
           <SettingsView
             theme={theme}
             onThemeChange={(newTheme) => setTheme(newTheme)}
+            settingsHook={settingsHook}
+            browserPermission={browserNotifications.permission}
+            onRequestBrowserPermission={browserNotifications.requestPermission}
+            showToast={showToast}
           />
         )}
 

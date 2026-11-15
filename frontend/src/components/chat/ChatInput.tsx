@@ -27,10 +27,12 @@ interface ChatInputProps {
   typingUserIds?: string[];
   onTyping?: (conversationId: string) => void;
   onStopTyping?: () => void;
+  // Settings: true → Enter sends (Shift+Enter new line); false → Ctrl/⌘+Enter sends
+  enterToSend?: boolean;
 }
 
 /**
- * Composer: text (Enter sends, Shift+Enter new line), files picked or pasted (checked with
+ * Composer: text (Enter or Ctrl/⌘+Enter sends, see enterToSend), files picked or pasted (checked with
  * classifyFile, at most MAX_ATTACHMENTS_PER_MESSAGE), typing signals and the "đang nhập…" line.
  */
 export const ChatInput: React.FC<ChatInputProps> = ({
@@ -41,6 +43,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   typingUserIds,
   onTyping,
   onStopTyping,
+  enterToSend = true,
 }) => {
   const [inputValue, setInputValue] = useState('');
   // Picked files belong to one conversation: switching conversation shows an empty selection
@@ -184,7 +187,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
           }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+            const sends = enterToSend ? !e.shiftKey : e.ctrlKey || e.metaKey;
+            if (sends) {
               e.preventDefault();
               handleSend();
               if (inputRef.current) {
@@ -200,7 +205,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               addFiles(e.clipboardData.files);
             }
           }}
-          placeholder="Nhập tin nhắn..."
+          placeholder={enterToSend ? 'Nhập tin nhắn...' : 'Nhập tin nhắn... (Ctrl+Enter để gửi)'}
           rows={1}
           className="flex-1 px-4 py-2.5 bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-sky-500/50 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-sky-500/20 transition-all disabled:opacity-60 resize-none overflow-y-auto"
           style={{ minHeight: '40px', maxHeight: '120px' }}

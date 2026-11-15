@@ -1,5 +1,6 @@
 import { api, setToken, refreshToken } from './api';
 import { CurrentUserProfile } from '@/types/user';
+import { CurrentSession } from '@/types/settings';
 
 export const authService = {
  
@@ -32,6 +33,20 @@ export const authService = {
         window.location.replace('/auth/login');
       }
     }
+  },
+
+  // Signs out every other session; this client gets a new access token (and refresh cookie)
+  async changePassword(currentPassword: string, newPassword: string): Promise<{ message: string }> {
+    const res = await api.post('/auth/change-password', { currentPassword, newPassword });
+    if (res.data.accessToken) {
+      setToken(res.data.accessToken);
+    }
+    return { message: res.data.message };
+  },
+
+  async getSession(): Promise<CurrentSession> {
+    const res = await api.get('/auth/session');
+    return res.data;
   },
 
   async refreshSilent(): Promise<void> {

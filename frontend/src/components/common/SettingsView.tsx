@@ -1,376 +1,294 @@
-import React, { useState } from 'react';
-import {
-  Bell,
-  Moon,
-  Shield,
-  MessageSquare,
-  Lock,
-  Smartphone,
-  Radio,
-} from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Bell, Moon, MessageSquare, Lock, Smartphone, Volume2 } from 'lucide-react';
+import { useSettings } from '@/hooks/use-settings';
+import type { BrowserNotificationPermission } from '@/hooks/use-browser-notifications';
+import { authService } from '@/services/api/auth.service';
+import { CurrentSession, UserSettingsPatch } from '@/types/settings';
+import { formatDate, formatTime } from '@/lib/utils';
+import { playNotificationSound } from '@/lib/notification-sound';
+import { ChangePasswordForm } from './ChangePasswordForm';
+
+type Section = 'appearance' | 'notifications' | 'chat' | 'security';
 
 interface SettingsViewProps {
   theme: 'dark' | 'light' | 'system';
   onThemeChange: (theme: 'dark' | 'light' | 'system') => void;
+  settingsHook: ReturnType<typeof useSettings>;
+  browserPermission: BrowserNotificationPermission;
+  onRequestBrowserPermission: () => void;
+  showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
+
+const SECTIONS: { id: Section; label: string; icon: React.ElementType }[] = [
+  { id: 'appearance', label: 'Giao diện', icon: Moon },
+  { id: 'notifications', label: 'Thông báo', icon: Bell },
+  { id: 'chat', label: 'Trò chuyện', icon: MessageSquare },
+  { id: 'security', label: 'Bảo mật', icon: Lock },
+];
+
+// "Chrome trên Windows" from a user agent string (display only)
+function describeUserAgent(ua: string | null): string {
+  if (!ua) return 'Trình duyệt không xác định';
+  const browser = /Edg\//.test(ua)
+    ? 'Edge'
+    : /OPR\//.test(ua)
+      ? 'Opera'
+      : /Firefox\//.test(ua)
+        ? 'Firefox'
+        : /Chrome\//.test(ua)
+          ? 'Chrome'
+          : /Safari\//.test(ua)
+            ? 'Safari'
+            : 'Trình duyệt';
+  const os = /Windows/.test(ua)
+    ? 'Windows'
+    : /Android/.test(ua)
+      ? 'Android'
+      : /iPhone|iPad/.test(ua)
+        ? 'iOS'
+        : /Mac OS X/.test(ua)
+          ? 'macOS'
+          : /Linux/.test(ua)
+            ? 'Linux'
+            : 'hệ điều hành khác';
+  return `${browser} trên ${os}`;
+}
+
+const formatDateTime = (iso: string) => `${formatDate(iso)} · ${formatTime(iso)}`;
+
+interface ToggleRowProps {
+  title: string;
+  description: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (checked: boolean) => void;
+  children?: React.ReactNode;
+}
+
+const ToggleRow: React.FC<ToggleRowProps> = ({ title, description, checked, disabled, onChange, children }) => (
+  <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 space-y-2">
+    <label className="flex items-center justify-between gap-4 cursor-pointer">
+      <div>
+        <h4 className="text-xs font-semibold text-slate-900 dark:text-white">{title}</h4>
+        <p className="text-[11px] text-slate-500">{description}</p>
+      </div>
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        className="w-5 h-5 shrink-0 accent-sky-500 rounded cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+      />
+    </label>
+    {children}
+  </div>
+);
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
   theme,
   onThemeChange,
+  settingsHook,
+  browserPermission,
+  onRequestBrowserPermission,
+  showToast,
 }) => {
-  const [activeSection, setActiveSection] = useState<'appearance' | 'notifications' | 'privacy' | 'chat' | 'security'>('appearance');
+  const [activeSection, setActiveSection] = useState<Section>('appearance');
+  const [session, setSession] = useState<CurrentSession | null>(null);
+  const { settings, loaded } = settingsHook;
 
-  // Toggle states (mocked pending backend settings support)
-  const soundEnabled = true;
-  const previewEnabled = true;
-  const dndEnabled = false;
-  const readReceipts = true;
-  const lastSeenPublic = true;
-  const enterToSend = true;
-  const autoDownload = true;
-  const twoFactor = false;
+  useEffect(() => {
+    if (activeSection !== 'security') return;
+    authService
+      .getSession()
+      .then(setSession)
+      .catch(() => setSession(null));
+  }, [activeSection]);
+
+  const save = (patch: UserSettingsPatch) => {
+    settingsHook.update(patch).catch(() => showToast('Không thể lưu cài đặt', 'error'));
+  };
+
+  const themeOption = (value: 'light' | 'dark' | 'system', icon: string, label: string) => (
+    <button
+      type="button"
+      onClick={() => onThemeChange(value)}
+      className={`p-4 rounded-2xl border flex flex-col items-center gap-2 text-xs font-medium transition-all ${
+        theme === value
+          ? 'border-sky-500 bg-sky-50/50 dark:bg-sky-950/40 text-sky-500'
+          : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
+      }`}
+    >
+      <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xs flex items-center justify-center">
+        {icon}
+      </div>
+      <span>{label}</span>
+    </button>
+  );
 
   return (
     <div className="flex-1 h-full flex flex-col bg-slate-50 dark:bg-slate-950 overflow-hidden">
       {/* Header */}
       <header className="h-16 px-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center shrink-0">
-        <h1 className="text-xl font-bold text-slate-900 dark:text-white">Cài đặt & Tùy chọn</h1>
+        <h1 className="text-xl font-bold text-slate-900 dark:text-white">Cài đặt</h1>
       </header>
 
-      {/* Main Settings Grid */}
       <div className="flex-1 overflow-hidden flex flex-col md:flex-row max-w-6xl w-full mx-auto p-4 sm:p-6 gap-6">
-        {/* Left Section Navigation */}
+        {/* Section navigation */}
         <div className="w-full md:w-60 flex md:flex-col gap-1 overflow-x-auto shrink-0">
-          <button
-            type="button"
-            onClick={() => setActiveSection('appearance')}
-            className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-semibold text-left transition-all ${
-              activeSection === 'appearance'
-                ? 'bg-sky-500 text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-900'
-            }`}
-          >
-            <Moon className="w-4 h-4" />
-            <span>Giao diện & Chủ đề</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveSection('notifications')}
-            className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-semibold text-left transition-all ${
-              activeSection === 'notifications'
-                ? 'bg-sky-500 text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-900'
-            }`}
-          >
-            <Bell className="w-4 h-4" />
-            <span>Thông báo</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveSection('privacy')}
-            className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-semibold text-left transition-all ${
-              activeSection === 'privacy'
-                ? 'bg-sky-500 text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-900'
-            }`}
-          >
-            <Shield className="w-4 h-4" />
-            <span>Quyền riêng tư & Hiển thị</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveSection('chat')}
-            className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-semibold text-left transition-all ${
-              activeSection === 'chat'
-                ? 'bg-sky-500 text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-900'
-            }`}
-          >
-            <MessageSquare className="w-4 h-4" />
-            <span>Trải nghiệm trò chuyện</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveSection('security')}
-            className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-semibold text-left transition-all ${
-              activeSection === 'security'
-                ? 'bg-sky-500 text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-900'
-            }`}
-          >
-            <Lock className="w-4 h-4" />
-            <span>Bảo mật & Phiên</span>
-          </button>
+          {SECTIONS.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setActiveSection(id)}
+              className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-semibold text-left transition-all shrink-0 ${
+                activeSection === id
+                  ? 'bg-sky-500 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-900'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              <span>{label}</span>
+            </button>
+          ))}
         </div>
 
-        {/* Right Settings Detail Panel */}
+        {/* Section detail */}
         <div className="flex-1 overflow-y-auto bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-6 shadow-xs">
-          {/* Section: Appearance */}
           {activeSection === 'appearance' && (
             <div className="space-y-6">
               <div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">Chủ đề giao diện</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Chọn cách Veltra hiển thị trên thiết bị của bạn.
+                  Chọn cách Veltra hiển thị trên thiết bị này.
                 </p>
               </div>
-
               <div className="grid grid-cols-3 gap-3">
-                <button
-                  type="button"
-                  onClick={() => onThemeChange('light')}
-                  className={`p-4 rounded-2xl border flex flex-col items-center gap-2 text-xs font-medium transition-all ${
-                    theme === 'light'
-                      ? 'border-sky-500 bg-sky-50/50 dark:bg-sky-950/40 text-sky-600'
-                      : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
-                  }`}
-                >
-                  <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 shadow-xs flex items-center justify-center">
-                    ☀️
-                  </div>
-                  <span>Sáng</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => onThemeChange('dark')}
-                  className={`p-4 rounded-2xl border flex flex-col items-center gap-2 text-xs font-medium transition-all ${
-                    theme === 'dark'
-                      ? 'border-sky-500 bg-sky-50/50 dark:bg-sky-950/40 text-sky-400'
-                      : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
-                  }`}
-                >
-                  <div className="w-10 h-10 rounded-xl bg-slate-900 border border-slate-700 shadow-xs flex items-center justify-center text-white">
-                    🌙
-                  </div>
-                  <span>Tối (Mặc định)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => onThemeChange('system')}
-                  className={`p-4 rounded-2xl border flex flex-col items-center gap-2 text-xs font-medium transition-all ${
-                    theme === 'system'
-                      ? 'border-sky-500 bg-sky-50/50 dark:bg-sky-950/40 text-sky-500'
-                      : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
-                  }`}
-                >
-                  <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 shadow-xs flex items-center justify-center">
-                    💻
-                  </div>
-                  <span>Tự động theo hệ thống</span>
-                </button>
+                {themeOption('light', '☀️', 'Sáng')}
+                {themeOption('dark', '🌙', 'Tối (Mặc định)')}
+                {themeOption('system', '💻', 'Theo hệ thống')}
               </div>
             </div>
           )}
 
-          {/* Section: Notifications */}
           {activeSection === 'notifications' && (
             <div className="space-y-5">
               <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">Cảnh báo & Âm thanh</h3>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Thông báo & Âm thanh</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Cấu hình âm thanh thông báo đến và biểu ngữ hệ thống.
+                  Áp dụng cho mọi thiết bị bạn đăng nhập. Hội thoại đã tắt thông báo không phát âm thanh hay
+                  hiện thông báo.
                 </p>
               </div>
 
               <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
-                  <div>
-                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                      Hiệu ứng âm thanh <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500">Chưa hỗ trợ</span>
-                    </h4>
-                    <p className="text-[11px] text-slate-500">Phát âm thanh dễ chịu cho tin nhắn và cảm xúc mới</p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={soundEnabled}
-                    disabled
-                    className="w-5 h-5 accent-sky-500 rounded cursor-not-allowed opacity-50"
-                  />
-                </div>
+                <ToggleRow
+                  title="Thông báo trình duyệt"
+                  description="Hiện thông báo hệ thống khi Veltra đang ở tab ẩn (không kèm nội dung tin nhắn)"
+                  checked={settings.notifications.browser}
+                  disabled={!loaded}
+                  onChange={(browser) => save({ notifications: { browser } })}
+                >
+                  {settings.notifications.browser && browserPermission === 'default' && (
+                    <button
+                      type="button"
+                      onClick={onRequestBrowserPermission}
+                      className="px-3 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-[11px] font-medium"
+                    >
+                      Cho phép trên trình duyệt này
+                    </button>
+                  )}
+                  {settings.notifications.browser && browserPermission === 'denied' && (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                      Trình duyệt đang chặn thông báo của Veltra; hãy cho phép trong cài đặt trang của trình duyệt.
+                    </p>
+                  )}
+                  {settings.notifications.browser && browserPermission === 'unsupported' && (
+                    <p className="text-[11px] text-slate-500">Trình duyệt này không hỗ trợ thông báo.</p>
+                  )}
+                </ToggleRow>
 
-                <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
-                  <div>
-                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                      Xem trước tin nhắn <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500">Chưa hỗ trợ</span>
-                    </h4>
-                    <p className="text-[11px] text-slate-500">Hiển thị xem trước văn bản tin nhắn trong thông báo pop-up trên máy tính</p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={previewEnabled}
-                    disabled
-                    className="w-5 h-5 accent-sky-500 rounded cursor-not-allowed opacity-50"
-                  />
-                </div>
+                <ToggleRow
+                  title="Âm thanh tin nhắn mới"
+                  description="Khi tab bị ẩn hoặc tin nhắn thuộc hội thoại khác hội thoại đang mở"
+                  checked={settings.notifications.sound}
+                  disabled={!loaded}
+                  onChange={(sound) => save({ notifications: { sound } })}
+                >
+                  <button
+                    type="button"
+                    onClick={playNotificationSound}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-[11px] font-medium"
+                  >
+                    <Volume2 className="w-3.5 h-3.5" />
+                    Nghe thử
+                  </button>
+                </ToggleRow>
 
-                <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
-                  <div>
-                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                      Không làm phiền <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500">Chưa hỗ trợ</span>
-                    </h4>
-                    <p className="text-[11px] text-slate-500">Tạm thời tắt tất cả âm thanh thông báo và huy hiệu thông báo</p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={dndEnabled}
-                    disabled
-                    className="w-5 h-5 accent-sky-500 rounded cursor-not-allowed opacity-50"
-                  />
-                </div>
+                <ToggleRow
+                  title="Không làm phiền"
+                  description="Tắt mọi âm thanh và thông báo trình duyệt; số chưa đọc vẫn hiển thị"
+                  checked={settings.notifications.doNotDisturb}
+                  disabled={!loaded}
+                  onChange={(doNotDisturb) => save({ notifications: { doNotDisturb } })}
+                />
               </div>
             </div>
           )}
 
-          {/* Section: Privacy */}
-          {activeSection === 'privacy' && (
-            <div className="space-y-5">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">Kiểm soát quyền riêng tư</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Quản lý xác nhận đã đọc và hiển thị trạng thái trực tuyến của bạn.
-                </p>
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
-                  <div>
-                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                      Gửi thông báo đã đọc <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500">Chưa hỗ trợ</span>
-                    </h4>
-                    <p className="text-[11px] text-slate-500">Cho phép người khác biết khi bạn đã đọc tin nhắn của họ</p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={readReceipts}
-                    disabled
-                    className="w-5 h-5 accent-sky-500 rounded cursor-not-allowed opacity-50"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
-                  <div>
-                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                      Hiển thị thời gian hoạt động gần nhất <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500">Chưa hỗ trợ</span>
-                    </h4>
-                    <p className="text-[11px] text-slate-500">Chia sẻ thời gian hoạt động gần nhất của bạn với các thành viên trong nhóm</p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={lastSeenPublic}
-                    disabled
-                    className="w-5 h-5 accent-sky-500 rounded cursor-not-allowed opacity-50"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Section: Chat Experience */}
           {activeSection === 'chat' && (
             <div className="space-y-5">
               <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">Hành vi trò chuyện</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Tinh chỉnh phím tắt và xử lý đa phương tiện.
-                </p>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Trò chuyện</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Cách gõ và gửi tin nhắn.</p>
               </div>
-
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
-                  <div>
-                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                      Nhấn Enter để gửi <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500">Chưa hỗ trợ</span>
-                    </h4>
-                    <p className="text-[11px] text-slate-500">Nhấn Enter để gửi tin nhắn ngay lập tức; Shift+Enter để tạo dòng mới</p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={enterToSend}
-                    disabled
-                    className="w-5 h-5 accent-sky-500 rounded cursor-not-allowed opacity-50"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
-                  <div>
-                    <h4 className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                      Tự động tải ảnh được chia sẻ <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500">Chưa hỗ trợ</span>
-                    </h4>
-                    <p className="text-[11px] text-slate-500">Tự động lưu trữ phương tiện vào bộ nhớ đệm trên các kết nối nhanh</p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={autoDownload}
-                    disabled
-                    className="w-5 h-5 accent-sky-500 rounded cursor-not-allowed opacity-50"
-                  />
-                </div>
-              </div>
+              <ToggleRow
+                title="Nhấn Enter để gửi"
+                description={
+                  settings.chat.enterToSend
+                    ? 'Enter gửi tin nhắn, Shift+Enter xuống dòng'
+                    : 'Ctrl+Enter (⌘+Enter trên Mac) gửi tin nhắn, Enter xuống dòng'
+                }
+                checked={settings.chat.enterToSend}
+                disabled={!loaded}
+                onChange={(enterToSend) => save({ chat: { enterToSend } })}
+              />
             </div>
           )}
 
-          {/* Section: Security */}
           {activeSection === 'security' && (
             <div className="space-y-5">
               <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">Bảo mật & Thiết bị hoạt động</h3>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Bảo mật</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Giám sát các máy khách đã đăng nhập và khóa mã hóa đa yếu tố.
+                  Mỗi tài khoản chỉ có một phiên đăng nhập: đăng nhập ở nơi khác sẽ đăng xuất phiên này.
                 </p>
               </div>
 
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between">
-                <div>
-                  <h4 className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                    Xác thực hai yếu tố (2FA) <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500">Chưa hỗ trợ</span>
-                  </h4>
-                  <p className="text-[11px] text-slate-500">Yêu cầu mã ứng dụng xác thực khi đăng nhập mới</p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={twoFactor}
-                  disabled
-                  className="w-5 h-5 accent-sky-500 rounded cursor-not-allowed opacity-50"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Các phiên hoạt động
-                </h4>
-
-                <div className="p-3 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Smartphone className="w-5 h-5 text-sky-500" />
-                    <div>
-                      <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                        Chrome trên macOS Sonoma (Hiện tại)
-                      </p>
-                      <span className="text-[10px] text-emerald-500 font-medium">Đang hoạt động • San Francisco, US</span>
-                    </div>
+              <div className="p-3 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center gap-3">
+                <Smartphone className="w-5 h-5 text-sky-500 shrink-0" />
+                {session ? (
+                  <div>
+                    <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                      {describeUserAgent(session.userAgent)} (phiên hiện tại)
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      Đăng nhập {formatDateTime(session.createdAt)} · Hết hạn {formatDateTime(session.expiresAt)}
+                    </p>
                   </div>
-                  <span className="text-[10px] px-2 py-0.5 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 rounded-md font-bold">
-                    THIẾT BỊ NÀY
-                  </span>
-                </div>
+                ) : (
+                  <p className="text-xs text-slate-500">Đang tải thông tin phiên…</p>
+                )}
               </div>
+
+              <ChangePasswordForm
+                onSuccess={(message) => {
+                  showToast(message, 'success');
+                  // The session was replaced: show the new one
+                  authService.getSession().then(setSession).catch(() => {});
+                }}
+              />
             </div>
           )}
-
-          {/* Bottom App Architecture Information */}
-          <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
-            <div className="flex items-center gap-1.5">
-              <Radio className="w-3.5 h-3.5 text-sky-500" />
-              <span>VELTRA Messaging Engine v1.0.0</span>
-            </div>
-            <span>End-to-End Encryption Protocol v3</span>
-          </div>
         </div>
       </div>
     </div>

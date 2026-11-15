@@ -13,6 +13,9 @@ interface ChatTabProps {
   mobileViewChat: boolean;
   setMobileViewChat: (value: boolean) => void;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+  enterToSend: boolean;
+  mutedConversationIds: Set<string>;
+  onSetMuted: (conversationId: string, muted: boolean) => void;
 }
 
 // The chat tab: conversation list, the open conversation and its group info panel
@@ -22,6 +25,9 @@ export const ChatTab: React.FC<ChatTabProps> = ({
   mobileViewChat,
   setMobileViewChat,
   showToast,
+  enterToSend,
+  mutedConversationIds,
+  onSetMuted,
 }) => {
   // Group info panel: open for one conversation id, so it hides by itself when that
   // conversation is no longer the open one (switched, left, removed, deleted)
@@ -69,6 +75,7 @@ export const ChatTab: React.FC<ChatTabProps> = ({
           currentUserId={chat.currentUser?._id || ''}
           onlineIds={chat.presence.onlineIds}
           typingByConversation={chat.presence.typingByConversation}
+          mutedConversationIds={mutedConversationIds}
           onCreateNewConversation={async (params) => {
             try {
               const newConv = await chat.createNewConversation(params);
@@ -132,6 +139,12 @@ export const ChatTab: React.FC<ChatTabProps> = ({
           }
           onTyping={chat.presence.notifyTyping}
           onStopTyping={chat.presence.stopTyping}
+          enterToSend={enterToSend}
+          isMuted={!!chat.activeConversationId && mutedConversationIds.has(chat.activeConversationId)}
+          onToggleMute={() => {
+            const id = chat.activeConversationId;
+            if (id) onSetMuted(id, !mutedConversationIds.has(id));
+          }}
         />
       </div>
 
