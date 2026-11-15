@@ -34,6 +34,9 @@ interface ChatWindowProps {
   typingUserIds?: string[];
   onTyping?: (conversationId: string) => void;
   onStopTyping?: () => void;
+  enterToSend?: boolean;
+  isMuted?: boolean;
+  onToggleMute?: () => void;
 }
 
 // The open conversation: header, history, composer, and the image viewer they share
@@ -59,6 +62,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   typingUserIds,
   onTyping,
   onStopTyping,
+  enterToSend,
+  isMuted,
+  onToggleMute,
 }) => {
   const [viewer, setViewer] = useState<{ url: string; name: string } | null>(null);
 
@@ -101,6 +107,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         onlineIds={onlineIds}
         onBackMobile={onBackMobile}
         onOpenGroupInfo={onOpenGroupInfo}
+        isMuted={isMuted}
+        onToggleMute={onToggleMute}
       />
 
       <MessageList
@@ -126,6 +134,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         typingUserIds={typingUserIds}
         onTyping={onTyping}
         onStopTyping={onStopTyping}
+        enterToSend={enterToSend}
       />
 
       <ImageViewerModal

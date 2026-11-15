@@ -11,6 +11,7 @@ import { MessageModule } from './messages/message.module';
 import { FriendModule } from './friend/friend.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { NotificationModule } from './notification/notification.module';
+import { SettingsModule } from './settings/settings.module';
 import { ThrottlerStorageRedisService } from './auth/throttler-storage-redis.service';
 import { AppThrottlerGuard } from './auth/app-throttler.guard';
 
@@ -40,6 +41,7 @@ import { AppThrottlerGuard } from './auth/app-throttler.guard';
     FriendModule,
     RealtimeModule,
     NotificationModule,
+    SettingsModule,
   ],
   controllers: [AppController],
   providers: [

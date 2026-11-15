@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   Post,
   Req,
   Res,
@@ -10,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuthService } from './auth.service';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
@@ -85,6 +87,38 @@ export class AuthController {
 
     res.clearCookie('refreshToken', this.getCookieOptions());
     return { message: 'Đăng xuất thành công' };
+  }
+
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @UseGuards(JwtAuthGuard)
+  async changePassword(
+    @Body() dto: ChangePasswordDto,
+    @Req() req: AuthenticatedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const userAgent = req.headers['user-agent'];
+    const ipAddress = req.ip;
+
+    const { message, accessToken, refreshTokenString } =
+      await this.authService.changePassword(
+        req.user.id,
+        dto,
+        userAgent,
+        ipAddress,
+      );
+
+    // The old refresh token was revoked with every session: replace the cookie
+    this.setRefreshCookie(res, refreshTokenString);
+
+    return { message, accessToken };
+  }
+
+  @Get('session')
+  @UseGuards(JwtAuthGuard)
+  async getSession(@Req() req: AuthenticatedRequest) {
+    return this.authService.getCurrentSession(req.user.id, req.user.sessionId);
   }
 
   private setRefreshCookie(res: Response, token: string) {

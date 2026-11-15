@@ -32,6 +32,8 @@ interface ConversationSidebarProps {
   // Presence / typing from usePresence
   onlineIds?: Set<string>;
   typingByConversation?: Record<string, string[]>;
+  // From settings (useSettings)
+  mutedConversationIds?: Set<string>;
 }
 
 export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
@@ -47,6 +49,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
   onDeleteConversation,
   onlineIds,
   typingByConversation,
+  mutedConversationIds,
 }) => {
   const [showNewModal, setShowNewModal] = useState(false);
 
@@ -157,6 +160,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                 conv.participants.some((p) => p._id !== currentUserId && onlineIds.has(p._id))
               }
               typingUserIds={typingByConversation?.[conv._id]}
+              isMuted={!!mutedConversationIds?.has(conv._id)}
             />
           ))
         )}

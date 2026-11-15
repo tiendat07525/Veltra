@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ArrowLeft, Info } from 'lucide-react';
+import { ArrowLeft, Bell, BellOff, Info } from 'lucide-react';
 import { Conversation, ConversationParticipant } from '@/types/conversation';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 
@@ -14,6 +14,9 @@ interface ChatHeaderProps {
   onBackMobile: () => void;
   // Groups only: opens the group info panel
   onOpenGroupInfo?: () => void;
+  // Per-conversation mute (settings)
+  isMuted?: boolean;
+  onToggleMute?: () => void;
 }
 
 // Name, avatar and online state of the open conversation
@@ -25,6 +28,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   onlineIds,
   onBackMobile,
   onOpenGroupInfo,
+  isMuted = false,
+  onToggleMute,
 }) => {
   const otherOnlineCount = conversation.participants.filter(
     (p) => p._id !== currentUserId && onlineIds?.has(p._id)
@@ -61,6 +66,23 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
               : 'Ngoại tuyến'}
         </p>
       </div>
+
+      {onToggleMute && (
+        <button
+          type="button"
+          onClick={onToggleMute}
+          className={`p-2 rounded-xl transition-colors ${
+            isMuted
+              ? 'text-amber-500 hover:bg-amber-500/10'
+              : 'text-slate-400 hover:text-sky-500 hover:bg-sky-500/10'
+          }`}
+          title={isMuted ? 'Bật thông báo' : 'Tắt thông báo'}
+          aria-label={isMuted ? 'Bật thông báo' : 'Tắt thông báo'}
+          aria-pressed={isMuted}
+        >
+          {isMuted ? <BellOff className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
+        </button>
+      )}
 
       {conversation.type === 'group' && onOpenGroupInfo && (
         <button

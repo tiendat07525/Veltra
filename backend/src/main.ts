@@ -31,7 +31,8 @@ async function bootstrap() {
   console.log(`CORS origins: ${getAllowedOrigins().join(', ') || '(none)'}`);
   app.enableCors({
     origin: restCorsOrigin,
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    // Every HTTP method a controller uses (test/cors-methods.spec.ts)
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
   });
