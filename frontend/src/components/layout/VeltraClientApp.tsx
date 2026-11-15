@@ -5,10 +5,10 @@ import { useChat } from '@/hooks/use-chat';
 import { useTheme } from '@/hooks/use-theme';
 import { useMobile } from '@/hooks/use-mobile';
 import { useSocket } from '@/hooks/use-socket/use-socket';
-import { useRouter, usePathname } from '@/lib/navigation';
+import { useRouter, usePathname, useSearchParams } from '@/lib/navigation';
 import { MainSidebar, NavTab } from '@/components/layout/MainSidebar';
 import { ChatTab } from '@/components/layout/ChatTab';
-import { ContactsView } from '@/components/contacts/ContactsView';
+import { ContactsView, ContactsTab } from '@/components/contacts/ContactsView';
 import { NotificationsView } from '@/components/common/NotificationsView';
 import { SettingsView } from '@/components/common/SettingsView';
 import { ProfileView } from '@/components/profile/ProfileView';
@@ -17,10 +17,14 @@ import { Toast } from '@/components/ui/Toast';
 import { UserBasicInfo } from '@/types/user';
 import { Loader2 } from 'lucide-react';
 import { useAuthBootstrap } from '@/hooks/use-auth-bootstrap';
+import { useNotifications } from '@/hooks/use-notifications';
+import { useBrowserNotifications } from '@/hooks/use-browser-notifications';
+import { NotificationItem } from '@/types/notification';
 
 export function VeltraClientApp() {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { theme, toggleTheme, setTheme } = useTheme();
   const { isMobile } = useMobile();
   // Socket.IO infrastructure - tied directly to authentication lifecycle
@@ -45,6 +49,7 @@ export function VeltraClientApp() {
 
   const authReady = !isInitializing && isAuthenticated;
   const chat = useChat(authReady);
+  const notifications = useNotifications(authReady);
 
   // Toast state
   const [toast, setToast] = useState<{
@@ -94,6 +99,53 @@ export function VeltraClientApp() {
     }
   };
 
+  const openConversation = (conversationId: string) => {
+    chat.setActiveConversationId(conversationId);
+    router.push('/chat');
+    if (isMobile) setMobileViewChat(true);
+  };
+
+  // Opening a notification marks it read and goes where it points to
+  const handleOpenNotification = (item: NotificationItem) => {
+    if (!item.isRead) {
+      notifications.markAsRead(item._id).catch(() => {
+        // Stays unread; the user can retry
+      });
+    }
+    switch (item.type) {
+      case 'friend_request':
+        router.push('/contacts?tab=requests');
+        break;
+      case 'friend_accepted':
+        router.push('/contacts?tab=friends');
+        break;
+      case 'group_added':
+      case 'group_owner':
+        if (item.conversationId) openConversation(item.conversationId);
+        break;
+      default:
+        // group_removed: nothing to open
+        break;
+    }
+  };
+
+  // System notifications while the tab is hidden + "(N)" in the tab title
+  const browserNotifications = useBrowserNotifications({
+    enabled: authReady,
+    currentUserId: chat.currentUser?._id ?? null,
+    conversations: chat.allConversations,
+    unreadTotal: authReady ? chat.totalUnreadCount + notifications.unreadCount : 0,
+    onOpenConversation: openConversation,
+    onOpenNotification: handleOpenNotification,
+  });
+
+  // Contacts sub-tab from the URL (?tab=requests), e.g. opened from a notification
+  const contactsTabParam = searchParams.get('tab');
+  const contactsTab: ContactsTab | undefined =
+    contactsTabParam === 'friends' || contactsTabParam === 'requests' || contactsTabParam === 'search'
+      ? contactsTabParam
+      : undefined;
+
   // Initializing state (hydration safe)
   if (isInitializing) {
     return (
@@ -137,7 +189,7 @@ export function VeltraClientApp() {
       {/* 1. Global Left Navigation Rail */}
       <MainSidebar
         unreadMessagesCount={chat.totalUnreadCount}
-        unreadNotificationsCount={0}
+        unreadNotificationsCount={notifications.unreadCount}
         theme={theme}
         onToggleTheme={toggleTheme}
         onLogout={logout}
@@ -159,6 +211,7 @@ export function VeltraClientApp() {
         {/* Contacts Tab */}
         {activeTab === 'contacts' && (
           <ContactsView
+            initialTab={contactsTab}
             onStartChat={handleStartChatFromContact}
             onlineIds={chat.presence.onlineIds}
           />
@@ -167,11 +220,11 @@ export function VeltraClientApp() {
         {/* Notifications Tab */}
         {activeTab === 'notifications' && (
           <NotificationsView
-            onOpenConversation={(convId) => {
-              chat.setActiveConversationId(convId);
-              router.push('/chat');
-              if (isMobile) setMobileViewChat(true);
-            }}
+            notifications={notifications}
+            onOpen={handleOpenNotification}
+            onError={(message) => showToast(message, 'error')}
+            browserPermission={browserNotifications.permission}
+            onEnableBrowserNotifications={browserNotifications.requestPermission}
           />
         )}
 
