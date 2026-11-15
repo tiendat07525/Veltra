@@ -1,5 +1,5 @@
 import api from './api';
-import { Message, MessagesResponse } from '@/types/message';
+import { AttachmentKind, Message, MessagesResponse } from '@/types/message';
 
 // `api` has no default timeout; without one a hung send would never be retried
 const SEND_TIMEOUT_MS = 15_000;
@@ -16,8 +16,10 @@ export const messageService = {
   async sendMessage(params: {
     conversationId?: string;
     receiverId?: string;
-    content: string;
+    // Optional caption when attachments are present
+    content?: string;
     clientMsgId: string;
+    attachments?: { publicId: string; kind: AttachmentKind; name: string }[];
   }): Promise<{ success: boolean; message: string; data?: Message }> {
     const res = await api.post('/message/direct', params, { timeout: SEND_TIMEOUT_MS });
     return res.data;

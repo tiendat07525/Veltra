@@ -20,6 +20,7 @@ import {
 import { RealtimeService } from 'src/realtime/realtime.service';
 import { UsersService } from 'src/users/users.service';
 import { isDuplicateKeyError } from '../common/mongo-errors';
+import { AttachmentService, attachmentPreview } from './attachment.service';
 
 @Injectable()
 export class MessageService {
@@ -32,11 +33,21 @@ export class MessageService {
     private readonly usersService: UsersService,
     @InjectConnection()
     private readonly connection: Connection,
+    private readonly attachmentService: AttachmentService,
   ) {}
 
   async sendDirectMessage(dto: CreateMessageDto, userId: string) {
     try {
-      const { conversationId, receiverId, content, clientMsgId } = dto;
+      const { conversationId, receiverId, clientMsgId } = dto;
+      const content = dto.content?.trim() || undefined;
+      const attachmentRefs = dto.attachments ?? [];
+      if (!content && attachmentRefs.length === 0) {
+        throw new BadRequestException('Tin nhắn không được để trống');
+      }
+      // Uploads are signed per conversation, so files need an existing one
+      if (attachmentRefs.length > 0 && !conversationId) {
+        throw new BadRequestException('Cần conversationId để gửi file');
+      }
       if (!Types.ObjectId.isValid(userId)) {
         throw new BadRequestException('User ID không hợp lệ');
       }
@@ -161,6 +172,13 @@ export class MessageService {
         }
       }
 
+      // Network calls to Cloudinary stay outside the transaction
+      const attachments = await this.attachmentService.resolve(
+        senderId.toString(),
+        conversation._id.toString(),
+        attachmentRefs,
+      );
+
       const conversationObjectId = conversation._id;
       let message: MessageDocument;
       let updatedConversation: ConversationDocument;
@@ -186,7 +204,8 @@ export class MessageService {
                 {
                   conversationId: conversationObjectId,
                   senderId,
-                  content,
+                  ...(content ? { content } : {}),
+                  ...(attachments.length ? { attachments } : {}),
                   seq,
                   ...(clientMsgId ? { clientMsgId } : {}),
                 },
@@ -202,7 +221,7 @@ export class MessageService {
                   lastMessageAt: created.createdAt,
                   lastMessage: {
                     _id: created._id,
-                    content: created.content,
+                    content: created.content || attachmentPreview(attachments),
                     senderId,
                     createdAt: created.createdAt,
                     seq,
@@ -317,9 +336,16 @@ export class MessageService {
       throw new NotFoundException('Hội thoại không tồn tại');
     }
 
+    const removedFiles = (message.attachments ?? []).map((a) => ({
+      publicId: a.publicId,
+      resourceType: a.resourceType,
+    }));
     message.isRevoked = true;
     message.content = 'Tin nhắn đã thu hồi';
+    message.attachments = undefined;
     await message.save();
+    // Files are deleted only after the revoke is stored
+    this.attachmentService.destroy(removedFiles);
 
     if (
       conversation.lastMessage &&

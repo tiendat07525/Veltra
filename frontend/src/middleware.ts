@@ -17,8 +17,11 @@ export function middleware(request: NextRequest) {
     // React inline style attributes (textarea height, image zoom)
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' https: data: blob:",
+    // Attachments: video / audio from Cloudinary, local previews while uploading
+    "media-src 'self' https://res.cloudinary.com blob:",
     "font-src 'self'",
-    `connect-src 'self' ${apiOrigin} ${new URL(socketUrl).origin} ${toWsOrigin(socketUrl)}`,
+    // api.cloudinary.com: signed direct uploads (attachment.service.ts)
+    `connect-src 'self' ${apiOrigin} ${new URL(socketUrl).origin} ${toWsOrigin(socketUrl)} https://api.cloudinary.com`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

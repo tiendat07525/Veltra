@@ -3,6 +3,7 @@ import { getConnectionToken, getModelToken } from '@nestjs/mongoose';
 import { model, Schema, Types } from 'mongoose';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConversationService } from '../src/conversation/conversation.service';
+import { AttachmentService } from '../src/messages/attachment.service';
 import { MessageService } from '../src/messages/message.service';
 import {
   Conversation,
@@ -93,6 +94,14 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
         {
           provide: RealtimeService,
           useValue: mockRealtimeService,
+        },
+        // Text-only sends: no files to resolve
+        {
+          provide: AttachmentService,
+          useValue: {
+            resolve: jest.fn().mockResolvedValue([]),
+            destroy: jest.fn(),
+          },
         },
       ],
     }).compile();

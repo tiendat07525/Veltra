@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getConnectionToken, getModelToken } from '@nestjs/mongoose';
 import { ConversationService } from '../src/conversation/conversation.service';
 import { ConversationController } from '../src/conversation/conversation.controller';
+import { AttachmentService } from '../src/messages/attachment.service';
 import { MessageService } from '../src/messages/message.service';
 import { Conversation } from '../src/conversation/schemas/conversation.schema';
 import { Message } from '../src/messages/schemas/message.schema';
@@ -102,6 +103,14 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
         {
           provide: RealtimeService,
           useValue: mockRealtimeService,
+        },
+        // Text-only sends: no files to resolve
+        {
+          provide: AttachmentService,
+          useValue: {
+            resolve: jest.fn().mockResolvedValue([]),
+            destroy: jest.fn(),
+          },
         },
       ],
     }).compile();

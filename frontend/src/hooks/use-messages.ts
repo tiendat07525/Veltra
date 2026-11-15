@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Message } from '@/types/message';
+import { AttachmentKind, Message } from '@/types/message';
+import { attachmentService, classifyFile } from '@/services/api/attachment.service';
 import { messageService } from '@/services/api/message.service';
 import { conversationService } from '@/services/api/conversation.service';
 import { socketService } from '@/services/socket/socket.service';
@@ -7,6 +8,29 @@ import { uuidv7 } from '@/lib/utils';
 
 const SEND_MAX_RETRIES = 5;
 const SEND_RETRY_BASE_MS = 1000; // waits 1, 2, 4, 8, 16 s between attempts
+const UPLOAD_CONCURRENCY = 3;
+
+// A file of an optimistic message. publicId is set once its upload finished, so a retry
+// uploads only the files that are still missing (and keeps the same clientMsgId).
+interface PendingUpload {
+  file: File;
+  kind: AttachmentKind;
+  publicId?: string;
+  previewUrl?: string;
+  lastProgress: number;
+}
+
+// Runs the tasks with at most `limit` in flight; rejects with the first error
+async function runLimited(tasks: (() => Promise<void>)[], limit: number) {
+  let next = 0;
+  const worker = async () => {
+    while (next < tasks.length) {
+      const task = tasks[next++];
+      await task();
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
+}
 
 // Retry only when the server may not have stored the message: network error, timeout, 5xx.
 // A 4xx means the request itself is rejected; resending it would fail the same way.
@@ -51,6 +75,8 @@ export function useMessages(
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
 
   const activeConvIdRef = useRef<string | null>(conversationId);
+  // clientMsgId -> files of that optimistic message (kept until it is stored)
+  const uploadsRef = useRef(new Map<string, PendingUpload[]>());
   const onMarkAsSeenRef = useRef(onMarkAsSeen);
 
   useEffect(() => {
@@ -128,7 +154,7 @@ export function useMessages(
         setMessages((prev) =>
           prev.map((m) =>
             String(m._id) === String(payload.messageId)
-              ? { ...m, isRevoked: true, content: payload.content || 'Tin nhắn đã thu hồi' }
+              ? { ...m, isRevoked: true, content: payload.content || 'Tin nhắn đã thu hồi', attachments: undefined }
               : m
           )
         );
@@ -164,17 +190,78 @@ export function useMessages(
     }
   }, [conversationId, messages, hasMore, loadingMore]);
 
+  const markFailed = useCallback((clientMsgId: string) => {
+    // Leave it alone if the socket event already brought the stored copy
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.clientMsgId === clientMsgId && m.status === 'sending' ? { ...m, status: 'failed' } : m
+      )
+    );
+  }, []);
+
+  const setUploadProgress = useCallback((clientMsgId: string, index: number, progress: number) => {
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.clientMsgId === clientMsgId && m.attachments
+          ? { ...m, attachments: m.attachments.map((a, i) => (i === index ? { ...a, progress } : a)) }
+          : m
+      )
+    );
+  }, []);
+
+  // Upload the files that are not uploaded yet (signed by the server, straight to Cloudinary)
+  const uploadPending = useCallback(
+    async (clientMsgId: string, conversationId: string, uploads: PendingUpload[]) => {
+      await runLimited(
+        uploads.map((upload, index) => async () => {
+          if (upload.publicId) return;
+          const ref = await attachmentService.upload(conversationId, upload.file, (fraction) => {
+            // ~20 renders per file at most
+            if (fraction - upload.lastProgress >= 0.05 || fraction === 1) {
+              upload.lastProgress = fraction;
+              setUploadProgress(clientMsgId, index, fraction);
+            }
+          });
+          upload.publicId = ref.publicId;
+          setUploadProgress(clientMsgId, index, 1);
+        }),
+        UPLOAD_CONCURRENCY
+      );
+    },
+    [setUploadProgress]
+  );
+
   // Send one pending message, retrying with the same clientMsgId so the server stores it once
   const deliver = useCallback(async (pending: Message) => {
     const clientMsgId = pending.clientMsgId;
     if (!clientMsgId) return;
 
+    const uploads = uploadsRef.current.get(clientMsgId) ?? [];
+    if (uploads.length) {
+      try {
+        await uploadPending(clientMsgId, pending.conversationId, uploads);
+      } catch (err: unknown) {
+        console.error('Lỗi khi tải file lên:', err);
+        markFailed(clientMsgId);
+        return;
+      }
+    }
+
     for (let attempt = 0; ; attempt++) {
       try {
         const res = await messageService.sendMessage({
           conversationId: pending.conversationId,
-          content: pending.content ?? '',
+          content: pending.content || undefined,
           clientMsgId,
+          ...(uploads.length
+            ? {
+                attachments: uploads.map((u) => ({
+                  publicId: u.publicId as string,
+                  kind: u.kind,
+                  name: u.file.name,
+                })),
+              }
+            : {}),
         });
         const saved = res.data;
         if (saved) {
@@ -183,35 +270,58 @@ export function useMessages(
             prev.some((m) => m.clientMsgId === clientMsgId) ? upsertMessage(prev, saved) : prev
           );
         }
+        // Stored: the local previews are no longer shown
+        uploads.forEach((u) => u.previewUrl && URL.revokeObjectURL(u.previewUrl));
+        uploadsRef.current.delete(clientMsgId);
         return;
       } catch (err: unknown) {
         if (!isRetryableSendError(err) || attempt >= SEND_MAX_RETRIES) {
           console.error('Lỗi khi gửi tin nhắn:', err);
-          // Leave it alone if the socket event already brought the stored copy
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.clientMsgId === clientMsgId && m.status === 'sending' ? { ...m, status: 'failed' } : m
-            )
-          );
+          markFailed(clientMsgId);
           return;
         }
         await new Promise((resolve) => setTimeout(resolve, SEND_RETRY_BASE_MS * 2 ** attempt));
       }
     }
-  }, []);
+  }, [uploadPending, markFailed]);
 
+  // `files` were checked by the composer (classifyFile); unsupported ones are skipped here too
   const handleSendMessage = useCallback(
-    (content: string) => {
+    (content: string, files: File[] = []) => {
       const text = content.trim();
-      if (!conversationId || !currentUserId || !text) return;
+      const uploads: PendingUpload[] = [];
+      for (const file of files) {
+        const checked = classifyFile(file);
+        if (!checked.ok) continue;
+        uploads.push({
+          file,
+          kind: checked.kind,
+          lastProgress: 0,
+          // Local preview while uploading (documents show a file card, no preview)
+          previewUrl: checked.kind === 'file' ? undefined : URL.createObjectURL(file),
+        });
+      }
+      if (!conversationId || !currentUserId || (!text && uploads.length === 0)) return;
 
       const clientMsgId = uuidv7();
+      if (uploads.length) uploadsRef.current.set(clientMsgId, uploads);
       const pending: Message = {
         _id: `pending:${clientMsgId}`,
         clientMsgId,
         conversationId,
         senderId: currentUserId,
-        content: text,
+        content: text || undefined,
+        ...(uploads.length
+          ? {
+              attachments: uploads.map((u) => ({
+                kind: u.kind,
+                url: u.previewUrl ?? '',
+                name: u.file.name,
+                bytes: u.file.size,
+                progress: 0,
+              })),
+            }
+          : {}),
         // Display only (date separator); the list is never sorted by this
         createdAt: new Date().toISOString(),
         status: 'sending',
@@ -240,7 +350,7 @@ export function useMessages(
       setMessages((prev) =>
         prev.map((m) =>
           String(m._id) === messageId
-            ? { ...m, isRevoked: true, content: 'Tin nhắn đã thu hồi' }
+            ? { ...m, isRevoked: true, content: 'Tin nhắn đã thu hồi', attachments: undefined }
             : m
         )
       );
