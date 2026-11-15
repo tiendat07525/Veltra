@@ -25,6 +25,11 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
         timeToBlockExpire: 0,
       }),
   };
+  // Presence is covered by presence-typing.spec.ts; inert here
+  const noopPresence = {
+    handleConnected: () => Promise.resolve(),
+    handleDisconnected: () => undefined,
+  };
 
   let httpServer1: http.Server;
   let httpServer2: http.Server;
@@ -145,6 +150,7 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
       realtimeService1,
       mockSessionService as any,
       allowAllConnectLimiter as any,
+      noopPresence as any,
     );
     gateway2 = new RealtimeGateway(
       mockJwtService as any,
@@ -153,6 +159,7 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
       realtimeService2,
       mockSessionService as any,
       allowAllConnectLimiter as any,
+      noopPresence as any,
     );
 
     httpServer1 = http.createServer();
@@ -221,6 +228,7 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
       realtimeService1,
       mockSessionService as any,
       allowAllConnectLimiter as any,
+      noopPresence as any,
     );
     gateway2 = new RealtimeGateway(
       mockJwtService as any,
@@ -229,6 +237,7 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
       realtimeService2,
       mockSessionService as any,
       allowAllConnectLimiter as any,
+      noopPresence as any,
     );
 
     httpServer1 = http.createServer();
@@ -335,6 +344,7 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
       realtimeService1,
       mockSessionService as any,
       allowAllConnectLimiter as any,
+      noopPresence as any,
     );
     gateway2 = new RealtimeGateway(
       mockJwtService as any,
@@ -343,6 +353,7 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
       realtimeService2,
       mockSessionService as any,
       allowAllConnectLimiter as any,
+      noopPresence as any,
     );
 
     httpServer1 = http.createServer();

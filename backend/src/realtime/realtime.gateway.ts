@@ -4,6 +4,9 @@ import {
   OnGatewayInit,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  SubscribeMessage,
+  ConnectedSocket,
+  MessageBody,
 } from '@nestjs/websockets';
 import { DefaultEventsMap, Server, Socket } from 'socket.io';
 import { Logger, OnModuleDestroy } from '@nestjs/common';
@@ -19,9 +22,19 @@ import { errorMessage } from 'src/common/error-message';
 import { isAllowedOrigin } from 'src/common/allowed-origins';
 import { ThrottlerStorageRedisService } from 'src/auth/throttler-storage-redis.service';
 import { getSocketClientIp } from 'src/common/client-ip';
+import { PresenceService } from './presence.service';
 
 const SOCKET_CONNECT_LIMIT = 30;
 const SOCKET_CONNECT_WINDOW_MS = 60_000;
+// typing:start / typing:stop: at most one of each per socket per second
+export const TYPING_MIN_INTERVAL_MS = 1_000;
+
+type SocketAck<T = undefined> =
+  | (T extends undefined ? { ok: true } : { ok: true; data: T })
+  | { ok: false; error: { code: string; message: string } };
+
+const ackError = (code: string, message: string) =>
+  ({ ok: false, error: { code, message } }) as const;
 
 type RedisClient = ReturnType<typeof createClient>;
 
@@ -31,6 +44,9 @@ interface GatewaySocketData {
   sessionId?: string;
   jwtExp?: number;
   expTimer?: NodeJS.Timeout;
+  // Last accepted typing:start / typing:stop (ms), for the per-socket rate limit
+  lastTypingStartAt?: number;
+  lastTypingStopAt?: number;
 }
 type GatewaySocket = Socket<
   DefaultEventsMap,
@@ -74,6 +90,7 @@ export class RealtimeGateway
     private readonly realtimeService: RealtimeService,
     private readonly sessionService: SessionService,
     private readonly connectRateLimiter: ThrottlerStorageRedisService,
+    private readonly presenceService: PresenceService,
   ) {}
 
   async afterInit(server: Server) {
@@ -324,6 +341,9 @@ export class RealtimeGateway
       this.logger.log(`[Socket] Client đã kết nối: socketId=${client.id}`);
       this.logger.log(`[Socket] User đã xác thực: userId=${userId}`);
       this.logger.log(`[Socket] User đã vào phòng: ${userRoom}`);
+
+      // Announces "online" to friends / co-members when this is the user's first socket
+      void this.presenceService.handleConnected(userId);
     } catch (err: unknown) {
       this.logger.warn(`[Socket] Có lỗi khi vào phòng: ${errorMessage(err)}`);
       client.disconnect(true);
@@ -338,5 +358,90 @@ export class RealtimeGateway
     this.logger.log(
       `[Socket] Client đã ngắt kết nối: socketId=${client.id}${userId ? ` (userId: ${userId})` : ''}`,
     );
+    if (userId) {
+      // "offline" after the grace window if no socket of the user is back
+      this.presenceService.handleDisconnected(userId);
+    }
+  }
+
+  // Online users among the caller's friends / co-members (sent on every (re)connect)
+  @SubscribeMessage('presence:sync')
+  async handlePresenceSync(
+    @ConnectedSocket() client: GatewaySocket,
+  ): Promise<SocketAck<{ online: string[] }>> {
+    const userId = client.data?.user?._id;
+    if (!userId) return ackError('UNAUTHORIZED', 'Chưa xác thực');
+    try {
+      const online = await this.presenceService.onlineAudience(userId);
+      return { ok: true, data: { online } };
+    } catch (err: unknown) {
+      this.logger.warn(`[Presence] sync lỗi: ${errorMessage(err)}`);
+      return ackError('INTERNAL', 'Không thể lấy trạng thái hoạt động');
+    }
+  }
+
+  @SubscribeMessage('typing:start')
+  handleTypingStart(
+    @ConnectedSocket() client: GatewaySocket,
+    @MessageBody() body: unknown,
+  ): Promise<SocketAck> {
+    return this.relayTyping(client, body, true);
+  }
+
+  @SubscribeMessage('typing:stop')
+  handleTypingStop(
+    @ConnectedSocket() client: GatewaySocket,
+    @MessageBody() body: unknown,
+  ): Promise<SocketAck> {
+    return this.relayTyping(client, body, false);
+  }
+
+  // Typing is ephemeral (never stored); sent only to the other members of the conversation
+  private async relayTyping(
+    client: GatewaySocket,
+    body: unknown,
+    isTyping: boolean,
+  ): Promise<SocketAck> {
+    const userId = client.data?.user?._id;
+    if (!userId) return ackError('UNAUTHORIZED', 'Chưa xác thực');
+
+    const conversationId =
+      body && typeof body === 'object'
+        ? (body as { conversationId?: unknown }).conversationId
+        : undefined;
+    if (typeof conversationId !== 'string') {
+      return ackError('BAD_REQUEST', 'conversationId không hợp lệ');
+    }
+
+    const now = Date.now();
+    const lastAt = isTyping
+      ? client.data.lastTypingStartAt
+      : client.data.lastTypingStopAt;
+    if (lastAt !== undefined && now - lastAt < TYPING_MIN_INTERVAL_MS) {
+      return ackError('RATE_LIMITED', 'Gửi quá nhanh');
+    }
+    if (isTyping) client.data.lastTypingStartAt = now;
+    else client.data.lastTypingStopAt = now;
+
+    try {
+      const recipients = await this.presenceService.typingRecipients(
+        conversationId,
+        userId,
+      );
+      if (!recipients) {
+        return ackError('NOT_FOUND', 'Không tìm thấy cuộc trò chuyện');
+      }
+      for (const memberId of recipients) {
+        this.realtimeService.emitToUser(memberId, 'typing', {
+          conversationId,
+          userId,
+          isTyping,
+        });
+      }
+      return { ok: true };
+    } catch (err: unknown) {
+      this.logger.warn(`[Typing] lỗi: ${errorMessage(err)}`);
+      return ackError('INTERNAL', 'Không thể gửi trạng thái đang nhập');
+    }
   }
 }

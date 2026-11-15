@@ -12,6 +12,9 @@ interface ConversationItemProps {
   currentUserId: string;
   onSelect: () => void;
   onDelete?: () => void;
+  isOnline?: boolean;
+  // Other members typing in this conversation (from the `typing` event)
+  typingUserIds?: string[];
 }
 
 export const ConversationItem: React.FC<ConversationItemProps> = ({
@@ -20,6 +23,8 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
   currentUserId,
   onSelect,
   onDelete,
+  isOnline = false,
+  typingUserIds,
 }) => {
   const isGroup = conversation.type === 'group';
 
@@ -40,7 +45,16 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
   const unreadCount = conversation.unreadCounts?.[currentUserId] || 0;
   const hasUnread = unreadCount > 0;
 
-  // Last message content
+  // Last message content; replaced by the typing line while someone types
+  const typingLabel = (() => {
+    if (!typingUserIds?.length) return null;
+    if (!isGroup) return 'Đang nhập…';
+    const first = conversation.participants.find((p) => p._id === typingUserIds[0]);
+    const name = first?.displayName || first?.username || 'Ai đó';
+    return typingUserIds.length > 1
+      ? `${name} và ${typingUserIds.length - 1} người khác đang nhập…`
+      : `${name} đang nhập…`;
+  })();
   const lastContent = conversation.lastMessage?.content || 'Chưa có tin nhắn';
   const lastTime = conversation.lastMessage?.createdAt
     ? formatTime(conversation.lastMessage.createdAt)
@@ -62,6 +76,8 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
           src={avatarUrl}
           name={displayName}
           size="md"
+          status={isOnline ? 'online' : 'offline'}
+          showStatus={isOnline}
         />
       </div>
 
@@ -90,12 +106,14 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
         <div className="flex items-center justify-between gap-2">
           <p
             className={`text-xs truncate ${
-              hasUnread
-                ? 'font-semibold text-slate-900 dark:text-slate-100'
-                : 'text-slate-500 dark:text-slate-400'
+              typingLabel
+                ? 'italic text-sky-600 dark:text-sky-400'
+                : hasUnread
+                  ? 'font-semibold text-slate-900 dark:text-slate-100'
+                  : 'text-slate-500 dark:text-slate-400'
             }`}
           >
-            {lastContent}
+            {typingLabel ?? lastContent}
           </p>
 
           {hasUnread && (

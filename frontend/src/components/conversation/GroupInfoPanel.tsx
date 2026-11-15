@@ -13,6 +13,8 @@ const MAX_GROUP_MEMBERS = 100;
 interface GroupInfoPanelProps {
   conversation: Conversation;
   currentUserId: string;
+  // Online members (usePresence)
+  onlineIds?: Set<string>;
   onClose: () => void;
   // Each handler reports its own success / error (toast) and never throws
   onRename: (groupName: string) => Promise<void>;
@@ -32,6 +34,7 @@ const nameOf = (user: { displayName?: string; username?: string }) =>
 export const GroupInfoPanel: React.FC<GroupInfoPanelProps> = ({
   conversation,
   currentUserId,
+  onlineIds,
   onClose,
   onRename,
   onAddMembers,
@@ -286,7 +289,13 @@ export const GroupInfoPanel: React.FC<GroupInfoPanelProps> = ({
                     key={member._id}
                     className="flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/60"
                   >
-                    <UserAvatar src={member.avatarUrl} name={nameOf(member)} size="sm" />
+                    <UserAvatar
+                      src={member.avatarUrl}
+                      name={nameOf(member)}
+                      size="sm"
+                      status="online"
+                      showStatus={!!onlineIds?.has(member._id)}
+                    />
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate">
                         {nameOf(member)}
