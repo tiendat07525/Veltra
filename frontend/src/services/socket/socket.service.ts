@@ -75,6 +75,20 @@ class SocketService {
     this.socket?.emit(event, ...args);
   }
 
+  // Emit and wait for the server ack. Resolves null when not connected, on timeout or error.
+  async emitWithAck<T = unknown>(event: string, payload?: unknown, timeoutMs = 5000): Promise<T | null> {
+    const socket = this.socket;
+    if (!socket?.connected) return null;
+    try {
+      const timed = socket.timeout(timeoutMs);
+      return (await (payload === undefined
+        ? timed.emitWithAck(event)
+        : timed.emitWithAck(event, payload))) as T;
+    } catch {
+      return null;
+    }
+  }
+
   getSocket(): Socket | null {
     return this.socket;
   }

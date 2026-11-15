@@ -35,6 +35,11 @@ interface ChatWindowProps {
   onRevokeMessage?: (id: string) => void;
   // Groups only: opens the group info panel
   onOpenGroupInfo?: () => void;
+  // Presence / typing (usePresence)
+  onlineIds?: Set<string>;
+  typingUserIds?: string[];
+  onTyping?: (conversationId: string) => void;
+  onStopTyping?: () => void;
 }
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
@@ -54,6 +59,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   onRefreshMessages,
   onRevokeMessage,
   onOpenGroupInfo,
+  onlineIds,
+  typingUserIds,
+  onTyping,
+  onStopTyping,
 }) => {
   const [inputValue, setInputValue] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -117,7 +126,25 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (!inputValue.trim()) return;
     onSendMessage(inputValue.trim());
     setInputValue('');
+    onStopTyping?.();
   };
+
+  const otherOnlineCount = conversation
+    ? conversation.participants.filter((p) => p._id !== currentUserId && onlineIds?.has(p._id)).length
+    : 0;
+  const partnerOnline = !!partner && !!onlineIds?.has(partner._id);
+
+  const typingText = (() => {
+    if (!conversation || !typingUserIds?.length) return null;
+    if (conversation.type !== 'group') return `${conversationName} đang nhập…`;
+    const names = typingUserIds.map((id) => {
+      const p = conversation.participants.find((m) => m._id === id);
+      return p?.displayName || p?.username || 'Ai đó';
+    });
+    return names.length > 2
+      ? `${names[0]}, ${names[1]} và ${names.length - 2} người khác đang nhập…`
+      : `${names.join(' và ')} đang nhập…`;
+  })();
 
   // Empty state
   if (!conversation) {
@@ -178,6 +205,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           src={partner?.avatarUrl}
           name={conversationName}
           size="md"
+          status={partnerOnline ? 'online' : 'offline'}
+          showStatus={conversation.type !== 'group' && partnerOnline}
         />
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">
@@ -185,8 +214,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           </h3>
           <p className="text-[11px] text-slate-500">
             {conversation.type === 'group'
-              ? `${conversation.participants.length} thành viên`
-              : ''}
+              ? `${conversation.participants.length} thành viên${
+                  otherOnlineCount > 0 ? ` · ${otherOnlineCount} đang hoạt động` : ''
+                }`
+              : partnerOnline
+                ? 'Đang hoạt động'
+                : 'Ngoại tuyến'}
           </p>
         </div>
 
@@ -352,12 +385,19 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       {/* Message Input */}
       <div className="px-4 py-3 border-t border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
+        {typingText && (
+          <p className="mb-1.5 px-1 text-[11px] italic text-slate-500 dark:text-slate-400 truncate" aria-live="polite">
+            {typingText}
+          </p>
+        )}
         <div className="flex items-center gap-2">
           <textarea
             ref={inputRef}
             value={inputValue}
             onChange={(e) => {
               setInputValue(e.target.value);
+              if (e.target.value.trim()) onTyping?.(conversation._id);
+              else onStopTyping?.();
               // Auto-resize textarea
               e.target.style.height = 'auto';
               e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
@@ -371,6 +411,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 }
               }
             }}
+            onBlur={() => onStopTyping?.()}
             placeholder="Nhập tin nhắn..."
             rows={1}
             className="flex-1 px-4 py-2.5 bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-sky-500/50 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-sky-500/20 transition-all disabled:opacity-60 resize-none overflow-y-auto"

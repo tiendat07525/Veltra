@@ -70,6 +70,10 @@ describe('RealtimeGateway - Socket.IO Redis Adapter (Unit Tests)', () => {
       realtimeService as any,
       sessionService as any,
       connectRateLimiter as any,
+      {
+        handleConnected: jest.fn().mockResolvedValue(undefined),
+        handleDisconnected: jest.fn(),
+      } as any,
     );
   });
 

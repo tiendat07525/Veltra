@@ -13,12 +13,15 @@ interface ContactsViewProps {
   onStartChat: (user: UserBasicInfo) => void;
   onVoiceCall?: (user: UserBasicInfo) => void;
   onVideoCall?: (user: UserBasicInfo) => void;
+  // Online friends (usePresence)
+  onlineIds?: Set<string>;
 }
 
 type TabType = 'friends' | 'requests' | 'search';
 
 export const ContactsView: React.FC<ContactsViewProps> = ({
   onStartChat,
+  onlineIds,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('friends');
   const [searchQuery, setSearchQuery] = useState('');
@@ -343,6 +346,8 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
                       src={friend.avatarUrl}
                       name={friend.displayName || friend.username || ''}
                       size="md"
+                      status="online"
+                      showStatus={!!onlineIds?.has(friend._id)}
                     />
                     <div className="min-w-0">
                       <h3 className="font-semibold text-sm text-slate-900 dark:text-white truncate">

@@ -29,6 +29,9 @@ interface ConversationSidebarProps {
     groupName?: string;
   }) => void;
   onDeleteConversation: (id: string) => void;
+  // Presence / typing from usePresence
+  onlineIds?: Set<string>;
+  typingByConversation?: Record<string, string[]>;
 }
 
 export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
@@ -42,6 +45,8 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
   currentUserId,
   onCreateNewConversation,
   onDeleteConversation,
+  onlineIds,
+  typingByConversation,
 }) => {
   const [showNewModal, setShowNewModal] = useState(false);
 
@@ -146,6 +151,12 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
               currentUserId={currentUserId}
               onSelect={() => onSelectConversation(conv._id)}
               onDelete={() => onDeleteConversation(conv._id)}
+              // Direct: the partner is online. Group: at least one other member is.
+              isOnline={
+                !!onlineIds &&
+                conv.participants.some((p) => p._id !== currentUserId && onlineIds.has(p._id))
+              }
+              typingUserIds={typingByConversation?.[conv._id]}
             />
           ))
         )}

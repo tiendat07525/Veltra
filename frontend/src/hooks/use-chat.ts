@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useConversations } from './use-conversations';
 import { useMessages } from './use-messages';
+import { usePresence } from './use-presence';
 import { CurrentUserProfile } from '@/types/user';
 import { ConversationParticipant } from '@/types/conversation';
 import { authService } from '@/services/api/auth.service';
@@ -28,6 +29,23 @@ export function useChat(enabled: boolean = true, initialConversationId?: string)
     }
     loadCurrentUser();
   }, [enabled]);
+
+  // Re-sync presence when conversations / members change (new co-members may be online)
+  const presenceAudienceKey = useMemo(
+    () =>
+      conversationsHook.allConversations
+        .map((c) => `${c._id}:${c.participants.length}`)
+        .sort()
+        .join(','),
+    [conversationsHook.allConversations]
+  );
+  const presence = usePresence(enabled, currentUser?._id ?? null, presenceAudienceKey);
+
+  // Switching conversation ends my typing state in the previous one
+  const { stopTyping } = presence;
+  useEffect(() => {
+    stopTyping();
+  }, [activeConversationId, stopTyping]);
 
   const messagesHook = useMessages(activeConversationId, (convId, upToSeq) => {
     if (currentUser?._id) {
@@ -88,5 +106,6 @@ export function useChat(enabled: boolean = true, initialConversationId?: string)
     currentUserLoading,
     totalUnreadCount,
     messagesHook,
+    presence,
   };
 }

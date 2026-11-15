@@ -228,6 +228,8 @@ export function VeltraClientApp() {
                 filter={chat.filter}
                 onFilterChange={chat.setFilter}
                 currentUserId={chat.currentUser?._id || ''}
+                onlineIds={chat.presence.onlineIds}
+                typingByConversation={chat.presence.typingByConversation}
                 onCreateNewConversation={async (params) => {
                   try {
                     const newConv = await chat.createNewConversation(params);
@@ -283,6 +285,14 @@ export function VeltraClientApp() {
                 onRefreshMessages={chat.messagesHook.refetch}
                 onRevokeMessage={(id) => chat.messagesHook.revokeMessage(id).catch(err => showToast(err?.response?.data?.message || 'Lỗi thu hồi tin nhắn', 'error'))}
                 onOpenGroupInfo={() => setGroupInfoFor(chat.activeConversationId)}
+                onlineIds={chat.presence.onlineIds}
+                typingUserIds={
+                  chat.activeConversationId
+                    ? chat.presence.typingByConversation[chat.activeConversationId]
+                    : undefined
+                }
+                onTyping={chat.presence.notifyTyping}
+                onStopTyping={chat.presence.stopTyping}
               />
             </div>
 
@@ -290,6 +300,7 @@ export function VeltraClientApp() {
               <GroupInfoPanel
                 conversation={groupInfoConversation}
                 currentUserId={chat.currentUser?._id || ''}
+                onlineIds={chat.presence.onlineIds}
                 onClose={() => setGroupInfoFor(null)}
                 onRename={(name) =>
                   runGroupAction(() => chat.renameGroup(groupInfoConversation._id, name), 'Đã đổi tên nhóm')
@@ -319,6 +330,7 @@ export function VeltraClientApp() {
         {activeTab === 'contacts' && (
           <ContactsView
             onStartChat={handleStartChatFromContact}
+            onlineIds={chat.presence.onlineIds}
           />
         )}
 
