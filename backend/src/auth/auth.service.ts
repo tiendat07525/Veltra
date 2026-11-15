@@ -1,9 +1,12 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { RegisterDto } from './dto/register.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from 'src/users/users.service';
 import { LoginDto } from './dto/login.dto';
@@ -188,6 +191,56 @@ export class AuthService {
     return {
       accessToken: newAccessToken,
       refreshTokenString: newRefreshTokenString,
+    };
+  }
+
+  /**
+   * Checks the current password, stores the new one, then signs out every session
+   * (other devices and sockets included) and opens a new one for this client.
+   */
+  async changePassword(
+    userId: string,
+    dto: ChangePasswordDto,
+    userAgent?: string,
+    ipAddress?: string,
+  ) {
+    const user = await this.usersService.findByIdWithPassword(userId);
+    if (!user) {
+      throw new UnauthorizedException('Người dùng không tồn tại');
+    }
+
+    const isMatch = await bcrypt.compare(dto.currentPassword, user.password);
+    if (!isMatch) {
+      throw new BadRequestException('Mật khẩu hiện tại không đúng');
+    }
+    if (await bcrypt.compare(dto.newPassword, user.password)) {
+      throw new BadRequestException('Mật khẩu mới phải khác mật khẩu hiện tại');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.newPassword, 10);
+    await this.usersService.setPasswordHash(userId, passwordHash);
+
+    // Same as a login: revokes every session and disconnects every socket first
+    const { accessToken, refreshTokenString } =
+      await this.createSessionAndTokens(user, userAgent, ipAddress);
+
+    return {
+      message: 'Đổi mật khẩu thành công',
+      accessToken,
+      refreshTokenString,
+    };
+  }
+
+  // The current session as shown in the settings (no token hashes, no IP)
+  async getCurrentSession(userId: string, sessionId: string) {
+    const session = await this.sessionService.getSession(userId, sessionId);
+    if (!session) {
+      throw new NotFoundException('Phiên đăng nhập không tồn tại');
+    }
+    return {
+      createdAt: session.createdAt,
+      expiresAt: session.expiresAt,
+      userAgent: session.userAgent ?? null,
     };
   }
 

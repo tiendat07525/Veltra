@@ -120,6 +120,25 @@ export class UsersService {
     return this.userModel.findOne({ username }).select('+password');
   }
 
+  // Only for changing the password (AuthService.changePassword)
+  async findByIdWithPassword(id: string) {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('User ID không hợp lệ');
+    }
+    return this.userModel.findById(id).select('+password');
+  }
+
+  // Stores an already hashed password (bcrypt)
+  async setPasswordHash(id: string, passwordHash: string) {
+    const { matchedCount } = await this.userModel.updateOne(
+      { _id: new Types.ObjectId(id) },
+      { $set: { password: passwordHash } },
+    );
+    if (matchedCount === 0) {
+      throw new NotFoundException('User không tồn tại');
+    }
+  }
+
   async findByUsernameAndEmail(username: string, email: string) {
     if (typeof username !== 'string' || typeof email !== 'string') {
       throw new BadRequestException('Username và email không hợp lệ');
