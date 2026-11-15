@@ -4,8 +4,8 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { User } from 'src/users/schemas/user.schema';
 import { RealtimeService } from 'src/realtime/realtime.service';
-import { NotificationService } from './notification.service';
-import { Notification } from './schemas/notification.schema';
+import { NotificationService } from 'src/notification/notification.service';
+import { Notification } from 'src/notification/schemas/notification.schema';
 
 describe('NotificationService', () => {
   let service: NotificationService;

@@ -1,8 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { FriendService } from './friend.service';
+import { FriendService } from 'src/friend/friend.service';
 import { getModelToken } from '@nestjs/mongoose';
-import { Friend } from './schema/friend.schema';
-import { FriendRequest } from './schema/friend-request.schema';
+import { Friend } from 'src/friend/schema/friend.schema';
+import { FriendRequest } from 'src/friend/schema/friend-request.schema';
 import { User } from 'src/users/schemas/user.schema';
 import { NotificationService } from 'src/notification/notification.service';
 import {
