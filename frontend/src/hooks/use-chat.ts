@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useConversations } from './use-conversations';
 import { useMessages } from './use-messages';
 import { CurrentUserProfile } from '@/types/user';
@@ -42,6 +42,18 @@ export function useChat(enabled: boolean = true, initialConversationId?: string)
       ) || null
     );
   }, [conversationsHook.allConversations, activeConversationId]);
+
+  // The open conversation left the list (I left / was removed / it was deleted): close it.
+  // Only once it has been seen in the list, so an id still being loaded is not cleared.
+  const activeSeenRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (activeConversation) {
+      activeSeenRef.current = activeConversation._id;
+    } else if (activeConversationId && activeSeenRef.current === activeConversationId) {
+      activeSeenRef.current = null;
+      setActiveConversationId(null);
+    }
+  }, [activeConversation, activeConversationId]);
 
   const { getConversationDisplayName } = conversationsHook;
   const activeConversationName = useMemo(() => {

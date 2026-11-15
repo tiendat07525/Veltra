@@ -4,6 +4,29 @@ import { Message } from '@/types/message';
 import { conversationService } from '@/services/api/conversation.service';
 import { socketService } from '@/services/socket/socket.service';
 
+// Insert or replace a conversation from the server (conversation:updated or a group-change response).
+// If the list already holds a newer message (higher lastSeq), keep its message fields and take
+// only the membership / group fields from the incoming copy.
+function upsertConversation(prev: Conversation[], incoming: Conversation): Conversation[] {
+  const index = prev.findIndex((c) => c._id === incoming._id);
+  if (index === -1) return [incoming, ...prev];
+
+  const current = prev[index];
+  const merged: Conversation =
+    (current.lastSeq ?? 0) > (incoming.lastSeq ?? 0)
+      ? {
+          ...incoming,
+          lastMessage: current.lastMessage,
+          lastMessageAt: current.lastMessageAt,
+          lastSeq: current.lastSeq,
+          unreadCounts: current.unreadCounts,
+        }
+      : incoming;
+  const next = [...prev];
+  next[index] = merged;
+  return next;
+}
+
 export function useConversations(enabled: boolean = true, currentUserId: string | null = null) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -90,11 +113,29 @@ export function useConversations(enabled: boolean = true, currentUserId: string 
       );
     };
 
+    // Members, owner or name changed (also how a newly added member learns about the group)
+    const handleConversationUpdated = (payload: { conversation?: Conversation }) => {
+      const incoming = payload?.conversation;
+      if (!incoming?._id) return;
+      setConversations((prev) => upsertConversation(prev, incoming));
+    };
+
+    // I left, was removed, or the conversation was deleted
+    const handleConversationRemoved = (payload: { conversationId?: string }) => {
+      const removedId = payload?.conversationId;
+      if (!removedId) return;
+      setConversations((prev) => prev.filter((c) => c._id !== removedId));
+    };
+
     socketService.on('message:new', handleNewMessage);
     socketService.on('message:revoked', handleRevokeMessageEvent);
+    socketService.on('conversation:updated', handleConversationUpdated);
+    socketService.on('conversation:removed', handleConversationRemoved);
     return () => {
       socketService.off('message:new', handleNewMessage);
       socketService.off('message:revoked', handleRevokeMessageEvent);
+      socketService.off('conversation:updated', handleConversationUpdated);
+      socketService.off('conversation:removed', handleConversationRemoved);
     };
   }, [fetchConversations]);
 
@@ -134,6 +175,27 @@ export function useConversations(enabled: boolean = true, currentUserId: string 
 
   const deleteConversation = async (conversationId: string) => {
     await conversationService.deleteConversation(conversationId);
+    setConversations((prev) => prev.filter((c) => c._id !== conversationId));
+  };
+
+  // Group management: each response is the stored group, applied the same way as conversation:updated
+  const applyGroup = (conversation: Conversation) =>
+    setConversations((prev) => upsertConversation(prev, conversation));
+
+  const renameGroup = async (conversationId: string, groupName: string) =>
+    applyGroup(await conversationService.updateConversation(conversationId, { groupName }));
+
+  const addMembers = async (conversationId: string, userIds: string[]) =>
+    applyGroup(await conversationService.addParticipants(conversationId, userIds));
+
+  const removeMember = async (conversationId: string, userId: string) =>
+    applyGroup(await conversationService.removeParticipant(conversationId, userId));
+
+  const transferOwner = async (conversationId: string, userId: string) =>
+    applyGroup(await conversationService.transferOwnership(conversationId, userId));
+
+  const leaveGroup = async (conversationId: string) => {
+    await conversationService.leaveGroup(conversationId);
     setConversations((prev) => prev.filter((c) => c._id !== conversationId));
   };
 
@@ -189,6 +251,11 @@ export function useConversations(enabled: boolean = true, currentUserId: string 
     markAsSeen: handleMarkAsSeen,
     createNewConversation,
     deleteConversation,
+    renameGroup,
+    addMembers,
+    removeMember,
+    transferOwner,
+    leaveGroup,
     getConversationDisplayName,
     setConversations,
   };

@@ -11,6 +11,7 @@ import {
   AlertCircle,
   RefreshCw,
   RotateCcw,
+  Info,
 } from 'lucide-react';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { formatTime, formatDate } from '@/lib/utils';
@@ -32,6 +33,8 @@ interface ChatWindowProps {
   messagesError: string | null;
   onRefreshMessages: () => void;
   onRevokeMessage?: (id: string) => void;
+  // Groups only: opens the group info panel
+  onOpenGroupInfo?: () => void;
 }
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
@@ -50,6 +53,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   messagesError,
   onRefreshMessages,
   onRevokeMessage,
+  onOpenGroupInfo,
 }) => {
   const [inputValue, setInputValue] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -185,6 +189,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               : ''}
           </p>
         </div>
+
+        {conversation.type === 'group' && onOpenGroupInfo && (
+          <button
+            type="button"
+            onClick={onOpenGroupInfo}
+            className="p-2 rounded-xl text-slate-400 hover:text-sky-500 hover:bg-sky-500/10 transition-colors"
+            title="Thông tin nhóm"
+            aria-label="Thông tin nhóm"
+          >
+            <Info className="w-5 h-5" />
+          </button>
+        )}
       </header>
 
       {/* Messages Area */}
@@ -234,6 +250,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
                 {/* Messages */}
                 {group.messages.map((msg) => {
+                  // Group change note (left / removed / owner / added / renamed): text built by the server
+                  if (msg.type === 'system') {
+                    return (
+                      <div key={msg._id} className="flex justify-center my-2">
+                        <p className="max-w-[85%] px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800/70 text-[11px] text-slate-500 dark:text-slate-400 text-center">
+                          {msg.content}
+                          <span className="ml-1.5 text-slate-400">{formatTime(msg.createdAt)}</span>
+                        </p>
+                      </div>
+                    );
+                  }
+
                   let msgSenderId = String(msg.senderId);
                   if (typeof msg.senderId === 'object' && msg.senderId !== null) {
                     const senderObj = msg.senderId as Record<string, unknown>;

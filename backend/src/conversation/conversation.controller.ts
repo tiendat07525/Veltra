@@ -18,7 +18,7 @@ import { ConversationService } from './conversation.service';
 
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
-import { AddParticipantDto } from './dto/add-participant.dto';
+import { AddParticipantDto, TransferOwnerDto } from './dto/add-participant.dto';
 
 @Controller('conversation')
 @UseGuards(JwtAuthGuard)
@@ -106,6 +106,46 @@ export class ConversationController {
     const userId = req.user._id.toString();
 
     return this.conversationsService.addParticipants(
+      conversationId,
+      dto,
+      userId,
+    );
+  }
+
+  @Post(':conversationId/leave')
+  async leave(
+    @Param('conversationId') conversationId: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const userId = req.user._id.toString();
+
+    return this.conversationsService.leaveGroup(conversationId, userId);
+  }
+
+  @Delete(':conversationId/participants/:userId')
+  async removeParticipant(
+    @Param('conversationId') conversationId: string,
+    @Param('userId') targetUserId: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const userId = req.user._id.toString();
+
+    return this.conversationsService.removeParticipant(
+      conversationId,
+      targetUserId,
+      userId,
+    );
+  }
+
+  @Patch(':conversationId/owner')
+  async transferOwnership(
+    @Param('conversationId') conversationId: string,
+    @Body() dto: TransferOwnerDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const userId = req.user._id.toString();
+
+    return this.conversationsService.transferOwnership(
       conversationId,
       dto,
       userId,

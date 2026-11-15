@@ -9,9 +9,12 @@ import {
 import { Message, MessageSchema } from '../messages/schemas/message.schema';
 import { User, UserSchema } from '../users/schemas/user.schema';
 import { Friend, FriendSchema } from '../friend/schema/friend.schema';
+import { RealtimeModule } from '../realtime/realtime.module';
 
 @Module({
   imports: [
+    // Group changes are pushed to members (conversation:updated / conversation:removed / message:new)
+    RealtimeModule,
     MongooseModule.forFeature([
       { name: Conversation.name, schema: ConversationSchema },
       { name: Message.name, schema: MessageSchema },
