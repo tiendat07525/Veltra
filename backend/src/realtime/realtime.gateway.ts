@@ -8,24 +8,22 @@ import {
   ConnectedSocket,
   MessageBody,
 } from '@nestjs/websockets';
-import { DefaultEventsMap, Server, Socket } from 'socket.io';
+import { Server } from 'socket.io';
 import { Logger, OnModuleDestroy } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { createAdapter } from '@socket.io/redis-adapter';
-import { createClient } from 'redis';
 import { UsersService } from 'src/users/users.service';
 import { RealtimeService } from './realtime.service';
 import { SessionService } from 'src/auth/session.service';
-import type { JwtPayload } from 'src/auth/jwt.strategy';
 import { errorMessage } from 'src/common/error-message';
 import { isAllowedOrigin } from 'src/common/allowed-origins';
 import { ThrottlerStorageRedisService } from 'src/auth/throttler-storage-redis.service';
-import { getSocketClientIp } from 'src/common/client-ip';
 import { PresenceService } from './presence.service';
+import { createSocketAuthMiddleware } from './socket-auth.middleware';
+import type { GatewaySocket } from './socket-auth.middleware';
+import { SocketRedisAdapter } from './socket-redis-adapter';
+import type { RedisClient } from './socket-redis-adapter';
 
-const SOCKET_CONNECT_LIMIT = 30;
-const SOCKET_CONNECT_WINDOW_MS = 60_000;
 // typing:start / typing:stop: at most one of each per socket per second
 export const TYPING_MIN_INTERVAL_MS = 1_000;
 
@@ -35,25 +33,6 @@ type SocketAck<T = undefined> =
 
 const ackError = (code: string, message: string) =>
   ({ ok: false, error: { code, message } }) as const;
-
-type RedisClient = ReturnType<typeof createClient>;
-
-// Fields the auth middleware and handleConnection store on socket.data
-interface GatewaySocketData {
-  user?: { _id: string; id: string; username: string; email: string };
-  sessionId?: string;
-  jwtExp?: number;
-  expTimer?: NodeJS.Timeout;
-  // Last accepted typing:start / typing:stop (ms), for the per-socket rate limit
-  lastTypingStartAt?: number;
-  lastTypingStopAt?: number;
-}
-type GatewaySocket = Socket<
-  DefaultEventsMap,
-  DefaultEventsMap,
-  DefaultEventsMap,
-  GatewaySocketData
->;
 
 @WebSocketGateway({
   cors: {
@@ -78,10 +57,7 @@ export class RealtimeGateway
   server: Server;
 
   private readonly logger = new Logger(RealtimeGateway.name);
-  private pubClient: RedisClient | null = null;
-  private subClient: RedisClient | null = null;
-  private isRedisAdapterActive = false;
-  private isInitializingAdapter = false;
+  private readonly redisAdapter = new SocketRedisAdapter(this.logger);
 
   constructor(
     private readonly jwtService: JwtService,
@@ -97,203 +73,49 @@ export class RealtimeGateway
     this.server = server;
     this.realtimeService.setServer(server);
 
-    // eslint-disable-next-line @typescript-eslint/no-misused-promises
-    server.use(async (socket: GatewaySocket, next) => {
-      try {
-        // Count every handshake (valid or not) per client IP; fails open if Redis is down
-        const ip = getSocketClientIp(
-          socket.handshake.headers,
-          socket.handshake.address,
-        );
-        const { isBlocked } = await this.connectRateLimiter.increment(
-          ip,
-          SOCKET_CONNECT_WINDOW_MS,
-          SOCKET_CONNECT_LIMIT,
-          0,
-          'socket-connect',
-        );
-        if (isBlocked) {
-          this.logger.warn(
-            '[Socket] Handshake bị từ chối: vượt giới hạn kết nối',
-          );
-          return next(new Error('Quá nhiều kết nối, vui lòng thử lại sau'));
-        }
-
-        const token: unknown =
-          socket.handshake.auth?.token ||
-          socket.handshake.headers?.authorization?.replace(/^Bearer\s+/i, '') ||
-          socket.handshake.query?.token;
-
-        if (!token || typeof token !== 'string') {
-          return next(new Error('Không có quyền truy cập'));
-        }
-
-        const jwtSecret = this.configService.getOrThrow<string>('JWT_SECRET');
-        const payload = await this.jwtService.verifyAsync<
-          JwtPayload & { exp?: number }
-        >(token, {
-          secret: jwtSecret,
-        });
-
-        if (!payload || !payload.id || !payload.sessionId) {
-          return next(new Error('Không có quyền truy cập'));
-        }
-
-        // Fail-closed: reject sockets whose Redis session is missing, revoked or expired
-        const session = await this.sessionService.getSession(
-          payload.id,
-          payload.sessionId,
-        );
-        if (
-          !session ||
-          (session.expiresAt &&
-            new Date(session.expiresAt).getTime() <= Date.now())
-        ) {
-          return next(new Error('Không có quyền truy cập'));
-        }
-
-        const user = await this.usersService.findOne(payload.id);
-        if (!user) {
-          return next(new Error('Không có quyền truy cập'));
-        }
-
-        const userId = user._id.toString();
-        socket.data.user = {
-          _id: userId,
-          id: userId,
-          username: user.username,
-          email: user.email,
-        };
-        socket.data.sessionId = payload.sessionId;
-        socket.data.jwtExp = payload.exp;
-
-        next();
-      } catch (err: unknown) {
-        // Keep the reason server-side; clients only learn that access was denied
-        this.logger.warn(`[Socket] Handshake bị từ chối: ${errorMessage(err)}`);
-        next(new Error('Không có quyền truy cập'));
-      }
-    });
+    // Handshake auth: connect limit, JWT, Redis session, user (socket-auth.middleware.ts)
+    server.use(
+      // eslint-disable-next-line @typescript-eslint/no-misused-promises
+      createSocketAuthMiddleware({
+        jwtService: this.jwtService,
+        configService: this.configService,
+        usersService: this.usersService,
+        sessionService: this.sessionService,
+        connectRateLimiter: this.connectRateLimiter,
+        logger: this.logger,
+      }),
+    );
 
     await this.initRedisAdapter(server);
 
     this.logger.log('Socket.IO Gateway đã được khởi tạo');
   }
 
-  async initRedisAdapter(server: Server): Promise<void> {
-    if (this.isRedisAdapterActive || this.isInitializingAdapter) {
-      this.logger.warn(
-        'Socket.IO Redis adapter đã được khởi tạo hoặc đang trong quá trình khởi tạo',
-      );
-      return;
-    }
-
-    const redisUrl = this.configService.get<string>('REDIS_URL')?.trim();
-    if (!redisUrl) {
-      this.isRedisAdapterActive = false;
-      this.logger.log(
-        'REDIS_URL không được cấu hình; duy trì bộ điều hợp in-memory mặc định cho Socket.IO',
-      );
-      return;
-    }
-
-    this.isInitializingAdapter = true;
-    try {
-      const maskedUrl = this.maskRedisUrl(redisUrl);
-      this.logger.log(
-        `Đang khởi tạo Socket.IO Redis adapter với URL: ${maskedUrl}`,
-      );
-
-      const pubClient: RedisClient = createClient({ url: redisUrl });
-      const subClient: RedisClient = pubClient.duplicate();
-
-      pubClient.on('error', (err: unknown) => {
-        this.logger.error(
-          `Socket.IO Redis PubClient Error: ${errorMessage(err)}`,
-        );
-      });
-      subClient.on('error', (err: unknown) => {
-        this.logger.error(
-          `Socket.IO Redis SubClient Error: ${errorMessage(err)}`,
-        );
-      });
-
-      this.pubClient = pubClient;
-      this.subClient = subClient;
-
-      await Promise.all([pubClient.connect(), subClient.connect()]);
-
-      server.adapter(createAdapter(pubClient, subClient));
-      this.isRedisAdapterActive = true;
-      this.logger.log(
-        'Socket.IO Redis adapter đã được khởi tạo và kết nối thành công',
-      );
-    } catch (err: unknown) {
-      this.isRedisAdapterActive = false;
-      this.logger.error(
-        `Không thể khởi tạo Socket.IO Redis adapter; chuyển về bộ điều hợp in-memory. Lỗi: ${errorMessage(err)}`,
-      );
-      await this.cleanupRedisClients();
-    } finally {
-      this.isInitializingAdapter = false;
-    }
-  }
-
-  private maskRedisUrl(redisUrl: string): string {
-    try {
-      const parsed = new URL(redisUrl);
-      if (parsed.password) {
-        parsed.password = '***';
-      }
-      return parsed.toString();
-    } catch {
-      return 'redis://[hidden]';
-    }
+  // Redis adapter (socket-redis-adapter.ts); in-memory adapter when REDIS_URL is unset
+  initRedisAdapter(server: Server): Promise<void> {
+    return this.redisAdapter.init(
+      server,
+      this.configService.get<string>('REDIS_URL'),
+    );
   }
 
   async onModuleDestroy() {
     await this.cleanupRedisClients();
   }
 
-  async cleanupRedisClients(): Promise<void> {
-    const clients = [this.pubClient, this.subClient];
-    this.pubClient = null;
-    this.subClient = null;
-    this.isRedisAdapterActive = false;
-
-    for (const client of clients) {
-      if (client) {
-        try {
-          if (client.isOpen) {
-            await client.quit();
-          } else {
-            try {
-              await client.disconnect();
-            } catch {
-              // Client is already closed or destroyed
-            }
-          }
-        } catch (err: unknown) {
-          this.logger.warn(
-            `Lỗi khi đóng Socket.IO Redis client: ${errorMessage(err)}`,
-          );
-        }
-      }
-    }
+  cleanupRedisClients(): Promise<void> {
+    return this.redisAdapter.cleanup();
   }
 
   getIsRedisAdapterActive(): boolean {
-    return this.isRedisAdapterActive;
+    return this.redisAdapter.isActive();
   }
 
   getRedisClients(): {
     pubClient: RedisClient | null;
     subClient: RedisClient | null;
   } {
-    return {
-      pubClient: this.pubClient,
-      subClient: this.subClient,
-    };
+    return this.redisAdapter.clients();
   }
 
   async handleConnection(client: GatewaySocket) {

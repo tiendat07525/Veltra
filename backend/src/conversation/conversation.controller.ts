@@ -15,6 +15,7 @@ import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import type { AuthenticatedRequest } from 'src/auth/authenticated-request';
 
 import { ConversationService } from './conversation.service';
+import { ConversationGroupService } from './conversation-group.service';
 
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
@@ -23,7 +24,10 @@ import { AddParticipantDto, TransferOwnerDto } from './dto/add-participant.dto';
 @Controller('conversation')
 @UseGuards(JwtAuthGuard)
 export class ConversationController {
-  constructor(private readonly conversationsService: ConversationService) {}
+  constructor(
+    private readonly conversationsService: ConversationService,
+    private readonly groupService: ConversationGroupService,
+  ) {}
 
   @Post()
   async create(
@@ -94,7 +98,7 @@ export class ConversationController {
   ) {
     const userId = req.user._id.toString();
 
-    return this.conversationsService.update(conversationId, dto, userId);
+    return this.groupService.update(conversationId, dto, userId);
   }
 
   @Post(':conversationId/participants')
@@ -105,11 +109,7 @@ export class ConversationController {
   ) {
     const userId = req.user._id.toString();
 
-    return this.conversationsService.addParticipants(
-      conversationId,
-      dto,
-      userId,
-    );
+    return this.groupService.addParticipants(conversationId, dto, userId);
   }
 
   @Post(':conversationId/leave')
@@ -119,7 +119,7 @@ export class ConversationController {
   ) {
     const userId = req.user._id.toString();
 
-    return this.conversationsService.leaveGroup(conversationId, userId);
+    return this.groupService.leaveGroup(conversationId, userId);
   }
 
   @Delete(':conversationId/participants/:userId')
@@ -130,7 +130,7 @@ export class ConversationController {
   ) {
     const userId = req.user._id.toString();
 
-    return this.conversationsService.removeParticipant(
+    return this.groupService.removeParticipant(
       conversationId,
       targetUserId,
       userId,
@@ -145,11 +145,7 @@ export class ConversationController {
   ) {
     const userId = req.user._id.toString();
 
-    return this.conversationsService.transferOwnership(
-      conversationId,
-      dto,
-      userId,
-    );
+    return this.groupService.transferOwnership(conversationId, dto, userId);
   }
 
   @Delete(':conversationId')

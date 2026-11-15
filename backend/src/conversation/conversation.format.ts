@@ -1,0 +1,71 @@
+import { Types } from 'mongoose';
+import {
+  ConversationDocument,
+  computeUnreadCounts,
+} from './schemas/conversation.schema';
+
+// Public fields of other users embedded in conversation responses (data_model.md §1)
+export const CONVERSATION_USER_FIELDS = 'username displayName avatarUrl';
+
+export const conversationUserPopulate = () => [
+  { path: 'participants.userId', select: CONVERSATION_USER_FIELDS },
+  { path: 'seenBy', select: CONVERSATION_USER_FIELDS },
+  { path: 'lastMessage.senderId', select: CONVERSATION_USER_FIELDS },
+];
+
+// participants[].userId after populate(conversationUserPopulate())
+interface PopulatedParticipant {
+  userId?: {
+    _id?: Types.ObjectId;
+    username?: string;
+    displayName?: string;
+    avatarUrl?: string;
+  } | null;
+  joinedAt?: Date;
+}
+
+const formatParticipant = (participant: PopulatedParticipant) => ({
+  _id: participant.userId?._id,
+  username: participant.userId?.username,
+  displayName: participant.userId?.displayName,
+  avatarUrl: participant.userId?.avatarUrl ?? null,
+  joinedAt: participant.joinedAt,
+});
+
+// A populated conversation document as returned by the API (unread counts computed)
+export const formatConversation = (conversation: ConversationDocument) => {
+  const object = conversation.toObject();
+
+  const participants = (conversation.participants || []).map((participant) =>
+    formatParticipant(participant as unknown as PopulatedParticipant),
+  );
+
+  return {
+    ...object,
+    participants,
+    unreadCounts: computeUnreadCounts(conversation),
+  };
+};
+
+// Same shape for a populated lean() result
+export const formatLeanConversation = <
+  T extends {
+    participants?: unknown[];
+    unreadCounts?: unknown;
+    lastSeq?: number;
+  },
+>(
+  conversation: T,
+) => {
+  const participants = (conversation.participants || []).map((participant) =>
+    formatParticipant(participant as PopulatedParticipant),
+  );
+
+  return {
+    ...conversation,
+    participants,
+    unreadCounts: computeUnreadCounts(
+      conversation as Parameters<typeof computeUnreadCounts>[0],
+    ),
+  };
+};

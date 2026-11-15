@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
 import { Types } from 'mongoose';
 import { ConversationService } from '../src/conversation/conversation.service';
+import { ConversationGroupService } from '../src/conversation/conversation-group.service';
 import { Conversation } from '../src/conversation/schemas/conversation.schema';
 import { Message } from '../src/messages/schemas/message.schema';
 import {
@@ -28,6 +29,7 @@ interface FormattedParticipant {
 
 describe('ConversationService participant user fields', () => {
   let service: ConversationService;
+  let groupService: ConversationGroupService;
 
   const ownerId = new Types.ObjectId();
   const memberId = new Types.ObjectId();
@@ -99,6 +101,8 @@ describe('ConversationService participant user fields', () => {
     }).compile();
 
     service = module.get<ConversationService>(ConversationService);
+
+    groupService = module.get(ConversationGroupService);
     jest.clearAllMocks();
   });
 
@@ -135,7 +139,7 @@ describe('ConversationService participant user fields', () => {
     // The stored group returned by the write is what gets populated
     stubGroupChangeWrites(mockConversationModel, mockMessageModel, doc);
 
-    const result = await service.update(
+    const result = await groupService.update(
       conversationId.toString(),
       { groupName: 'New name' },
       ownerId.toString(),
@@ -157,7 +161,7 @@ describe('ConversationService participant user fields', () => {
     stored.participants.push({ userId: newUserId, joinedAt: new Date() });
     stubGroupChangeWrites(mockConversationModel, mockMessageModel, stored);
 
-    const result = await service.addParticipants(
+    const result = await groupService.addParticipants(
       conversationId.toString(),
       { userIds: [newUserId.toString()] },
       ownerId.toString(),

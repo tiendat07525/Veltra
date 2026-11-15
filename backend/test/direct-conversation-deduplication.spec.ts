@@ -14,9 +14,11 @@ import { Message, MessageSchema } from '../src/messages/schemas/message.schema';
 import { CreateMessageDto } from '../src/messages/dto/create-message.dto';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { UsersService } from '../src/users/users.service';
 import { RealtimeService } from '../src/realtime/realtime.service';
-import { groupLookupProviders } from './helpers/group-lookup-mocks';
+import {
+  allowAllGroupLookups,
+  groupLookupProviders,
+} from './helpers/group-lookup-mocks';
 
 describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protection', () => {
   let conversationService: ConversationService;
@@ -39,9 +41,8 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
     findOne: jest.fn(),
   };
 
-  const mockUsersService = {
-    findOne: jest.fn(),
-  };
+  // userModel.exists answers "does the receiver exist" (default: yes)
+  let lookups: ReturnType<typeof allowAllGroupLookups>;
 
   const mockRealtimeService = {
     emitToUser: jest.fn(),
@@ -73,6 +74,7 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
   };
 
   beforeEach(async () => {
+    lookups = allowAllGroupLookups();
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ConversationService,
@@ -85,12 +87,8 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
           provide: getModelToken(Message.name),
           useValue: mockMessageModel,
         },
-        ...groupLookupProviders(),
+        ...groupLookupProviders(lookups),
         { provide: getConnectionToken(), useValue: mockConnection },
-        {
-          provide: UsersService,
-          useValue: mockUsersService,
-        },
         {
           provide: RealtimeService,
           useValue: mockRealtimeService,
@@ -184,9 +182,7 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
 
       // findOne returns null -> none exists
       mockConversationModel.findOne.mockReturnValue({
-        sort: jest.fn().mockReturnValue({
-          populate: jest.fn().mockResolvedValue(null),
-        }),
+        sort: jest.fn().mockResolvedValue(null),
       });
 
       mockConversationModel.create.mockResolvedValue(createdConv);
@@ -219,9 +215,7 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
 
       // findOne finds existing conversation
       mockConversationModel.findOne.mockReturnValue({
-        sort: jest.fn().mockReturnValue({
-          populate: jest.fn().mockResolvedValue(existingConv),
-        }),
+        sort: jest.fn().mockResolvedValue(existingConv),
       });
 
       const result = await conversationService.create(
@@ -242,9 +236,7 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
       const existingConv = mockPopulatedConversation(convId, expectedKey);
 
       mockConversationModel.findOne.mockReturnValue({
-        sort: jest.fn().mockReturnValue({
-          populate: jest.fn().mockResolvedValue(existingConv),
-        }),
+        sort: jest.fn().mockResolvedValue(existingConv),
       });
 
       // User B creates with participant User A
@@ -274,9 +266,7 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
 
       // findOne with type: 'direct' returns null because only group exists
       mockConversationModel.findOne.mockReturnValue({
-        sort: jest.fn().mockReturnValue({
-          populate: jest.fn().mockResolvedValue(null),
-        }),
+        sort: jest.fn().mockResolvedValue(null),
       });
       mockConversationModel.create.mockResolvedValue(createdConv);
 
@@ -324,6 +314,22 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
       );
     });
 
+    it('should reject a direct conversation with a user that does not exist (404) without creating one', async () => {
+      lookups.userModel.exists.mockResolvedValue(null);
+      const ghostId = new Types.ObjectId();
+
+      await expect(
+        conversationService.create(
+          { type: 'direct', participants: [ghostId.toString()] },
+          userAId.toString(),
+        ),
+      ).rejects.toThrow(new NotFoundException('Người nhận không tồn tại'));
+
+      expect(lookups.userModel.exists).toHaveBeenCalledWith({ _id: ghostId });
+      expect(mockConversationModel.findOne).not.toHaveBeenCalled();
+      expect(mockConversationModel.create).not.toHaveBeenCalled();
+    });
+
     it('should handle concurrency collision (E11000 duplicate key) and return winning conversation', async () => {
       const convId = new Types.ObjectId();
       const expectedKey = getDirectKey(userAId, userBId);
@@ -333,13 +339,9 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
       // Second findOne returns the winning conversation created by concurrent thread
       mockConversationModel.findOne
         .mockReturnValueOnce({
-          sort: jest.fn().mockReturnValue({
-            populate: jest.fn().mockResolvedValue(null),
-          }),
+          sort: jest.fn().mockResolvedValue(null),
         })
-        .mockReturnValueOnce({
-          populate: jest.fn().mockResolvedValue(winningConv),
-        });
+        .mockResolvedValueOnce(winningConv);
 
       // create throws MongoServerError E11000
       const duplicateKeyError: any = new Error(
@@ -398,10 +400,6 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
       const existingConv = mockExistingConversation(convId);
       const savedMsg = mockMessageDoc(msgId, convId);
 
-      mockUsersService.findOne.mockResolvedValue({
-        _id: userBId,
-        username: 'userB',
-      });
       mockConversationModel.findOne.mockReturnValue({
         sort: jest.fn().mockResolvedValue(existingConv),
       });
@@ -452,10 +450,6 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
         }),
       };
 
-      mockUsersService.findOne.mockResolvedValue({
-        _id: userAId,
-        username: 'userA',
-      });
       mockConversationModel.findOne.mockReturnValue({
         sort: jest.fn().mockResolvedValue(existingConv),
       });
@@ -483,10 +477,6 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
       const savedMsg = mockMessageDoc(msgId, convId);
       const expectedKey = getDirectKey(userAId, userBId);
 
-      mockUsersService.findOne.mockResolvedValue({
-        _id: userBId,
-        username: 'userB',
-      });
       // findOne returns null -> none exists
       mockConversationModel.findOne.mockReturnValue({
         sort: jest.fn().mockResolvedValue(null),
@@ -519,11 +509,6 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
       const msgId = new Types.ObjectId();
       const winningConv = mockExistingConversation(convId);
       const savedMsg = mockMessageDoc(msgId, convId);
-
-      mockUsersService.findOne.mockResolvedValue({
-        _id: userBId,
-        username: 'userB',
-      });
 
       // First findOne returns null, second findOne (after E11000 catch) returns winning conversation
       mockConversationModel.findOne
@@ -583,7 +568,7 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
     });
 
     it('should reject message when receiver does not exist in database (404 Not Found)', async () => {
-      mockUsersService.findOne.mockResolvedValue(null);
+      lookups.userModel.exists.mockResolvedValue(null);
 
       await expect(
         messageService.sendDirectMessage(
@@ -594,6 +579,9 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
           userAId.toString(),
         ),
       ).rejects.toThrow(new NotFoundException('Người nhận không tồn tại'));
+
+      expect(mockConversationModel.create).not.toHaveBeenCalled();
+      expect(mockMessageModel.create).not.toHaveBeenCalled();
     });
   });
 

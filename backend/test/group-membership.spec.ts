@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Types } from 'mongoose';
-import { ConversationService } from '../src/conversation/conversation.service';
+import { ConversationGroupService } from '../src/conversation/conversation-group.service';
 import { Conversation } from '../src/conversation/schemas/conversation.schema';
 import { Message } from '../src/messages/schemas/message.schema';
 import { RealtimeService } from '../src/realtime/realtime.service';
@@ -23,8 +23,8 @@ interface StoredParticipant {
   lastReadSeq: number;
 }
 
-describe('ConversationService group membership (leave / remove / transfer)', () => {
-  let service: ConversationService;
+describe('ConversationGroupService group membership (leave / remove / transfer)', () => {
+  let groupService: ConversationGroupService;
   let lookups: ReturnType<typeof allowAllGroupLookups>;
 
   const ownerId = new Types.ObjectId();
@@ -106,7 +106,6 @@ describe('ConversationService group membership (leave / remove / transfer)', () 
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        ConversationService,
         {
           provide: getModelToken(Conversation.name),
           useValue: mockConversationModel,
@@ -118,7 +117,7 @@ describe('ConversationService group membership (leave / remove / transfer)', () 
       ],
     }).compile();
 
-    service = module.get<ConversationService>(ConversationService);
+    groupService = module.get(ConversationGroupService);
     jest.clearAllMocks();
     mockConversationModel.findOneAndUpdate.mockReset();
   });
@@ -131,7 +130,7 @@ describe('ConversationService group membership (leave / remove / transfer)', () 
       const stored = makeGroup([ownerId, otherId]);
       stubGroupChangeWrites(mockConversationModel, mockMessageModel, stored, 4);
 
-      const result = await service.leaveGroup(groupId, member);
+      const result = await groupService.leaveGroup(groupId, member);
 
       expect(result).toEqual({
         message: 'Đã rời nhóm',
@@ -170,7 +169,7 @@ describe('ConversationService group membership (leave / remove / transfer)', () 
         makeGroup([ownerId, memberId]),
       );
 
-      await expect(service.leaveGroup(groupId, owner)).rejects.toThrow(
+      await expect(groupService.leaveGroup(groupId, owner)).rejects.toThrow(
         new BadRequestException(
           'Hãy chuyển quyền trưởng nhóm cho thành viên khác trước khi rời nhóm',
         ),
@@ -183,7 +182,7 @@ describe('ConversationService group membership (leave / remove / transfer)', () 
       mockConversationModel.findOne.mockResolvedValue(makeGroup([ownerId]));
       mockConversationModel.deleteOne.mockResolvedValue({ deletedCount: 1 });
 
-      await service.leaveGroup(groupId, owner);
+      await groupService.leaveGroup(groupId, owner);
 
       expect(mockConversationModel.deleteOne).toHaveBeenCalledWith({
         _id: conversationId,
@@ -200,7 +199,7 @@ describe('ConversationService group membership (leave / remove / transfer)', () 
       mockConversationModel.findOne.mockResolvedValue(makeGroup([ownerId]));
       mockConversationModel.deleteOne.mockResolvedValue({ deletedCount: 0 });
 
-      await expect(service.leaveGroup(groupId, owner)).rejects.toThrow(
+      await expect(groupService.leaveGroup(groupId, owner)).rejects.toThrow(
         ConflictException,
       );
       expect(mockMessageModel.deleteMany).not.toHaveBeenCalled();
@@ -211,7 +210,7 @@ describe('ConversationService group membership (leave / remove / transfer)', () 
       mockConversationModel.findOne.mockResolvedValue(null);
 
       await expect(
-        service.leaveGroup(groupId, outsiderId.toString()),
+        groupService.leaveGroup(groupId, outsiderId.toString()),
       ).rejects.toThrow(NotFoundException);
       expect(mockConversationModel.findOne).toHaveBeenCalledWith({
         _id: conversationId,
@@ -233,7 +232,7 @@ describe('ConversationService group membership (leave / remove / transfer)', () 
         4,
       );
 
-      await service.removeParticipant(groupId, member, owner);
+      await groupService.removeParticipant(groupId, member, owner);
 
       const [filter, update] = firstWrite();
       expect(filter).toMatchObject({
@@ -260,7 +259,7 @@ describe('ConversationService group membership (leave / remove / transfer)', () 
       );
 
       await expect(
-        service.removeParticipant(groupId, otherId.toString(), member),
+        groupService.removeParticipant(groupId, otherId.toString(), member),
       ).rejects.toThrow(
         new ForbiddenException('Chỉ trưởng nhóm mới có quyền xóa thành viên'),
       );
@@ -273,15 +272,15 @@ describe('ConversationService group membership (leave / remove / transfer)', () 
       );
 
       await expect(
-        service.removeParticipant(groupId, owner, owner),
+        groupService.removeParticipant(groupId, owner, owner),
       ).rejects.toThrow(BadRequestException);
       await expect(
-        service.removeParticipant(groupId, outsiderId.toString(), owner),
+        groupService.removeParticipant(groupId, outsiderId.toString(), owner),
       ).rejects.toThrow(
         new NotFoundException('Người này không còn trong nhóm'),
       );
       await expect(
-        service.removeParticipant(groupId, 'not-an-id', owner),
+        groupService.removeParticipant(groupId, 'not-an-id', owner),
       ).rejects.toThrow(new BadRequestException('User ID không hợp lệ'));
       expect(mockConnection.transaction).not.toHaveBeenCalled();
     });
@@ -294,7 +293,7 @@ describe('ConversationService group membership (leave / remove / transfer)', () 
       mockConversationModel.findOneAndUpdate.mockResolvedValueOnce(null);
 
       await expect(
-        service.removeParticipant(groupId, member, owner),
+        groupService.removeParticipant(groupId, member, owner),
       ).rejects.toThrow(
         new ConflictException('Nhóm vừa thay đổi, hãy thử lại'),
       );
@@ -311,7 +310,7 @@ describe('ConversationService group membership (leave / remove / transfer)', () 
       const stored = makeGroup([ownerId, memberId], memberId);
       stubGroupChangeWrites(mockConversationModel, mockMessageModel, stored, 4);
 
-      const result = await service.transferOwnership(
+      const result = await groupService.transferOwnership(
         groupId,
         { userId: member },
         owner,
@@ -338,13 +337,13 @@ describe('ConversationService group membership (leave / remove / transfer)', () 
       );
 
       await expect(
-        service.transferOwnership(groupId, { userId: owner }, member),
+        groupService.transferOwnership(groupId, { userId: owner }, member),
       ).rejects.toThrow(ForbiddenException);
       await expect(
-        service.transferOwnership(groupId, { userId: owner }, owner),
+        groupService.transferOwnership(groupId, { userId: owner }, owner),
       ).rejects.toThrow(new BadRequestException('Bạn đã là trưởng nhóm'));
       await expect(
-        service.transferOwnership(
+        groupService.transferOwnership(
           groupId,
           { userId: outsiderId.toString() },
           owner,
@@ -368,7 +367,7 @@ describe('ConversationService group membership (leave / remove / transfer)', () 
         9,
       );
 
-      await service.update(groupId, { groupName: 'Tên mới' }, owner);
+      await groupService.update(groupId, { groupName: 'Tên mới' }, owner);
 
       expect(systemMessage()).toMatchObject({
         seq: 9,
@@ -397,7 +396,7 @@ describe('ConversationService group membership (leave / remove / transfer)', () 
         makeGroup([ownerId, memberId]),
       );
 
-      await service.update(groupId, { groupName: '  Nhóm ' }, owner);
+      await groupService.update(groupId, { groupName: '  Nhóm ' }, owner);
 
       expect(mockConnection.transaction).not.toHaveBeenCalled();
       expect(mockRealtime.emitToUser).not.toHaveBeenCalled();
@@ -412,7 +411,7 @@ describe('ConversationService group membership (leave / remove / transfer)', () 
       stored.participants[0].lastReadSeq = 4;
       stubGroupChangeWrites(mockConversationModel, mockMessageModel, stored, 4);
 
-      await service.transferOwnership(groupId, { userId: member }, owner);
+      await groupService.transferOwnership(groupId, { userId: member }, owner);
 
       const [, , payload] = mockRealtime.emitToUser.mock.calls.find(
         ([userId, event]) => userId === member && event === 'message:new',
