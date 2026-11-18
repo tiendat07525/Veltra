@@ -79,8 +79,8 @@ export class AttachmentService {
     }
   }
 
-  // cloudinary://<api_key>:<api_secret>@<cloud_name>
-  private static parseUrl(value?: string) {
+  // cloudinary://<api_key>:<api_secret>@<cloud_name> (also used by the orphan-upload cleanup)
+  static parseUrl(value?: string) {
     if (!value) return null;
     try {
       const url = new URL(value);
