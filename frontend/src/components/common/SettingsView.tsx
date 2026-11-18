@@ -7,6 +7,8 @@ import { CurrentSession, UserSettingsPatch } from '@/types/settings';
 import { formatDate, formatTime } from '@/lib/utils';
 import { playNotificationSound } from '@/lib/notification-sound';
 import { ChangePasswordForm } from './ChangePasswordForm';
+import { TwoFactorSection } from './TwoFactorSection';
+import { TwoFactorStatus } from '@/types/auth';
 
 type Section = 'appearance' | 'notifications' | 'chat' | 'security';
 
@@ -94,6 +96,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 }) => {
   const [activeSection, setActiveSection] = useState<Section>('appearance');
   const [session, setSession] = useState<CurrentSession | null>(null);
+  const [twoFactor, setTwoFactor] = useState<TwoFactorStatus | null>(null);
+  const [twoFactorLoadFailed, setTwoFactorLoadFailed] = useState(false);
   const { settings, loaded } = settingsHook;
 
   useEffect(() => {
@@ -102,7 +106,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       .getSession()
       .then(setSession)
       .catch(() => setSession(null));
+    loadTwoFactor();
   }, [activeSection]);
+
+  function loadTwoFactor() {
+    authService
+      .getTwoFactorStatus()
+      .then((status) => {
+        setTwoFactor(status);
+        setTwoFactorLoadFailed(false);
+      })
+      .catch(() => setTwoFactorLoadFailed(true));
+  }
 
   const save = (patch: UserSettingsPatch) => {
     settingsHook.update(patch).catch(() => showToast('Không thể lưu cài đặt', 'error'));
@@ -280,11 +295,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 )}
               </div>
 
+              <TwoFactorSection
+                status={twoFactor}
+                loadFailed={twoFactorLoadFailed}
+                onChanged={loadTwoFactor}
+                showToast={showToast}
+              />
+
               <ChangePasswordForm
+                twoFactorEnabled={!!twoFactor?.enabled}
                 onSuccess={(message) => {
                   showToast(message, 'success');
                   // The session was replaced: show the new one
                   authService.getSession().then(setSession).catch(() => {});
+                  // A backup code may have been used
+                  loadTwoFactor();
                 }}
               />
             </div>

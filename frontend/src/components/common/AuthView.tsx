@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Radio, Mail, Lock, User, ArrowRight, ShieldCheck, Loader2 } from 'lucide-react';
+import { Radio, Mail, Lock, User, ArrowRight, ArrowLeft, ShieldCheck, KeyRound, Loader2 } from 'lucide-react';
 import { authService } from '@/services/api/auth.service';
 
 interface AuthViewProps {
@@ -17,6 +17,46 @@ export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLog
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  // 2FA step: the challenge from POST /auth/login (5 minutes, 5 attempts)
+  const [challengeToken, setChallengeToken] = useState<string | null>(null);
+  const [code, setCode] = useState('');
+
+  const backToPassword = (message: string | null = null) => {
+    setChallengeToken(null);
+    setCode('');
+    setPassword('');
+    setErrorMsg(message);
+  };
+
+  const handleCodeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!challengeToken) return;
+    if (!code.trim()) {
+      setErrorMsg('Nhập mã xác thực');
+      return;
+    }
+    setLoading(true);
+    setErrorMsg(null);
+    try {
+      await authService.loginTwoFactor(challengeToken, code.trim());
+      onLoginSuccess();
+    } catch (err: unknown) {
+      const apiErr = err as { response?: { status?: number; data?: { message?: string | string[] } } };
+      const rawMsg = apiErr?.response?.data?.message;
+      const msg = (Array.isArray(rawMsg) ? rawMsg[0] : rawMsg) || 'Đã xảy ra lỗi. Vui lòng thử lại.';
+      if (apiErr?.response?.status === 429) {
+        setErrorMsg('Thử lại quá nhiều lần, vui lòng đợi một phút');
+      } else if (apiErr?.response?.status === 401 && msg !== 'Mã xác thực không đúng') {
+        // Challenge expired or too many wrong codes: start again from the password
+        backToPassword(msg);
+      } else {
+        setErrorMsg(msg);
+        setCode('');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,7 +70,12 @@ export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLog
           setErrorMsg('Vui lòng nhập tên đăng nhập và mật khẩu');
           return;
         }
-        await authService.login({ username: username.trim(), password });
+        const result = await authService.login({ username: username.trim(), password });
+        if (result.twoFactorRequired) {
+          setChallengeToken(result.challengeToken);
+          setCode('');
+          return;
+        }
         onLoginSuccess();
       } else {
         if (!username.trim() || !email.trim() || !password.trim()) {
@@ -77,13 +122,16 @@ export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLog
           </div>
           <h1 className="text-2xl font-black tracking-tight text-white">VELTRA</h1>
           <p className="text-xs text-slate-400 mt-1">
-            {mode === 'login'
-              ? 'Chào mừng trở lại. Đăng nhập vào hệ thống.'
-              : 'Tạo tài khoản để bắt đầu trò chuyện.'}
+            {challengeToken
+              ? 'Xác thực 2 bước'
+              : mode === 'login'
+                ? 'Chào mừng trở lại. Đăng nhập vào hệ thống.'
+                : 'Tạo tài khoản để bắt đầu trò chuyện.'}
           </p>
         </div>
 
         {/* Tab Switch */}
+        {!challengeToken && (
         <div className="grid grid-cols-2 p-1 bg-slate-800/80 rounded-xl mb-6 text-xs font-semibold">
           <button
             type="button"
@@ -112,6 +160,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLog
             Đăng ký
           </button>
         </div>
+        )}
 
         {/* Messages */}
         {errorMsg && (
@@ -125,7 +174,56 @@ export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLog
           </div>
         )}
 
+        {/* 2FA step */}
+        {challengeToken && (
+          <form onSubmit={handleCodeSubmit} className="space-y-4">
+            <div>
+              <label htmlFor="two-factor-code" className="block text-xs font-medium text-slate-300 mb-1.5">
+                Mã xác thực
+              </label>
+              <div className="relative">
+                <KeyRound className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  id="two-factor-code"
+                  type="text"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2.5 bg-slate-800/80 border border-slate-700/80 rounded-xl text-sm tracking-widest text-white placeholder-slate-500 focus:outline-hidden focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                  placeholder="123456"
+                  maxLength={20}
+                  disabled={loading}
+                  autoFocus
+                  autoComplete="one-time-code"
+                  spellCheck={false}
+                />
+              </div>
+              <p className="mt-1.5 text-[11px] text-slate-500">
+                Nhập mã 6 số trong ứng dụng xác thực, hoặc một mã dự phòng (xxxxx-xxxxx).
+              </p>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs font-bold shadow-lg shadow-sky-500/25 transition-all"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+              <span>Xác nhận</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => backToPassword()}
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-1.5 py-2 text-xs text-slate-400 hover:text-white"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Quay lại
+            </button>
+          </form>
+        )}
+
         {/* Form */}
+        {!challengeToken && (
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-slate-300 mb-1.5">
@@ -205,6 +303,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLog
             )}
           </button>
         </form>
+        )}
 
         {/* Security badge footer */}
         <div className="mt-6 flex items-center justify-center gap-1.5 text-[11px] text-slate-500">

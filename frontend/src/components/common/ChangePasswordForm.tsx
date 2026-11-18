@@ -4,16 +4,19 @@ import { authService } from '@/services/api/auth.service';
 
 interface ChangePasswordFormProps {
   onSuccess: (message: string) => void;
+  // 2FA on: the server also needs a TOTP or backup code
+  twoFactorEnabled: boolean;
 }
 
 const inputClass =
   'w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/40';
 
 // Same rule as the server (ChangePasswordDto): 6–100 characters, different from the current one
-export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({ onSuccess }) => {
+export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({ onSuccess, twoFactorEnabled }) => {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -22,6 +25,7 @@ export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({ onSucces
     if (newPassword.length < 6 || newPassword.length > 100) return 'Mật khẩu mới phải có 6–100 ký tự';
     if (newPassword !== confirmPassword) return 'Mật khẩu nhập lại không khớp';
     if (newPassword === currentPassword) return 'Mật khẩu mới phải khác mật khẩu hiện tại';
+    if (twoFactorEnabled && !code.trim()) return 'Nhập mã xác thực 2 bước';
     return null;
   };
 
@@ -35,10 +39,15 @@ export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({ onSucces
     setError(null);
     setSubmitting(true);
     try {
-      const { message } = await authService.changePassword(currentPassword, newPassword);
+      const { message } = await authService.changePassword(
+        currentPassword,
+        newPassword,
+        twoFactorEnabled ? code.trim() : undefined
+      );
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+      setCode('');
       onSuccess(message || 'Đổi mật khẩu thành công');
     } catch (err: unknown) {
       const apiErr = err as { response?: { status?: number; data?: { message?: string | string[] } } };
@@ -86,6 +95,18 @@ export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({ onSucces
         onChange={(e) => setConfirmPassword(e.target.value)}
         className={inputClass}
       />
+      {twoFactorEnabled && (
+        <input
+          type="text"
+          autoComplete="one-time-code"
+          spellCheck={false}
+          maxLength={20}
+          placeholder="Mã xác thực 2 bước (6 số hoặc mã dự phòng)"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          className={inputClass}
+        />
+      )}
 
       {error && <p className="text-xs text-rose-500">{error}</p>}
 
