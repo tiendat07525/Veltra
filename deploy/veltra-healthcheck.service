@@ -1,0 +1,10 @@
+[Unit]
+Description=Veltra health check (backend /health, frontend)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=dat07525
+ExecStart=/bin/bash /home/dat07525/VeltraV2/deploy/healthcheck.sh
+TimeoutStartSec=2min

@@ -13,6 +13,8 @@ const PUBLIC_ROUTES = [
   'POST /auth/register',
   'POST /auth/login',
   'POST /auth/refresh',
+  // Liveness for deploy.sh / monitors; reveals only whether MongoDB and Redis answer
+  'GET /health',
 ];
 
 type Ctor = new (...args: never[]) => unknown;

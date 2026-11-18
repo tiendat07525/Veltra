@@ -1,0 +1,11 @@
+[Unit]
+Description=Back up the Veltra database every day at 03:00
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+RandomizedDelaySec=5min
+# Runs at the next boot if the VM was off at 03:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
