@@ -12,6 +12,7 @@ import {
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { LoginTwoFactorDto } from './two-factor/dto/two-factor.dto';
 import { AuthService } from './auth.service';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
@@ -39,8 +40,36 @@ export class AuthController {
     const userAgent = req.headers['user-agent'];
     const ipAddress = req.ip;
 
+    const result = await this.authService.login(loginDto, userAgent, ipAddress);
+
+    // 2FA on: no cookie yet, the client answers with POST /auth/login/2fa
+    if ('twoFactorRequired' in result) {
+      return result;
+    }
+
+    this.setRefreshCookie(res, result.refreshTokenString);
+
+    return { message: result.message, accessToken: result.accessToken };
+  }
+
+  @Post('login/2fa')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async loginTwoFactor(
+    @Body() dto: LoginTwoFactorDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const userAgent = req.headers['user-agent'];
+    const ipAddress = req.ip;
+
     const { message, accessToken, refreshTokenString } =
-      await this.authService.login(loginDto, userAgent, ipAddress);
+      await this.authService.completeTwoFactorLogin(
+        dto.challengeToken,
+        dto.code,
+        userAgent,
+        ipAddress,
+      );
 
     this.setRefreshCookie(res, refreshTokenString);
 

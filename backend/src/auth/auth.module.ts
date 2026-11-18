@@ -9,11 +9,18 @@ import { PassportModule } from '@nestjs/passport';
 import { SessionService } from './session.service';
 import { RealtimeModule } from 'src/realtime/realtime.module';
 import { forwardRef } from '@nestjs/common';
+import { MongooseModule } from '@nestjs/mongoose';
+import { User, UserSchema } from 'src/users/schemas/user.schema';
+import { TwoFactorController } from './two-factor/two-factor.controller';
+import { TwoFactorService } from './two-factor/two-factor.service';
+import { TwoFactorCryptoService } from './two-factor/two-factor-crypto.service';
 
 @Module({
   imports: [
     ConfigModule,
     UsersModule,
+    // TwoFactorService reads / updates users.twoFactor (select: false) directly
+    MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
     forwardRef(() => RealtimeModule),
     PassportModule.register({
       defaultStrategy: 'jwt',
@@ -30,9 +37,15 @@ import { forwardRef } from '@nestjs/common';
     }),
   ],
 
-  controllers: [AuthController],
+  controllers: [AuthController, TwoFactorController],
 
-  providers: [AuthService, JwtStrategy, SessionService],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    SessionService,
+    TwoFactorService,
+    TwoFactorCryptoService,
+  ],
 
   exports: [AuthService, PassportModule, JwtModule, SessionService],
 })

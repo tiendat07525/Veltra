@@ -12,6 +12,8 @@ import { JwtAuthGuard } from '../src/auth/jwt-auth.guard';
 const PUBLIC_ROUTES = [
   'POST /auth/register',
   'POST /auth/login',
+  // Second login step: needs the one-time challenge token from POST /auth/login
+  'POST /auth/login/2fa',
   'POST /auth/refresh',
   // Liveness for deploy.sh / monitors; reveals only whether MongoDB and Redis answer
   'GET /health',

@@ -50,6 +50,43 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  // ── Two-step login challenges: 2fa:challenge:<sha256(token)> = hash { userId, attempts } ──
+
+  async createTwoFactorChallenge(
+    tokenHash: string,
+    userId: string,
+    ttlSeconds: number,
+  ): Promise<void> {
+    const key = `2fa:challenge:${tokenHash}`;
+    await this.client
+      .multi()
+      .hSet(key, { userId, attempts: '0' })
+      .expire(key, ttlSeconds)
+      .exec();
+  }
+
+  async getTwoFactorChallengeUserId(tokenHash: string): Promise<string | null> {
+    return (
+      (await this.client.hGet(`2fa:challenge:${tokenHash}`, 'userId')) ?? null
+    );
+  }
+
+  // Returns the failed attempts so far (0 when the challenge no longer exists)
+  async recordTwoFactorChallengeFailure(tokenHash: string): Promise<number> {
+    const key = `2fa:challenge:${tokenHash}`;
+    // HINCRBY would re-create an expired key; only count while it exists
+    const attempts = (await this.client.eval(
+      "if redis.call('EXISTS', KEYS[1]) == 1 then return redis.call('HINCRBY', KEYS[1], 'attempts', 1) else return 0 end",
+      { keys: [key] },
+    )) as number;
+    return attempts;
+  }
+
+  // true only for the caller that actually removed it (single use)
+  async deleteTwoFactorChallenge(tokenHash: string): Promise<boolean> {
+    return (await this.client.del(`2fa:challenge:${tokenHash}`)) === 1;
+  }
+
   // Health check: throws when Redis does not answer (the caller applies a timeout)
   async ping(): Promise<void> {
     if (!this.client?.isOpen) throw new Error('Redis client is not open');

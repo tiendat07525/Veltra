@@ -6,6 +6,7 @@ import { SessionService } from '../src/auth/session.service';
 import { RealtimeService } from 'src/realtime/realtime.service';
 import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
+import { TwoFactorService } from '../src/auth/two-factor/two-factor.service';
 
 describe('AuthService (Security & Registration)', () => {
   let service: AuthService;
@@ -36,6 +37,11 @@ describe('AuthService (Security & Registration)', () => {
     disconnectSession: jest.fn(),
   };
 
+  // 2FA off for these users; the 2FA login has its own spec (two-factor-login.spec.ts)
+  const mockTwoFactorService = {
+    isEnabled: jest.fn().mockResolvedValue(false),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -56,6 +62,7 @@ describe('AuthService (Security & Registration)', () => {
           provide: RealtimeService,
           useValue: mockRealtimeService,
         },
+        { provide: TwoFactorService, useValue: mockTwoFactorService },
       ],
     }).compile();
 
@@ -395,6 +402,9 @@ describe('AuthService (Security & Registration)', () => {
         '127.0.0.1',
       );
 
+      if (!('refreshTokenString' in loginResult)) {
+        throw new Error('expected a session, got a 2FA challenge');
+      }
       expect(loginResult.refreshTokenString).toBeDefined();
       const parts = loginResult.refreshTokenString.split('.');
       expect(parts.length).toBe(3);

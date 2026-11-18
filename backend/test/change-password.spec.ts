@@ -14,6 +14,7 @@ import { SessionService } from '../src/auth/session.service';
 import { UsersService } from '../src/users/users.service';
 import { RealtimeService } from '../src/realtime/realtime.service';
 import { ChangePasswordDto } from '../src/auth/dto/change-password.dto';
+import { TwoFactorService } from '../src/auth/two-factor/two-factor.service';
 
 describe('AuthService.changePassword / getCurrentSession', () => {
   let service: AuthService;
@@ -37,6 +38,10 @@ describe('AuthService.changePassword / getCurrentSession', () => {
   const mockJwtService = {
     signAsync: jest.fn().mockResolvedValue('new-access-token'),
   };
+  const mockTwoFactorService = {
+    isEnabled: jest.fn(),
+    verifyCode: jest.fn(),
+  };
 
   beforeAll(async () => {
     oldHash = await bcrypt.hash(OLD, 4);
@@ -50,6 +55,7 @@ describe('AuthService.changePassword / getCurrentSession', () => {
         { provide: JwtService, useValue: mockJwtService },
         { provide: SessionService, useValue: mockSessionService },
         { provide: RealtimeService, useValue: mockRealtimeService },
+        { provide: TwoFactorService, useValue: mockTwoFactorService },
       ],
     }).compile();
     service = module.get(AuthService);
@@ -60,6 +66,8 @@ describe('AuthService.changePassword / getCurrentSession', () => {
       email: 'alice@example.test',
       password: oldHash,
     });
+    mockTwoFactorService.isEnabled.mockResolvedValue(false);
+    mockTwoFactorService.verifyCode.mockResolvedValue(false);
   });
 
   const expectNothingChanged = () => {
@@ -136,6 +144,73 @@ describe('AuthService.changePassword / getCurrentSession', () => {
     });
   });
 
+  describe('with 2FA on', () => {
+    beforeEach(() => {
+      mockTwoFactorService.isEnabled.mockResolvedValue(true);
+    });
+
+    it('no code → 400 "Cần mã xác thực 2 bước", nothing stored', async () => {
+      await expect(
+        service.changePassword(id, { currentPassword: OLD, newPassword: NEW }),
+      ).rejects.toThrow(new BadRequestException('Cần mã xác thực 2 bước'));
+      expect(mockTwoFactorService.verifyCode).not.toHaveBeenCalled();
+      expectNothingChanged();
+    });
+
+    it('wrong code → 400, nothing stored', async () => {
+      await expect(
+        service.changePassword(id, {
+          currentPassword: OLD,
+          newPassword: NEW,
+          code: '000000',
+        }),
+      ).rejects.toThrow(new BadRequestException('Mã xác thực không đúng'));
+      expect(mockTwoFactorService.verifyCode).toHaveBeenCalledWith(
+        id,
+        '000000',
+      );
+      expectNothingChanged();
+    });
+
+    it('wrong password → 400 before the code is checked (a backup code is not used up)', async () => {
+      await expect(
+        service.changePassword(id, {
+          currentPassword: 'wrong',
+          newPassword: NEW,
+          code: 'abcde-fghij',
+        }),
+      ).rejects.toThrow(
+        new BadRequestException('Mật khẩu hiện tại không đúng'),
+      );
+      expect(mockTwoFactorService.verifyCode).not.toHaveBeenCalled();
+      expectNothingChanged();
+    });
+
+    it('right code → password changed and a new session opened', async () => {
+      mockTwoFactorService.verifyCode.mockResolvedValue(true);
+
+      const result = await service.changePassword(id, {
+        currentPassword: OLD,
+        newPassword: NEW,
+        code: '123456',
+      });
+
+      expect(mockUsersService.setPasswordHash).toHaveBeenCalled();
+      expect(mockSessionService.createSession).toHaveBeenCalled();
+      expect(result.message).toBe('Đổi mật khẩu thành công');
+    });
+  });
+
+  it('2FA off → the code is not checked', async () => {
+    await service.changePassword(id, {
+      currentPassword: OLD,
+      newPassword: NEW,
+      code: '123456',
+    });
+    expect(mockTwoFactorService.verifyCode).not.toHaveBeenCalled();
+    expect(mockUsersService.setPasswordHash).toHaveBeenCalled();
+  });
+
   describe('getCurrentSession', () => {
     it('returns only createdAt / expiresAt / userAgent (no hashes, no IP)', async () => {
       mockSessionService.getSession.mockResolvedValue({
@@ -180,10 +255,28 @@ describe('ChangePasswordDto', () => {
     ).toHaveLength(0);
   });
 
+  it('accepts an optional 2FA code', async () => {
+    expect(
+      await errorsFor({
+        currentPassword: 'x',
+        newPassword: '123456',
+        code: '123456',
+      }),
+    ).toHaveLength(0);
+  });
+
   it.each([
     ['a short new password', { currentPassword: 'x', newPassword: '12345' }],
     ['a missing current password', { newPassword: '123456' }],
     ['a non-string', { currentPassword: 1, newPassword: '123456' }],
+    [
+      'a non-string code',
+      { currentPassword: 'x', newPassword: '123456', code: 123456 },
+    ],
+    [
+      'a too long code',
+      { currentPassword: 'x', newPassword: '123456', code: 'x'.repeat(21) },
+    ],
     [
       'an extra field',
       { currentPassword: 'x', newPassword: '123456', userId: 'someone' },
