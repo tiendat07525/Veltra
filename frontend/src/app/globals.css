@@ -1,5 +1,47 @@
 @import "tailwindcss";
 
+/* `dark:` follows the .dark class set by useTheme / the head script, not the OS setting */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Iris palette: semantic colors (bg-app, bg-surface, text-fg, border-line, bg-primary, …) */
+@theme {
+  --color-app: #f6f7fb;
+  --color-surface: #ffffff;
+  --color-surface-2: #eef0f7;
+  --color-line: #e3e5ef;
+  --color-fg: #161827;
+  --color-fg-muted: #5f6478;
+  --color-primary: #4f46e5;
+  --color-primary-hover: #4338ca;
+  --color-on-primary: #ffffff;
+  --color-accent: #4338ca;
+  --color-accent-soft: #eef2ff;
+  --color-bubble-own: #4f46e5;
+  --color-bubble-other: #eef0f7;
+  --color-danger: #b91c1c;
+  --color-danger-soft: #fef2f2;
+  --color-online: #16a34a;
+}
+
+.dark {
+  --color-app: #0d0e17;
+  --color-surface: #151724;
+  --color-surface-2: #1e2133;
+  --color-line: #2a2e45;
+  --color-fg: #ecedf5;
+  --color-fg-muted: #9a9eb5;
+  --color-primary: #4f46e5;
+  --color-primary-hover: #5b54ea;
+  --color-on-primary: #ffffff;
+  --color-accent: #a5b4fc;
+  --color-accent-soft: #23264a;
+  --color-bubble-own: #4338ca;
+  --color-bubble-other: #1e2133;
+  --color-danger: #f87171;
+  --color-danger-soft: #3a1d24;
+  --color-online: #4ade80;
+}
+
 @layer base {
   :root {
     --font-sans: 'Plus Jakarta Sans Variable', system-ui, -apple-system, sans-serif;

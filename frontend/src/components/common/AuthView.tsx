@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Radio, Mail, Lock, User, ArrowRight, ArrowLeft, ShieldCheck, KeyRound, Loader2 } from 'lucide-react';
+import { Radio, Mail, Lock, User, ArrowRight, ArrowLeft, ShieldCheck, KeyRound, Loader2, CheckCircle2 } from 'lucide-react';
 import { authService } from '@/services/api/auth.service';
+import { InlineError } from '@/components/ui/InlineError';
 
 interface AuthViewProps {
   initialMode?: 'login' | 'register';
@@ -109,52 +110,53 @@ export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLog
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950 p-4 overflow-y-auto">
-      {/* Ambient background decoration */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-sky-500/15 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-1/4 left-1/3 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-
-      <div className="relative w-full max-w-md bg-slate-900/90 border border-slate-800 rounded-3xl p-8 shadow-2xl backdrop-blur-xl">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-app text-fg">
+      <div className="min-h-full flex items-center justify-center px-4 py-8">
+      <div className="w-full max-w-md bg-surface border border-line rounded-3xl p-5 sm:p-8 shadow-sm">
         {/* Brand Header */}
-        <div className="flex flex-col items-center text-center mb-8">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-sky-500/30 mb-3">
-            <Radio className="w-6 h-6 text-white stroke-[2.5]" />
+        <div className="flex flex-col items-center text-center mb-6 sm:mb-8">
+          <div className="w-12 h-12 rounded-2xl bg-primary flex items-center justify-center mb-3">
+            <Radio className="w-6 h-6 text-on-primary stroke-[2.5]" aria-hidden="true" />
           </div>
-          <h1 className="text-2xl font-black tracking-tight text-white">VELTRA</h1>
-          <p className="text-xs text-slate-400 mt-1">
+          <h1 className="text-2xl font-black tracking-tight text-fg">VELTRA</h1>
+          <p className="text-sm text-fg-muted mt-1">
             {challengeToken
               ? 'Xác thực 2 bước'
               : mode === 'login'
-                ? 'Chào mừng trở lại. Đăng nhập vào hệ thống.'
+                ? 'Chào mừng trở lại. Đăng nhập để tiếp tục.'
                 : 'Tạo tài khoản để bắt đầu trò chuyện.'}
           </p>
         </div>
 
         {/* Tab Switch */}
         {!challengeToken && (
-        <div className="grid grid-cols-2 p-1 bg-slate-800/80 rounded-xl mb-6 text-xs font-semibold">
+        <div className="grid grid-cols-2 p-1 bg-surface-2 rounded-xl mb-6 text-sm font-semibold" role="tablist" aria-label="Đăng nhập hoặc đăng ký">
           <button
             type="button"
+            role="tab"
+            aria-selected={mode === 'login'}
             onClick={() => {
               setMode('login');
               setErrorMsg(null);
               setSuccessMsg(null);
             }}
-            className={`py-2 rounded-lg transition-all ${
-              mode === 'login' ? 'bg-sky-500 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+            className={`min-h-9 rounded-lg transition-colors ${
+              mode === 'login' ? 'bg-surface text-accent shadow-xs' : 'text-fg-muted hover:text-fg'
             }`}
           >
             Đăng nhập
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={mode === 'register'}
             onClick={() => {
               setMode('register');
               setErrorMsg(null);
               setSuccessMsg(null);
             }}
-            className={`py-2 rounded-lg transition-all ${
-              mode === 'register' ? 'bg-sky-500 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+            className={`min-h-9 rounded-lg transition-colors ${
+              mode === 'register' ? 'bg-surface text-accent shadow-xs' : 'text-fg-muted hover:text-fg'
             }`}
           >
             Đăng ký
@@ -163,14 +165,14 @@ export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLog
         )}
 
         {/* Messages */}
-        {errorMsg && (
-          <div className="mb-4 px-3 py-2 rounded-xl bg-rose-950/40 border border-rose-800/50 text-rose-300 text-xs">
-            {errorMsg}
-          </div>
-        )}
+        <InlineError message={errorMsg} onDismiss={() => setErrorMsg(null)} className="mb-4" />
         {successMsg && (
-          <div className="mb-4 px-3 py-2 rounded-xl bg-emerald-950/40 border border-emerald-800/50 text-emerald-300 text-xs">
-            {successMsg}
+          <div
+            role="status"
+            className="mb-4 flex items-start gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs"
+          >
+            <CheckCircle2 className="w-4 h-4 shrink-0" aria-hidden="true" />
+            <p className="flex-1 leading-4">{successMsg}</p>
           </div>
         )}
 
@@ -178,17 +180,19 @@ export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLog
         {challengeToken && (
           <form onSubmit={handleCodeSubmit} className="space-y-4">
             <div>
-              <label htmlFor="two-factor-code" className="block text-xs font-medium text-slate-300 mb-1.5">
+              <label htmlFor="two-factor-code" className="block text-xs font-semibold text-fg mb-1.5">
                 Mã xác thực
               </label>
               <div className="relative">
-                <KeyRound className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <KeyRound className="w-4 h-4 text-fg-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
                 <input
                   id="two-factor-code"
                   type="text"
+                  inputMode="text"
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2.5 bg-slate-800/80 border border-slate-700/80 rounded-xl text-sm tracking-widest text-white placeholder-slate-500 focus:outline-hidden focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                  aria-describedby="two-factor-hint"
+                  className="w-full min-h-11 pl-9 pr-3 py-2.5 bg-surface-2 border border-line rounded-xl text-sm text-fg placeholder:text-fg-muted focus:outline-hidden focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-60 tracking-widest"
                   placeholder="123456"
                   maxLength={20}
                   disabled={loading}
@@ -197,7 +201,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLog
                   spellCheck={false}
                 />
               </div>
-              <p className="mt-1.5 text-[11px] text-slate-500">
+              <p id="two-factor-hint" className="mt-1.5 text-xs text-fg-muted">
                 Nhập mã 6 số trong ứng dụng xác thực, hoặc một mã dự phòng (xxxxx-xxxxx).
               </p>
             </div>
@@ -205,18 +209,18 @@ export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLog
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs font-bold shadow-lg shadow-sky-500/25 transition-all"
+              className="w-full flex items-center justify-center gap-2 min-h-11 rounded-xl bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-on-primary text-sm font-semibold transition-colors"
             >
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <ShieldCheck className="w-4 h-4" aria-hidden="true" />}
               <span>Xác nhận</span>
             </button>
             <button
               type="button"
               onClick={() => backToPassword()}
               disabled={loading}
-              className="w-full flex items-center justify-center gap-1.5 py-2 text-xs text-slate-400 hover:text-white"
+              className="w-full flex items-center justify-center gap-1.5 min-h-10 rounded-xl text-sm text-fg-muted hover:text-fg hover:bg-surface-2 transition-colors"
             >
-              <ArrowLeft className="w-3.5 h-3.5" />
+              <ArrowLeft className="w-4 h-4" aria-hidden="true" />
               Quay lại
             </button>
           </form>
@@ -226,36 +230,40 @@ export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLog
         {!challengeToken && (
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1.5">
+            <label htmlFor="auth-username" className="block text-xs font-semibold text-fg mb-1.5">
               Tên đăng nhập
             </label>
             <div className="relative">
-              <User className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              <User className="w-4 h-4 text-fg-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
               <input
+                id="auth-username"
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full pl-9 pr-3 py-2.5 bg-slate-800/80 border border-slate-700/80 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-hidden focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                className="w-full min-h-11 pl-9 pr-3 py-2.5 bg-surface-2 border border-line rounded-xl text-sm text-fg placeholder:text-fg-muted focus:outline-hidden focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
                 placeholder="username"
                 required
                 disabled={loading}
                 autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
               />
             </div>
           </div>
 
           {mode === 'register' && (
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
+              <label htmlFor="auth-email" className="block text-xs font-semibold text-fg mb-1.5">
                 Email
               </label>
               <div className="relative">
-                <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Mail className="w-4 h-4 text-fg-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
                 <input
+                  id="auth-email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2.5 bg-slate-800/80 border border-slate-700/80 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-hidden focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                  className="w-full min-h-11 pl-9 pr-3 py-2.5 bg-surface-2 border border-line rounded-xl text-sm text-fg placeholder:text-fg-muted focus:outline-hidden focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
                   placeholder="name@email.com"
                   required
                   disabled={loading}
@@ -266,16 +274,17 @@ export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLog
           )}
 
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1.5">
+            <label htmlFor="auth-password" className="block text-xs font-semibold text-fg mb-1.5">
               Mật khẩu
             </label>
             <div className="relative">
-              <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Lock className="w-4 h-4 text-fg-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
               <input
+                id="auth-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-9 pr-3 py-2.5 bg-slate-800/80 border border-slate-700/80 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-hidden focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                className="w-full min-h-11 pl-9 pr-3 py-2.5 bg-surface-2 border border-line rounded-xl text-sm text-fg placeholder:text-fg-muted focus:outline-hidden focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
                 placeholder="••••••••"
                 required
                 disabled={loading}
@@ -283,33 +292,35 @@ export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLog
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
               />
             </div>
+            {mode === 'register' && <p className="mt-1.5 text-xs text-fg-muted">Ít nhất 6 ký tự.</p>}
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs font-bold shadow-lg shadow-sky-500/25 transition-all"
+            className="w-full flex items-center justify-center gap-2 min-h-11 rounded-xl bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-on-primary text-sm font-semibold transition-colors mt-2"
           >
             {loading ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
                 <span>Đang xử lý...</span>
               </>
             ) : (
               <>
                 <span>{mode === 'login' ? 'Đăng nhập' : 'Đăng ký'}</span>
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="w-4 h-4" aria-hidden="true" />
               </>
             )}
           </button>
         </form>
         )}
 
-        {/* Security badge footer */}
-        <div className="mt-6 flex items-center justify-center gap-1.5 text-[11px] text-slate-500">
-          <ShieldCheck className="w-3.5 h-3.5 text-sky-400" />
-          <span>Đăng nhập bảo mật qua JWT Token</span>
+        {/* Footer */}
+        <div className="mt-6 flex items-center justify-center gap-1.5 text-xs text-fg-muted text-center">
+          <ShieldCheck className="w-4 h-4 shrink-0 text-accent" aria-hidden="true" />
+          <span>Hỗ trợ xác thực 2 bước để bảo vệ tài khoản</span>
         </div>
+      </div>
       </div>
     </div>
   );

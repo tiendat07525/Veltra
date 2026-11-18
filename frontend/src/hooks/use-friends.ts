@@ -10,7 +10,7 @@ function getErrorMessage(err: unknown, fallback: string): string {
     const res = (err as { response?: { data?: { message?: string } } }).response;
     if (res?.data?.message) return res.data.message;
   }
-  if (err instanceof Error) return err.message;
+  // No server message (network error, 404 page, …): the Vietnamese fallback, never Axios' English text
   return fallback;
 }
 

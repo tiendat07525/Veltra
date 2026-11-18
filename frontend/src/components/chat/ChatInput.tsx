@@ -9,6 +9,7 @@ import {
   MAX_ATTACHMENTS_PER_MESSAGE,
   classifyFile,
 } from '@/services/api/attachment.service';
+import { InlineError } from '@/components/ui/InlineError';
 
 // A file picked in the composer, not sent yet
 interface SelectedFile {
@@ -22,7 +23,6 @@ interface ChatInputProps {
   conversationName: string;
   // files: already checked with classifyFile
   onSendMessage: (content: string, files: File[]) => void;
-  onShowToast: (msg: string, type?: 'success' | 'info' | 'error') => void;
   // Presence / typing (usePresence)
   typingUserIds?: string[];
   onTyping?: (conversationId: string) => void;
@@ -39,7 +39,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   conversation,
   conversationName,
   onSendMessage,
-  onShowToast,
   typingUserIds,
   onTyping,
   onStopTyping,
@@ -52,6 +51,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     files: [],
   });
   const selectedFiles = selection.conversationId === conversation._id ? selection.files : [];
+  // Rejected files (too many / type / size), shown above the composer of that conversation
+  const [fileError, setFileError] = useState<{ conversationId: string; message: string } | null>(null);
+  const fileErrorMessage = fileError?.conversationId === conversation._id ? fileError.message : null;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -67,14 +69,15 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     const current = selectedFiles;
     if (selection.conversationId !== conversation._id) revokePreviews(selection.files);
     const added: SelectedFile[] = [];
+    const errors: string[] = [];
     for (const file of Array.from(list)) {
       if (current.length + added.length >= MAX_ATTACHMENTS_PER_MESSAGE) {
-        onShowToast(`Tối đa ${MAX_ATTACHMENTS_PER_MESSAGE} file mỗi tin nhắn`, 'error');
+        errors.push(`Tối đa ${MAX_ATTACHMENTS_PER_MESSAGE} file mỗi tin nhắn`);
         break;
       }
       const checked = classifyFile(file);
       if (!checked.ok) {
-        onShowToast(checked.error, 'error');
+        errors.push(checked.error);
         continue;
       }
       added.push({
@@ -86,6 +89,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     if (added.length) {
       setSelection({ conversationId: conversation._id, files: [...current, ...added] });
     }
+    // Each pick replaces the previous error (or clears it when every file was accepted)
+    setFileError(errors.length ? { conversationId: conversation._id, message: errors.join('\n') } : null);
   };
 
   const removeFile = (index: number) => {
@@ -100,6 +105,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     // The message makes its own previews; the composer's are no longer shown
     revokePreviews(selectedFiles);
     setSelection({ conversationId: null, files: [] });
+    setFileError(null);
     setInputValue('');
     onStopTyping?.();
   };
@@ -117,25 +123,26 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   })();
 
   return (
-    <div className="px-4 py-3 border-t border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
+    <div className="px-3 sm:px-4 py-3 border-t border-line bg-surface shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
       {typingText && (
-        <p className="mb-1.5 px-1 text-[11px] italic text-slate-500 dark:text-slate-400 truncate" aria-live="polite">
+        <p className="mb-1.5 px-1 text-[11px] italic text-fg-muted truncate" aria-live="polite">
           {typingText}
         </p>
       )}
+      <InlineError message={fileErrorMessage} onDismiss={() => setFileError(null)} className="mb-2" />
       {selectedFiles.length > 0 && (
         <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
           {selectedFiles.map((f, i) => (
             <div
               key={`${f.file.name}-${f.file.lastModified}-${i}`}
-              className="relative shrink-0 w-16 h-16 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800"
+              className="relative shrink-0 w-16 h-16 rounded-xl overflow-hidden border border-line bg-surface-2"
               title={f.file.name}
             >
               {f.previewUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={f.previewUrl} alt={f.file.name} className="w-full h-full object-cover" />
               ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center gap-1 px-1 text-slate-500">
+                <div className="w-full h-full flex flex-col items-center justify-center gap-1 px-1 text-fg-muted">
                   <FileText className="w-5 h-5" />
                   <span className="w-full truncate text-center text-[9px]">{f.file.name}</span>
                 </div>
@@ -143,7 +150,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               <button
                 type="button"
                 onClick={() => removeFile(i)}
-                className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-black/60 text-white hover:bg-rose-500"
+                className="absolute top-0.5 right-0.5 p-1 rounded-full bg-black/60 text-white hover:bg-red-600"
                 title="Bỏ file"
                 aria-label={`Bỏ ${f.file.name}`}
               >
@@ -153,7 +160,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           ))}
         </div>
       )}
-      <div className="flex items-center gap-2">
+      <div className="flex items-end gap-2">
         <input
           ref={fileInputRef}
           type="file"
@@ -169,11 +176,11 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          className="p-2.5 rounded-xl text-slate-400 hover:text-sky-500 hover:bg-sky-500/10 transition-colors"
+          className="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl text-fg-muted hover:text-accent hover:bg-accent-soft transition-colors"
           title="Đính kèm file"
           aria-label="Đính kèm file"
         >
-          <Paperclip className="w-4 h-4" />
+          <Paperclip className="w-5 h-5" aria-hidden="true" />
         </button>
         <textarea
           ref={inputRef}
@@ -207,17 +214,19 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           }}
           placeholder={enterToSend ? 'Nhập tin nhắn...' : 'Nhập tin nhắn... (Ctrl+Enter để gửi)'}
           rows={1}
-          className="flex-1 px-4 py-2.5 bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-sky-500/50 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-sky-500/20 transition-all disabled:opacity-60 resize-none overflow-y-auto"
+          aria-label="Nội dung tin nhắn"
+          className="flex-1 min-w-0 px-4 py-2.5 bg-surface-2 border border-transparent focus:border-primary/50 rounded-xl text-xs text-fg placeholder:text-fg-muted focus:outline-hidden focus:ring-2 focus:ring-primary/20 transition-all disabled:opacity-60 resize-none overflow-y-auto"
           style={{ minHeight: '40px', maxHeight: '120px' }}
         />
         <button
           type="button"
           onClick={handleSend}
           disabled={!inputValue.trim() && selectedFiles.length === 0}
-          className="p-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
+          className="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl bg-primary hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed text-on-primary transition-colors"
           title="Gửi tin nhắn"
+          aria-label="Gửi tin nhắn"
         >
-          <Send className="w-4 h-4" />
+          <Send className="w-4 h-4" aria-hidden="true" />
         </button>
       </div>
     </div>

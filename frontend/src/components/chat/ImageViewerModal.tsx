@@ -29,7 +29,7 @@ export const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
         className="absolute top-4 inset-x-4 flex items-center justify-between z-10 text-white"
         onClick={(e) => e.stopPropagation()}
       >
-        <span className="text-sm font-medium text-slate-300 truncate max-w-md">
+        <span className="text-sm font-medium text-white/80 truncate max-w-md">
           {caption || 'Xem trước hình ảnh'}
         </span>
 
@@ -63,7 +63,7 @@ export const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl bg-white/10 hover:bg-rose-500/80 text-white transition-colors ml-2"
+            className="p-2 rounded-xl bg-white/10 hover:bg-red-600/80 text-white transition-colors ml-2"
             title="Đóng (Esc)"
           >
             <X className="w-5 h-5" />

@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Check, Loader2 } from 'lucide-react';
 import { authService } from '@/services/api/auth.service';
+import { useCopyFeedback } from '@/hooks/use-copy-feedback';
+import { InlineError } from '@/components/ui/InlineError';
 
 interface ChangePasswordFormProps {
-  onSuccess: (message: string) => void;
+  // Called after the password changed (the button shows "Đã đổi" for 2 s)
+  onSuccess: () => void;
   // 2FA on: the server also needs a TOTP or backup code
   twoFactorEnabled: boolean;
 }
 
 const inputClass =
-  'w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/40';
+  'w-full px-3 py-2 rounded-xl bg-surface border border-line text-sm text-fg placeholder:text-fg-muted focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20';
 
 // Same rule as the server (ChangePasswordDto): 6–100 characters, different from the current one
 export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({ onSuccess, twoFactorEnabled }) => {
@@ -18,6 +21,7 @@ export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({ onSucces
   const [confirmPassword, setConfirmPassword] = useState('');
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const done = useCopyFeedback();
   const [submitting, setSubmitting] = useState(false);
 
   const validate = (): string | null => {
@@ -39,7 +43,7 @@ export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({ onSucces
     setError(null);
     setSubmitting(true);
     try {
-      const { message } = await authService.changePassword(
+      await authService.changePassword(
         currentPassword,
         newPassword,
         twoFactorEnabled ? code.trim() : undefined
@@ -48,7 +52,8 @@ export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({ onSucces
       setNewPassword('');
       setConfirmPassword('');
       setCode('');
-      onSuccess(message || 'Đổi mật khẩu thành công');
+      done.flash();
+      onSuccess();
     } catch (err: unknown) {
       const apiErr = err as { response?: { status?: number; data?: { message?: string | string[] } } };
       const message = apiErr.response?.data?.message;
@@ -63,10 +68,10 @@ export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({ onSucces
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
+    <form onSubmit={handleSubmit} className="space-y-3 pt-5">
       <div>
-        <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Đổi mật khẩu</h4>
-        <p className="text-[11px] text-slate-500">
+        <h4 className="text-xs font-semibold text-fg">Đổi mật khẩu</h4>
+        <p className="text-[11px] text-fg-muted">
           Sau khi đổi, mọi thiết bị khác sẽ bị đăng xuất; thiết bị này vẫn giữ đăng nhập.
         </p>
       </div>
@@ -75,6 +80,7 @@ export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({ onSucces
         type="password"
         autoComplete="current-password"
         placeholder="Mật khẩu hiện tại"
+        aria-label="Mật khẩu hiện tại"
         value={currentPassword}
         onChange={(e) => setCurrentPassword(e.target.value)}
         className={inputClass}
@@ -83,6 +89,7 @@ export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({ onSucces
         type="password"
         autoComplete="new-password"
         placeholder="Mật khẩu mới (6–100 ký tự)"
+        aria-label="Mật khẩu mới"
         value={newPassword}
         onChange={(e) => setNewPassword(e.target.value)}
         className={inputClass}
@@ -91,6 +98,7 @@ export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({ onSucces
         type="password"
         autoComplete="new-password"
         placeholder="Nhập lại mật khẩu mới"
+        aria-label="Nhập lại mật khẩu mới"
         value={confirmPassword}
         onChange={(e) => setConfirmPassword(e.target.value)}
         className={inputClass}
@@ -102,21 +110,23 @@ export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({ onSucces
           spellCheck={false}
           maxLength={20}
           placeholder="Mã xác thực 2 bước (6 số hoặc mã dự phòng)"
+          aria-label="Mã xác thực 2 bước"
           value={code}
           onChange={(e) => setCode(e.target.value)}
           className={inputClass}
         />
       )}
 
-      {error && <p className="text-xs text-rose-500">{error}</p>}
+      <InlineError message={error} onDismiss={() => setError(null)} />
 
       <button
         type="submit"
         disabled={submitting}
-        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white text-xs font-semibold"
+        className="flex items-center justify-center gap-2 min-h-10 px-4 rounded-xl bg-primary hover:bg-primary-hover disabled:opacity-50 text-on-primary text-xs font-semibold"
       >
         {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-        Đổi mật khẩu
+        {!submitting && done.isFlashed() && <Check className="w-3.5 h-3.5" />}
+        {done.isFlashed() ? 'Đã đổi' : 'Đổi mật khẩu'}
       </button>
     </form>
   );

@@ -1,4 +1,5 @@
 import React from 'react';
+import { headers } from 'next/headers';
 import './globals.css';
 // Self-hosted (bundled into /_next/static/media): builds no longer download from Google Fonts
 import '@fontsource-variable/plus-jakarta-sans';
@@ -8,24 +9,31 @@ import { NavigationProvider } from '@/lib/navigation';
 export const dynamic = 'force-dynamic';
 
 export const metadata = {
-  title: 'Veltra – Realtime Chat Platform',
-  description: 'A modern, hyper-responsive realtime messaging and collaboration platform built for speed, security, and elegance.',
+  title: 'Veltra – Ứng dụng chat realtime',
+  description: 'Nhắn tin, gửi file và trò chuyện nhóm theo thời gian thực.',
 };
 
-export default function RootLayout({
+// Runs before the first paint so the saved theme shows without a light/dark flash.
+// Static string (no user data); same key and default as hooks/use-theme.ts.
+const THEME_INIT_SCRIPT = `try{var t=localStorage.getItem('veltra-theme')||'system';var d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);var r=document.documentElement;r.classList.toggle('dark',d);r.style.colorScheme=d?'dark':'light';}catch(e){}`;
+
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
+
   return (
-    <html lang="en" className="dark">
+    // The head script sets class / color-scheme before React hydrates
+    <html lang="vi" suppressHydrationWarning>
       <head>
         <meta charSet="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-        <title>Veltra – Ứng dụng chat realtime</title>
-        <meta name="description" content="A modern, hyper-responsive realtime messaging and collaboration platform." />
+        {/* Browsers hide the nonce attribute after load, so the client sees nonce="" */}
+        <script nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
-      <body className="h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 font-sans antialiased">
+      <body className="h-dvh w-screen overflow-hidden bg-app text-fg font-sans antialiased">
         <NavigationProvider>
           {children}
         </NavigationProvider>

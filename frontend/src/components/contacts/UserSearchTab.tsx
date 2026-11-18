@@ -6,13 +6,15 @@ import { UserAvatar } from '@/components/ui/UserAvatar';
 import { User } from '@/types/user';
 import { FriendshipStatus } from '@/types/friend';
 import { userService } from '@/services/api/user.service';
+import { InlineError } from '@/components/ui/InlineError';
 
 /**
  * Debounced user search (400 ms). Called by ContactsView, so the query and results stay
  * when the user switches to another tab and back.
  */
-export function useUserSearch(currentUserId: string | undefined, onError: () => void) {
+export function useUserSearch(currentUserId: string | undefined) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<User[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -26,6 +28,7 @@ export function useUserSearch(currentUserId: string | undefined, onError: () => 
 
       const query = value.trim();
       latestSearchRef.current = query;
+      setSearchError(null);
       if (!query) {
         setSearchResults([]);
         setSearchLoading(false);
@@ -40,16 +43,16 @@ export function useUserSearch(currentUserId: string | undefined, onError: () => 
           if (latestSearchRef.current !== query) return;
           setSearchResults(users.filter((u) => u._id !== currentUserId));
         } catch {
-          onError();
+          if (latestSearchRef.current === query) setSearchError('Không thể tìm kiếm người dùng. Thử lại sau.');
         } finally {
           if (latestSearchRef.current === query) setSearchLoading(false);
         }
       }, 400);
     },
-    [currentUserId, onError]
+    [currentUserId]
   );
 
-  return { searchQuery, searchResults, searchLoading, handleSearchChange };
+  return { searchQuery, searchResults, searchLoading, searchError, setSearchError, handleSearchChange };
 }
 
 interface UserSearchTabProps {
@@ -64,6 +67,9 @@ interface UserSearchTabProps {
   onSendRequest: (userId: string) => void;
   onAcceptRequest: (requestId: string) => void;
   onDeclineRequest: (requestId: string) => void;
+  // Action errors by user id or request id (ContactsView)
+  rowErrors: Record<string, string>;
+  onDismissError: (id: string) => void;
 }
 
 // Search box, results and the friendship action of each result
@@ -75,8 +81,10 @@ export const UserSearchTab: React.FC<UserSearchTabProps> = ({
   onSendRequest,
   onAcceptRequest,
   onDeclineRequest,
+  rowErrors,
+  onDismissError,
 }) => {
-  const { searchQuery, searchResults, searchLoading, handleSearchChange } = search;
+  const { searchQuery, searchResults, searchLoading, searchError, setSearchError, handleSearchChange } = search;
 
   // Render friendship action button for search results
   const renderFriendshipAction = (user: User) => {
@@ -85,17 +93,17 @@ export const UserSearchTab: React.FC<UserSearchTabProps> = ({
 
     switch (status) {
       case 'self':
-        return <span className="text-[11px] text-slate-500 italic px-2">Bạn</span>;
+        return <span className="text-[11px] text-fg-muted italic px-2">Bạn</span>;
       case 'friends':
         return (
-          <span className="flex items-center gap-1 text-[11px] text-emerald-400 font-medium px-2">
-            <Check className="w-3.5 h-3.5" /> Bạn bè
+          <span className="flex items-center gap-1 text-[11px] text-accent font-semibold px-2">
+            <Check className="w-3.5 h-3.5" aria-hidden="true" /> Bạn bè
           </span>
         );
       case 'request_sent':
         return (
-          <span className="flex items-center gap-1 text-[11px] text-amber-400 font-medium px-2">
-            <Clock className="w-3.5 h-3.5" /> Đã gửi
+          <span className="flex items-center gap-1 text-[11px] text-fg-muted font-medium px-2">
+            <Clock className="w-3.5 h-3.5" aria-hidden="true" /> Đã gửi
           </span>
         );
       case 'request_received':
@@ -104,16 +112,18 @@ export const UserSearchTab: React.FC<UserSearchTabProps> = ({
             <button
               onClick={() => requestId && onAcceptRequest(requestId)}
               disabled={actionLoading}
-              className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 transition-colors"
+              className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary hover:bg-primary-hover text-on-primary disabled:opacity-50 transition-colors"
               title="Chấp nhận"
+              aria-label="Chấp nhận lời mời"
             >
               <Check className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => requestId && onDeclineRequest(requestId)}
               disabled={actionLoading}
-              className="p-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 disabled:opacity-50 transition-colors"
+              className="flex items-center justify-center w-9 h-9 rounded-lg bg-surface-2 hover:bg-line text-fg disabled:opacity-50 transition-colors"
               title="Từ chối"
+              aria-label="Từ chối lời mời"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -125,7 +135,7 @@ export const UserSearchTab: React.FC<UserSearchTabProps> = ({
           <button
             onClick={() => onSendRequest(user._id)}
             disabled={actionLoading}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-[11px] font-medium disabled:opacity-50 transition-colors"
+            className="flex items-center gap-1 min-h-9 px-2.5 rounded-lg bg-primary hover:bg-primary-hover text-on-primary text-[11px] font-semibold disabled:opacity-50 transition-colors"
           >
             {actionLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
             <span>Thêm bạn</span>
@@ -137,55 +147,67 @@ export const UserSearchTab: React.FC<UserSearchTabProps> = ({
   return (
     <div className="p-4 space-y-3">
       <div className="relative">
-        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+        <Search className="w-4 h-4 text-fg-muted absolute left-3 top-1/2 -translate-y-1/2" aria-hidden="true" />
         <input
           type="text"
           placeholder="Tìm theo tên, username, email..."
           value={searchQuery}
           onChange={(e) => handleSearchChange(e.target.value)}
-          className="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-sky-500/30"
+          aria-label="Tìm người dùng"
+          className="w-full pl-9 pr-4 py-2.5 bg-surface border border-line rounded-xl text-xs text-fg placeholder:text-fg-muted focus:outline-hidden focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
           autoFocus
         />
       </div>
 
+      <InlineError message={searchError} onDismiss={() => setSearchError(null)} />
+
       {searchLoading && (
         <div className="flex items-center justify-center py-8">
-          <Loader2 className="w-5 h-5 animate-spin text-sky-500" />
-          <span className="ml-2 text-xs text-slate-400">Đang tìm kiếm...</span>
+          <Loader2 className="w-5 h-5 animate-spin text-primary" aria-hidden="true" />
+          <span className="ml-2 text-xs text-fg-muted">Đang tìm kiếm...</span>
         </div>
       )}
 
-      {!searchLoading && searchQuery.trim() && searchResults.length === 0 && (
-        <div className="text-center py-8 text-slate-400 text-xs">Không tìm thấy người dùng nào phù hợp</div>
+      {!searchLoading && !searchError && searchQuery.trim() && searchResults.length === 0 && (
+        <div className="text-center py-8 text-fg-muted text-xs">Không tìm thấy người dùng nào phù hợp</div>
       )}
 
       {!searchLoading && searchResults.length > 0 && (
         <div className="space-y-1">
-          <p className="text-xs text-slate-500 px-1 mb-2">{searchResults.length} kết quả</p>
-          {searchResults.map((user) => (
-            <div
-              key={user._id}
-              className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 hover:border-sky-500/40 transition-all"
-            >
-              <div className="flex items-center gap-3 min-w-0">
-                <UserAvatar src={user.avatarUrl} name={user.displayName || user.username} size="md" />
-                <div className="min-w-0">
-                  <h3 className="font-semibold text-sm text-slate-900 dark:text-white truncate">
-                    {user.displayName || user.username}
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate">@{user.username}</p>
+          <p className="text-xs text-fg-muted px-1 mb-2">{searchResults.length} kết quả</p>
+          {searchResults.map((user) => {
+            // Accept / decline from here are keyed by the request id
+            const requestId = currentUserId ? getFriendshipStatus(user._id, currentUserId).requestId : undefined;
+            const errorKey = rowErrors[user._id] ? user._id : requestId && rowErrors[requestId] ? requestId : null;
+            return (
+              <div key={user._id}>
+                <div
+                  className="flex items-center justify-between gap-2 p-3 rounded-xl bg-surface border border-line hover:border-primary/40 transition-colors"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <UserAvatar src={user.avatarUrl} name={user.displayName || user.username} size="md" />
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-sm text-fg truncate">
+                        {user.displayName || user.username}
+                      </h3>
+                      <p className="text-xs text-fg-muted truncate">@{user.username}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">{renderFriendshipAction(user)}</div>
                 </div>
+                {errorKey && (
+                  <InlineError message={rowErrors[errorKey]} onDismiss={() => onDismissError(errorKey)} className="mt-1" />
+                )}
               </div>
-              <div className="flex items-center gap-1.5 shrink-0">{renderFriendshipAction(user)}</div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
       {!searchQuery.trim() && !searchLoading && (
-        <div className="text-center py-12 text-slate-400">
-          <Search className="w-8 h-8 mx-auto mb-3 opacity-40" />
-          <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Tìm kiếm người dùng</p>
+        <div className="text-center py-12 text-fg-muted">
+          <Search className="w-8 h-8 mx-auto mb-3 opacity-50" aria-hidden="true" />
+          <p className="text-sm font-medium text-fg">Tìm kiếm người dùng</p>
           <p className="text-xs mt-1">Nhập tên, username hoặc email để tìm bạn bè mới</p>
         </div>
       )}
