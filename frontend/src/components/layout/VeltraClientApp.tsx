@@ -13,7 +13,6 @@ import { NotificationsView } from '@/components/common/NotificationsView';
 import { SettingsView } from '@/components/common/SettingsView';
 import { ProfileView } from '@/components/profile/ProfileView';
 import { AuthView } from '@/components/common/AuthView';
-import { Toast } from '@/components/ui/Toast';
 import { UserBasicInfo } from '@/types/user';
 import { Loader2 } from 'lucide-react';
 import { useAuthBootstrap } from '@/hooks/use-auth-bootstrap';
@@ -26,7 +25,7 @@ export function VeltraClientApp() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { theme, toggleTheme, setTheme } = useTheme();
+  const { theme, resolvedTheme, toggleTheme, setTheme } = useTheme();
   const { isMobile } = useMobile();
   // Socket.IO infrastructure - tied directly to authentication lifecycle
   useSocket();
@@ -55,30 +54,14 @@ export function VeltraClientApp() {
   const chat = useChat(authReady, undefined, mutedConversationIds);
   const notifications = useNotifications(authReady);
 
-  const setConversationMuted = (conversationId: string, muted: boolean) => {
+  // ChatTab shows a failure under the chat header
+  const setConversationMuted = (conversationId: string, muted: boolean) =>
     settingsHook.setMuted(conversationId, muted).catch((err: unknown) => {
       const apiErr = err as { response?: { data?: { message?: string } } };
-      showToast(apiErr?.response?.data?.message || 'Không thể thay đổi thông báo của cuộc trò chuyện', 'error');
+      throw new Error(apiErr?.response?.data?.message || 'Không thể thay đổi thông báo của cuộc trò chuyện');
     });
-  };
 
-  // Toast state
-  const [toast, setToast] = useState<{
-    id: string;
-    message: string;
-    type?: 'success' | 'error' | 'info';
-  } | null>(null);
-
-  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    setToast({
-      id: String(Date.now()),
-      message,
-      type,
-    });
-    setTimeout(() => setToast(null), 3000);
-  };
-
-  // Handle starting chat from contact (friend)
+  // Start / open a chat from the friend list; ContactsView shows a failure under the row
   const handleStartChatFromContact = async (contact: UserBasicInfo) => {
     try {
       // Check if a direct conversation already exists with this user
@@ -103,10 +86,9 @@ export function VeltraClientApp() {
       if (isMobile) {
         setMobileViewChat(true);
       }
-      showToast(`Đã mở cuộc trò chuyện với ${contact.displayName || contact.username}`, 'info');
     } catch (err: unknown) {
       const apiErr = err as { response?: { data?: { message?: string } } };
-      showToast(apiErr?.response?.data?.message || 'Lỗi khi tạo cuộc trò chuyện', 'error');
+      throw new Error(apiErr?.response?.data?.message || 'Không thể mở cuộc trò chuyện');
     }
   };
 
@@ -164,10 +146,10 @@ export function VeltraClientApp() {
   // Initializing state (hydration safe)
   if (isInitializing) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-slate-950">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 animate-spin text-sky-500" />
-          <p className="text-xs text-slate-400">Đang khởi tạo...</p>
+      <div className="flex h-full w-full items-center justify-center bg-app">
+        <div className="flex flex-col items-center gap-3" role="status">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" aria-hidden="true" />
+          <p className="text-xs text-fg-muted">Đang khởi tạo...</p>
         </div>
       </div>
     );
@@ -181,7 +163,6 @@ export function VeltraClientApp() {
         onLoginSuccess={() => {
           markAuthenticated();
           router.replace('/chat');
-          showToast('Chào mừng trở lại Veltra!', 'success');
         }}
       />
     );
@@ -190,28 +171,29 @@ export function VeltraClientApp() {
   // Loading current user
   if (chat.currentUserLoading) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-slate-950">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 animate-spin text-sky-500" />
-          <p className="text-xs text-slate-400">Đang tải...</p>
+      <div className="flex h-full w-full items-center justify-center bg-app">
+        <div className="flex flex-col items-center gap-3" role="status">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" aria-hidden="true" />
+          <p className="text-xs text-fg-muted">Đang tải...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex h-full w-full bg-slate-950 text-slate-100 overflow-hidden select-none font-sans">
-      {/* 1. Global Left Navigation Rail */}
+    <div className="flex flex-col md:flex-row h-full w-full bg-app text-fg overflow-hidden select-none font-sans">
+      {/* Navigation: left rail on desktop, bottom bar on mobile (hidden while a conversation is open) */}
       <MainSidebar
         unreadMessagesCount={chat.totalUnreadCount}
         unreadNotificationsCount={notifications.unreadCount}
-        theme={theme}
+        resolvedTheme={resolvedTheme}
         onToggleTheme={toggleTheme}
         onLogout={logout}
+        hideMobileNav={isMobile && activeTab === 'chat' && mobileViewChat}
       />
 
-      {/* 2. Main Content Area */}
-      <main className="flex-1 h-full flex overflow-hidden relative">
+      {/* Main Content Area */}
+      <main className="flex-1 min-h-0 md:h-full flex overflow-hidden relative">
         {/* Chat Tab: 3-column layout */}
         {activeTab === 'chat' && (
           <ChatTab
@@ -219,7 +201,6 @@ export function VeltraClientApp() {
             isMobile={isMobile}
             mobileViewChat={mobileViewChat}
             setMobileViewChat={setMobileViewChat}
-            showToast={showToast}
             enterToSend={settingsHook.settings.chat.enterToSend}
             mutedConversationIds={mutedConversationIds}
             onSetMuted={setConversationMuted}
@@ -240,7 +221,6 @@ export function VeltraClientApp() {
           <NotificationsView
             notifications={notifications}
             onOpen={handleOpenNotification}
-            onError={(message) => showToast(message, 'error')}
             browserPermission={browserNotifications.permission}
             onEnableBrowserNotifications={browserNotifications.requestPermission}
           />
@@ -254,25 +234,13 @@ export function VeltraClientApp() {
             settingsHook={settingsHook}
             browserPermission={browserNotifications.permission}
             onRequestBrowserPermission={browserNotifications.requestPermission}
-            showToast={showToast}
+            onLogout={logout}
           />
         )}
 
         {/* Profile Tab */}
-        {activeTab === 'profile' && <ProfileView onShowToast={showToast} />}
+        {activeTab === 'profile' && <ProfileView />}
       </main>
-
-      {/* Toast Notification Container */}
-      {toast && (
-        <div className="fixed bottom-5 right-5 z-50">
-          <Toast
-            id={toast.id}
-            message={toast.message}
-            type={toast.type}
-            onClose={() => setToast(null)}
-          />
-        </div>
-      )}
     </div>
   );
 }

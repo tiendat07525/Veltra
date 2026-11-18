@@ -46,7 +46,7 @@ export const MessageAttachments: React.FC<MessageAttachmentsProps> = ({ attachme
                 type="button"
                 disabled={!usable || image.url.startsWith('blob:')}
                 onClick={() => onOpenImage(image.url, image.name)}
-                className={`relative overflow-hidden rounded-xl bg-slate-300/40 dark:bg-slate-700/40 ${
+                className={`relative overflow-hidden rounded-xl bg-fg-muted/15 ${
                   images.length === 1 ? 'max-w-[260px]' : 'aspect-square w-full'
                 }`}
                 title={image.name}
@@ -104,7 +104,7 @@ export const MessageAttachments: React.FC<MessageAttachmentsProps> = ({ attachme
             className={`relative flex items-center gap-2.5 min-w-[200px] max-w-[280px] px-3 py-2.5 rounded-xl border ${
               isOwn
                 ? 'border-white/25 bg-white/10 hover:bg-white/15'
-                : 'border-slate-300/70 dark:border-slate-700 bg-white/60 dark:bg-slate-900/40 hover:bg-white/90 dark:hover:bg-slate-900/70'
+                : 'border-line bg-surface/70 hover:bg-surface'
             } ${href ? '' : 'pointer-events-none'}`}
             title={item.name}
           >

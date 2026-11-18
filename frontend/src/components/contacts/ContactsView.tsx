@@ -1,11 +1,10 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Loader2 } from 'lucide-react';
 import { CurrentUserProfile, UserBasicInfo } from '@/types/user';
 import { useFriends } from '@/hooks/use-friends';
 import { authService } from '@/services/api/auth.service';
-import { Toast } from '@/components/ui/Toast';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { FriendsTab } from './FriendsTab';
 import { FriendRequestsTab } from './FriendRequestsTab';
 import { UserSearchTab, useUserSearch } from './UserSearchTab';
@@ -15,7 +14,8 @@ export type ContactsTab = 'friends' | 'requests' | 'search';
 interface ContactsViewProps {
   // Tab shown when the view opens (e.g. /contacts?tab=requests from a notification)
   initialTab?: ContactsTab;
-  onStartChat: (user: UserBasicInfo) => void;
+  // Rejects with an Error whose message is shown under the friend's row
+  onStartChat: (user: UserBasicInfo) => Promise<void>;
   onVoiceCall?: (user: UserBasicInfo) => void;
   onVideoCall?: (user: UserBasicInfo) => void;
   // Online friends (usePresence)
@@ -29,7 +29,6 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<ContactsTab>(initialTab ?? 'friends');
   const [currentUser, setCurrentUser] = useState<CurrentUserProfile | null>(null);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [removingFriendId, setRemovingFriendId] = useState<string | null>(null);
 
   const friendsHook = useFriends();
@@ -38,64 +37,47 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
     authService.getCurrentUser().then(setCurrentUser).catch(console.error);
   }, []);
 
-  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+  // Kept here so the query and results survive tab switches
+  const search = useUserSearch(currentUser?._id);
+
+  // Action errors shown under the row they belong to, keyed by the id the action used
+  // (user id, friend id or request id). Success needs no message: the list updates.
+  const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
+
+  const setRowError = useCallback((id: string, message: string | null) => {
+    setRowErrors((prev) => {
+      const next = { ...prev };
+      if (message) next[id] = message;
+      else delete next[id];
+      return next;
+    });
   }, []);
 
-  // Kept here so the query and results survive tab switches
-  const search = useUserSearch(
-    currentUser?._id,
-    useCallback(() => showToast('Lỗi tìm kiếm người dùng', 'error'), [showToast])
-  );
+  const runRowAction = async (id: string, action: () => Promise<unknown>, fallback: string) => {
+    setRowError(id, null);
+    try {
+      await action();
+    } catch (err: unknown) {
+      setRowError(id, err instanceof Error && err.message ? err.message : fallback);
+    }
+  };
 
   // Friend actions
-  const handleSendRequest = async (userId: string) => {
-    try {
-      await friendsHook.sendFriendRequest(userId);
-      showToast('Đã gửi lời mời kết bạn', 'success');
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Lỗi gửi lời mời';
-      showToast(msg, 'error');
-    }
-  };
+  const handleSendRequest = (userId: string) =>
+    runRowAction(userId, () => friendsHook.sendFriendRequest(userId), 'Không thể gửi lời mời kết bạn');
 
-  const handleAcceptRequest = async (requestId: string) => {
-    try {
-      await friendsHook.acceptFriendRequest(requestId);
-      showToast('Đã chấp nhận lời mời kết bạn', 'success');
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Lỗi chấp nhận';
-      showToast(msg, 'error');
-    }
-  };
+  const handleAcceptRequest = (requestId: string) =>
+    runRowAction(requestId, () => friendsHook.acceptFriendRequest(requestId), 'Không thể chấp nhận lời mời');
 
-  const handleDeclineRequest = async (requestId: string) => {
-    try {
-      await friendsHook.declineFriendRequest(requestId);
-      showToast('Đã từ chối lời mời kết bạn', 'info');
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Lỗi từ chối';
-      showToast(msg, 'error');
-    }
-  };
+  const handleDeclineRequest = (requestId: string) =>
+    runRowAction(requestId, () => friendsHook.declineFriendRequest(requestId), 'Không thể từ chối lời mời');
 
-  const handleRemoveFriend = async (friendId: string) => {
-    setRemovingFriendId(friendId);
-  };
+  const handleStartChat = (user: UserBasicInfo) =>
+    runRowAction(user._id, () => onStartChat(user), 'Không thể mở cuộc trò chuyện');
 
-  const confirmRemoveFriend = async () => {
-    if (!removingFriendId) return;
-    try {
-      await friendsHook.removeFriend(removingFriendId);
-      showToast('Đã xóa bạn', 'info');
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Lỗi xóa bạn';
-      showToast(msg, 'error');
-    } finally {
-      setRemovingFriendId(null);
-    }
-  };
+  const handleRemoveFriend = (friendId: string) => setRemovingFriendId(friendId);
+  const removingFriend = friendsHook.friends.find((f) => f._id === removingFriendId);
+  const removingName = removingFriend?.displayName || removingFriend?.username || 'người này';
 
   const tabs: { id: ContactsTab; label: string; count?: number }[] = [
     { id: 'friends', label: 'Bạn bè', count: friendsHook.friends.length },
@@ -104,15 +86,15 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
   ];
 
   return (
-    <div className="flex-1 h-full flex flex-col bg-slate-50 dark:bg-slate-950 overflow-hidden">
+    <div className="flex-1 h-full flex flex-col bg-app overflow-hidden">
       {/* Header */}
-      <header className="h-16 px-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between shrink-0">
+      <header className="h-16 px-4 sm:px-6 border-b border-line bg-surface flex items-center justify-between shrink-0">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white">Bạn bè</h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+          <h1 className="text-xl font-bold text-fg">Bạn bè</h1>
+          <p className="text-xs text-fg-muted">
             {friendsHook.friends.length} bạn bè
             {friendsHook.receivedRequests.length > 0 && (
-              <span className="text-sky-500 ml-2">
+              <span className="text-accent ml-2">
                 • {friendsHook.receivedRequests.length} lời mời
               </span>
             )}
@@ -121,24 +103,22 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
       </header>
 
       {/* Tab bar */}
-      <div className="px-4 pt-3 pb-2 flex items-center gap-1 border-b border-slate-200/60 dark:border-slate-800/60">
+      <div className="px-4 pt-3 pb-2 flex items-center gap-1 border-b border-line bg-surface" role="tablist" aria-label="Danh mục bạn bè">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             type="button"
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
-              activeTab === tab.id
-                ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 shadow-xs'
-                : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 min-h-9 px-3.5 rounded-xl text-xs font-semibold transition-colors ${
+              activeTab === tab.id ? 'bg-accent-soft text-accent' : 'text-fg-muted hover:text-fg hover:bg-surface-2'
             }`}
           >
             <span>{tab.label}</span>
             {tab.count !== undefined && tab.count > 0 && (
               <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                activeTab === tab.id
-                  ? 'bg-sky-500 text-white'
-                  : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                activeTab === tab.id ? 'bg-primary text-on-primary' : 'bg-surface-2 text-fg-muted'
               }`}>
                 {tab.count}
               </span>
@@ -158,6 +138,8 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
             onSendRequest={handleSendRequest}
             onAcceptRequest={handleAcceptRequest}
             onDeclineRequest={handleDeclineRequest}
+            rowErrors={rowErrors}
+            onDismissError={(id) => setRowError(id, null)}
           />
         )}
 
@@ -168,8 +150,10 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
             error={friendsHook.error}
             onRetry={friendsHook.refetch}
             onlineIds={onlineIds}
-            onStartChat={onStartChat}
+            onStartChat={handleStartChat}
             onRemoveFriend={handleRemoveFriend}
+            rowErrors={rowErrors}
+            onDismissError={(id) => setRowError(id, null)}
             onFindFriends={() => setActiveTab('search')}
           />
         )}
@@ -181,54 +165,21 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
             actionLoading={!!friendsHook.actionLoading}
             onAcceptRequest={handleAcceptRequest}
             onDeclineRequest={handleDeclineRequest}
+            rowErrors={rowErrors}
+            onDismissError={(id) => setRowError(id, null)}
           />
         )}
       </div>
 
-      {/* Remove Friend Confirmation Modal */}
-      {removingFriendId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl">
-            <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">
-              Xóa bạn bè
-            </h3>
-            <p className="text-xs text-slate-500 mb-5">
-              Bạn có chắc chắn muốn xóa người này khỏi danh sách bạn bè? Hành động này không thể hoàn tác.
-            </p>
-            <div className="flex items-center justify-end gap-2">
-              <button
-                onClick={() => setRemovingFriendId(null)}
-                className="px-4 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
-              >
-                Hủy
-              </button>
-              <button
-                onClick={confirmRemoveFriend}
-                disabled={!!friendsHook.actionLoading}
-                className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 disabled:opacity-50 rounded-xl transition-colors"
-              >
-                {friendsHook.actionLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  'Xóa bạn'
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Toast */}
-      {toast && (
-        <div className="fixed bottom-5 right-5 z-50">
-          <Toast
-            id="contacts-toast"
-            message={toast.message}
-            type={toast.type}
-            onClose={() => setToast(null)}
-          />
-        </div>
-      )}
+      {/* Remove friend confirmation; a failure is shown inside it */}
+      <ConfirmDialog
+        open={!!removingFriendId}
+        title="Xóa bạn bè?"
+        description={`${removingName} sẽ bị xóa khỏi danh sách bạn bè. Không thể hoàn tác.`}
+        confirmLabel="Xóa bạn"
+        onConfirm={() => (removingFriendId ? friendsHook.removeFriend(removingFriendId) : Promise.resolve())}
+        onClose={() => setRemovingFriendId(null)}
+      />
     </div>
   );
 };

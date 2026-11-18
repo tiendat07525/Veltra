@@ -7,6 +7,7 @@ import { User, UserBasicInfo } from '@/types/user';
 import { authService } from '@/services/api/auth.service';
 import { userService } from '@/services/api/user.service';
 import { friendService } from '@/services/api/friend.service';
+import { InlineError } from '@/components/ui/InlineError';
 
 interface NewConversationModalProps {
   isOpen: boolean;
@@ -15,7 +16,8 @@ interface NewConversationModalProps {
     type: 'direct' | 'group';
     participants: string[];
     groupName?: string;
-  }) => void;
+    // Rejects with an Error whose message is shown in the modal (which stays open)
+  }) => Promise<void>;
 }
 
 export const NewConversationModal: React.FC<NewConversationModalProps> = ({
@@ -31,6 +33,8 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
   // Groups may only include friends (enforced by the backend)
   const [friends, setFriends] = useState<UserBasicInfo[]>([]);
   const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -38,6 +42,7 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
         setLoading(true);
         setSelectedUserIds([]);
         setSearch('');
+        setSubmitError(null);
         setGroupName('');
         setTab('direct');
       });
@@ -82,58 +87,71 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
     }
   };
 
-  const handleStart = () => {
-    if (selectedUserIds.length === 0) return;
+  const handleStart = async () => {
+    if (selectedUserIds.length === 0 || submitting) return;
+    if (tab === 'group' && !groupName.trim()) return;
 
-    if (tab === 'direct') {
-      onCreateConversation({
-        type: 'direct',
-        participants: [selectedUserIds[0]],
-      });
-    } else {
-      if (!groupName.trim()) return;
-      onCreateConversation({
-        type: 'group',
-        participants: selectedUserIds,
-        groupName: groupName.trim(),
-      });
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      if (tab === 'direct') {
+        await onCreateConversation({
+          type: 'direct',
+          participants: [selectedUserIds[0]],
+        });
+      } else {
+        await onCreateConversation({
+          type: 'group',
+          participants: selectedUserIds,
+          groupName: groupName.trim(),
+        });
+      }
+      onClose();
+    } catch (err: unknown) {
+      setSubmitError(err instanceof Error && err.message ? err.message : 'Không thể tạo cuộc trò chuyện');
+    } finally {
+      setSubmitting(false);
     }
-
-    onClose();
   };
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-conversation-title"
+        className="w-full max-w-md max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-3xl bg-surface border border-line p-4 sm:p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-          <h3 className="text-base font-bold text-slate-900 dark:text-white">
+        <div className="flex items-center justify-between pb-3 border-b border-line">
+          <h3 id="new-conversation-title" className="text-base font-bold text-fg">
             Tin nhắn mới
           </h3>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-xl"
+            className="p-2 -mr-1 text-fg-muted hover:text-fg hover:bg-surface-2 rounded-xl"
+            aria-label="Đóng"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
         {/* Tab switch */}
-        <div className="grid grid-cols-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl my-4 text-xs font-semibold">
+        <div className="grid grid-cols-2 p-1 bg-surface-2 rounded-xl my-4 text-xs font-semibold" role="tablist">
           <button
             type="button"
             onClick={() => {
               setTab('direct');
               setSelectedUserIds([]);
             }}
-            className={`py-2 rounded-lg transition-all ${
-              tab === 'direct' ? 'bg-white dark:bg-slate-900 text-sky-500 shadow-xs' : 'text-slate-500'
+            role="tab"
+            aria-selected={tab === 'direct'}
+            className={`min-h-9 rounded-lg transition-colors ${
+              tab === 'direct' ? 'bg-surface text-accent shadow-xs' : 'text-fg-muted hover:text-fg'
             }`}
           >
             Tin nhắn cá nhân
@@ -144,8 +162,10 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
               setTab('group');
               setSelectedUserIds([]);
             }}
-            className={`py-2 rounded-lg transition-all ${
-              tab === 'group' ? 'bg-white dark:bg-slate-900 text-sky-500 shadow-xs' : 'text-slate-500'
+            role="tab"
+            aria-selected={tab === 'group'}
+            className={`min-h-9 rounded-lg transition-colors ${
+              tab === 'group' ? 'bg-surface text-accent shadow-xs' : 'text-fg-muted hover:text-fg'
             }`}
           >
             Tạo nhóm
@@ -155,7 +175,7 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
         {/* Group Name input */}
         {tab === 'group' && (
           <div className="mb-3">
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+            <label htmlFor="new-group-name" className="block text-xs font-semibold text-fg mb-1.5">
               Tên nhóm
             </label>
             <input
@@ -163,20 +183,22 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
               placeholder="VD: Nhóm dự án, Lớp học..."
               value={groupName}
               onChange={(e) => setGroupName(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:ring-1 focus:ring-sky-500 focus:outline-hidden"
+              id="new-group-name"
+              className="w-full min-h-10 px-3 py-2 bg-surface-2 rounded-xl text-xs text-fg placeholder:text-fg-muted focus:ring-2 focus:ring-primary/30 focus:outline-hidden"
             />
           </div>
         )}
 
         {/* Search */}
         <div className="relative mb-3">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-fg-muted absolute left-3 top-1/2 -translate-y-1/2" aria-hidden="true" />
           <input
             type="text"
             placeholder={tab === 'group' ? 'Tìm kiếm bạn bè...' : 'Tìm kiếm người dùng...'}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:ring-1 focus:ring-sky-500 focus:outline-hidden"
+            aria-label="Tìm bạn bè"
+            className="w-full min-h-10 pl-9 pr-3 py-2 bg-surface-2 rounded-xl text-xs text-fg placeholder:text-fg-muted focus:ring-2 focus:ring-primary/30 focus:outline-hidden"
           />
         </div>
 
@@ -184,10 +206,10 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
         <div className="max-h-60 overflow-y-auto space-y-1 pr-1">
           {loading ? (
             <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-5 h-5 animate-spin text-sky-500" />
+              <Loader2 className="w-5 h-5 animate-spin text-primary" aria-hidden="true" />
             </div>
           ) : filteredUsers.length === 0 ? (
-            <div className="text-center py-8 text-xs text-slate-400">
+            <div className="text-center py-8 text-xs text-fg-muted">
               {tab === 'group' && friends.length === 0
                 ? 'Bạn cần kết bạn trước khi tạo nhóm'
                 : 'Không tìm thấy người dùng nào'}
@@ -196,60 +218,61 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
             filteredUsers.map((user) => {
               const isSelected = selectedUserIds.includes(user._id);
               return (
-                <div
+                <button
+                  type="button"
                   key={user._id}
                   onClick={() => toggleUserSelection(user._id)}
-                  className={`flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-colors ${
-                    isSelected
-                      ? 'bg-sky-50 dark:bg-sky-950/40 border border-sky-500/30'
-                      : 'hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                  aria-pressed={isSelected}
+                  className={`w-full text-left flex items-center justify-between p-2.5 rounded-xl border transition-colors ${
+                    isSelected ? 'bg-accent-soft border-primary/30' : 'border-transparent hover:bg-surface-2'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
                     <UserAvatar
                       src={user.avatarUrl}
                       name={user.displayName || user.username || ''}
                       size="sm"
                     />
-                    <div>
-                      <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-fg truncate">
                         {user.displayName || user.username}
                       </p>
-                      <p className="text-[11px] text-slate-400">@{user.username}</p>
+                      <p className="text-[11px] text-fg-muted truncate">@{user.username}</p>
                     </div>
                   </div>
 
                   <div
-                    className={`w-5 h-5 rounded-full flex items-center justify-center border transition-colors ${
-                      isSelected
-                        ? 'bg-sky-500 border-sky-500 text-white'
-                        : 'border-slate-300 dark:border-slate-600'
+                    className={`w-5 h-5 shrink-0 rounded-full flex items-center justify-center border transition-colors ${
+                      isSelected ? 'bg-primary border-primary text-on-primary' : 'border-fg-muted/50'
                     }`}
+                    aria-hidden="true"
                   >
                     {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                   </div>
-                </div>
+                </button>
               );
             })
           )}
         </div>
 
+        <InlineError message={submitError} onDismiss={() => setSubmitError(null)} className="mt-4" />
+
         {/* Action Button */}
-        <div className="mt-5 flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+        <div className="mt-5 flex items-center justify-end gap-2 pt-3 border-t border-line">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
+            className="min-h-10 px-4 text-xs font-medium text-fg-muted hover:text-fg hover:bg-surface-2 rounded-xl"
           >
             Hủy
           </button>
           <button
             type="button"
-            disabled={selectedUserIds.length === 0 || (tab === 'group' && !groupName.trim())}
+            disabled={submitting || selectedUserIds.length === 0 || (tab === 'group' && !groupName.trim())}
             onClick={handleStart}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-sky-500 hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl shadow-xs"
+            className="flex items-center gap-2 min-h-10 px-4 text-xs font-semibold text-on-primary bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed rounded-xl"
           >
-            <MessageSquarePlus className="w-4 h-4" />
+            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquarePlus className="w-4 h-4" />}
             {tab === 'direct' ? 'Bắt đầu trò chuyện' : 'Tạo nhóm'}
           </button>
         </div>

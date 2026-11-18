@@ -3,8 +3,9 @@
 import React from 'react';
 import { Conversation } from '@/types/conversation';
 import { UserAvatar } from '@/components/ui/UserAvatar';
-import { formatTime } from '@/lib/utils';
+import { formatListTime } from '@/lib/utils';
 import { BellOff, Trash2 } from 'lucide-react';
+import { useLongPress } from '@/hooks/use-long-press';
 
 interface ConversationItemProps {
   conversation: Conversation;
@@ -30,6 +31,8 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
   isMuted = false,
 }) => {
   const isGroup = conversation.type === 'group';
+  // Touch screens: long press asks to delete (the hover trash button is hidden there)
+  const longPress = useLongPress(() => onDelete?.(), { enabled: !!onDelete });
 
   // Determine display name
   const displayName = isGroup
@@ -60,17 +63,18 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
   })();
   const lastContent = conversation.lastMessage?.content || 'Chưa có tin nhắn';
   const lastTime = conversation.lastMessage?.createdAt
-    ? formatTime(conversation.lastMessage.createdAt)
+    ? formatListTime(conversation.lastMessage.createdAt)
     : '';
 
   return (
     <div
       id={`conv-item-${conversation._id}`}
       onClick={onSelect}
-      className={`group relative flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all duration-150 select-none ${
+      {...longPress}
+      className={`group relative flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all duration-150 select-none [-webkit-touch-callout:none] ${
         isActive
-          ? 'bg-sky-50 dark:bg-sky-950/40 text-slate-900 dark:text-white border-l-4 border-sky-500 shadow-xs'
-          : 'hover:bg-slate-100/80 dark:hover:bg-slate-800/60 text-slate-700 dark:text-slate-200'
+          ? 'bg-accent-soft text-fg border-l-4 border-primary'
+          : 'text-fg hover:bg-surface-2'
       }`}
     >
       {/* Avatar */}
@@ -84,20 +88,24 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
         />
       </div>
 
-      {/* Name + Last Message */}
-      <div className="flex-1 min-w-0">
+      {/* Name + Last Message; leaves room for the hover trash button so it never covers the time / count */}
+      <div
+        className={`flex-1 min-w-0 transition-[padding] duration-150 ${
+          onDelete ? 'pointer-fine:group-hover:pr-8 group-focus-within:pr-8' : ''
+        }`}
+      >
         <div className="flex items-center justify-between gap-1 mb-1">
           <div className="flex items-center gap-1 min-w-0">
             <h4
               className={`text-sm truncate ${
-                hasUnread ? 'font-bold text-slate-950 dark:text-white' : 'font-medium'
+                hasUnread ? 'font-bold' : 'font-medium'
               }`}
             >
               {displayName}
             </h4>
             {isMuted && (
               <BellOff
-                className="w-3 h-3 shrink-0 text-slate-400 dark:text-slate-500"
+                className="w-3 h-3 shrink-0 text-fg-muted"
                 aria-label="Đã tắt thông báo"
               />
             )}
@@ -105,9 +113,7 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
 
           <span
             className={`text-[11px] shrink-0 ${
-              hasUnread && !isMuted
-                ? 'font-bold text-sky-600 dark:text-sky-400'
-                : 'text-slate-400 dark:text-slate-500'
+              hasUnread && !isMuted ? 'font-bold text-accent' : 'text-fg-muted'
             }`}
           >
             {lastTime}
@@ -117,11 +123,7 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
         <div className="flex items-center justify-between gap-2">
           <p
             className={`text-xs truncate ${
-              typingLabel
-                ? 'italic text-sky-600 dark:text-sky-400'
-                : hasUnread
-                  ? 'font-semibold text-slate-900 dark:text-slate-100'
-                  : 'text-slate-500 dark:text-slate-400'
+              typingLabel ? 'italic text-accent' : hasUnread ? 'font-semibold text-fg' : 'text-fg-muted'
             }`}
           >
             {typingLabel ?? lastContent}
@@ -129,8 +131,8 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
 
           {hasUnread && (
             <span
-              className={`shrink-0 flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 text-[11px] font-bold rounded-full text-white shadow-xs ${
-                isMuted ? 'bg-slate-400 dark:bg-slate-600' : 'bg-sky-500'
+              className={`shrink-0 flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 text-[11px] font-bold rounded-full ${
+                isMuted ? 'bg-fg-muted text-surface' : 'bg-primary text-on-primary'
               }`}
             >
               {unreadCount > 99 ? '99+' : unreadCount}
@@ -147,8 +149,9 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
             e.stopPropagation();
             onDelete();
           }}
-          className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50 opacity-0 group-hover:opacity-100 transition-all"
+          className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-fg-muted hover:text-danger hover:bg-danger-soft opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:hidden transition-all"
           title="Xóa cuộc trò chuyện"
+          aria-label="Xóa cuộc trò chuyện"
         >
           <Trash2 className="w-4 h-4" />
         </button>

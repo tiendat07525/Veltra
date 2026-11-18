@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
-import { Copy, Download, Loader2, ShieldCheck, ShieldOff } from 'lucide-react';
+import { Check, Copy, Download, Loader2, ShieldCheck, ShieldOff } from 'lucide-react';
 import { authService } from '@/services/api/auth.service';
 import { TwoFactorSetup, TwoFactorStatus } from '@/types/auth';
 import { formatDate } from '@/lib/utils';
+import { useCopyFeedback } from '@/hooks/use-copy-feedback';
+import { InlineError } from '@/components/ui/InlineError';
 
 interface TwoFactorSectionProps {
   status: TwoFactorStatus | null;
   loadFailed: boolean;
   // Reloads GET /auth/2fa after a change
   onChanged: () => void;
-  showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 type Step =
@@ -21,11 +22,11 @@ type Step =
   | { kind: 'codes'; codes: string[] };
 
 const inputClass =
-  'w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/40';
+  'w-full px-3 py-2 rounded-xl bg-surface border border-line text-sm text-fg placeholder:text-fg-muted focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20';
 const primaryButton =
-  'flex items-center gap-2 px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white text-xs font-semibold';
+  'flex items-center justify-center gap-2 min-h-10 px-4 rounded-xl bg-primary hover:bg-primary-hover disabled:opacity-50 text-on-primary text-xs font-semibold';
 const secondaryButton =
-  'flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50';
+  'flex items-center justify-center gap-1.5 min-h-10 px-3 rounded-xl border border-line text-xs font-semibold text-fg hover:bg-surface-2 disabled:opacity-50';
 
 const errorText = (err: unknown, fallback: string) => {
   const apiErr = err as { response?: { status?: number; data?: { message?: string | string[] } } };
@@ -37,12 +38,14 @@ const errorText = (err: unknown, fallback: string) => {
 // "ABCD EFGH IJKL ..." is easier to type into an app than one long string
 const groupSecret = (secret: string) => secret.match(/.{1,4}/g)?.join(' ') ?? secret;
 
-export const TwoFactorSection: React.FC<TwoFactorSectionProps> = ({ status, loadFailed, onChanged, showToast }) => {
+export const TwoFactorSection: React.FC<TwoFactorSectionProps> = ({ status, loadFailed, onChanged }) => {
   const [step, setStep] = useState<Step>({ kind: 'idle' });
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // "Đã sao chép" on the copy buttons for 2 s
+  const copied = useCopyFeedback();
 
   const goTo = (next: Step) => {
     setStep(next);
@@ -64,11 +67,12 @@ export const TwoFactorSection: React.FC<TwoFactorSectionProps> = ({ status, load
     }
   };
 
-  const copy = (text: string, done: string) => {
+  const copy = (text: string, key: 'secret' | 'codes') => {
+    setError(null);
     navigator.clipboard
       .writeText(text)
-      .then(() => showToast(done, 'success'))
-      .catch(() => showToast('Không thể sao chép', 'error'));
+      .then(() => copied.flash(key))
+      .catch(() => setError('Không thể sao chép, hãy chọn và sao chép thủ công'));
   };
 
   const downloadCodes = (codes: string[]) => {
@@ -98,7 +102,6 @@ export const TwoFactorSection: React.FC<TwoFactorSectionProps> = ({ status, load
     void run(async () => {
       const { backupCodes } = await authService.enableTwoFactor(code.trim());
       goTo({ kind: 'codes', codes: backupCodes });
-      showToast('Đã bật xác thực 2 bước', 'success');
       onChanged();
     }, 'Không thể bật xác thực 2 bước');
   };
@@ -107,9 +110,8 @@ export const TwoFactorSection: React.FC<TwoFactorSectionProps> = ({ status, load
     e.preventDefault();
     if (!password || !code.trim()) return setError('Nhập mật khẩu và mã xác thực');
     void run(async () => {
-      const { message } = await authService.disableTwoFactor(password, code.trim());
+      await authService.disableTwoFactor(password, code.trim());
       goTo({ kind: 'idle' });
-      showToast(message || 'Đã tắt xác thực 2 bước', 'success');
       onChanged();
     }, 'Không thể tắt xác thực 2 bước');
   };
@@ -120,12 +122,11 @@ export const TwoFactorSection: React.FC<TwoFactorSectionProps> = ({ status, load
     void run(async () => {
       const { backupCodes } = await authService.regenerateBackupCodes(password, code.trim());
       goTo({ kind: 'codes', codes: backupCodes });
-      showToast('Đã tạo mã dự phòng mới', 'success');
       onChanged();
     }, 'Không thể tạo mã dự phòng');
   };
 
-  const errorLine = error && <p className="text-xs text-rose-500">{error}</p>;
+  const errorLine = <InlineError message={error} onDismiss={() => setError(null)} />;
   const cancelButton = (
     <button type="button" onClick={() => goTo({ kind: 'idle' })} disabled={submitting} className={secondaryButton}>
       Huỷ
@@ -136,6 +137,7 @@ export const TwoFactorSection: React.FC<TwoFactorSectionProps> = ({ status, load
       type="password"
       autoComplete="current-password"
       placeholder="Mật khẩu hiện tại"
+      aria-label="Mật khẩu hiện tại"
       value={password}
       onChange={(e) => setPassword(e.target.value)}
       className={inputClass}
@@ -148,6 +150,7 @@ export const TwoFactorSection: React.FC<TwoFactorSectionProps> = ({ status, load
       spellCheck={false}
       maxLength={20}
       placeholder={placeholder}
+      aria-label="Mã xác thực"
       value={code}
       onChange={(e) => setCode(e.target.value)}
       className={inputClass}
@@ -161,16 +164,16 @@ export const TwoFactorSection: React.FC<TwoFactorSectionProps> = ({ status, load
   );
 
   return (
-    <div className="space-y-3 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
+    <div className="space-y-3 py-5">
       <div className="flex items-start gap-3">
         {status?.enabled ? (
-          <ShieldCheck className="w-5 h-5 text-emerald-500 shrink-0" />
+          <ShieldCheck className="w-5 h-5 text-online shrink-0 mt-0.5" aria-hidden="true" />
         ) : (
-          <ShieldOff className="w-5 h-5 text-slate-400 shrink-0" />
+          <ShieldOff className="w-5 h-5 text-fg-muted shrink-0 mt-0.5" aria-hidden="true" />
         )}
         <div>
-          <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Xác thực 2 bước</h4>
-          <p className="text-[11px] text-slate-500">
+          <h4 className="text-xs font-semibold text-fg">Xác thực 2 bước</h4>
+          <p className="text-[11px] text-fg-muted">
             {status === null
               ? loadFailed
                 ? 'Không tải được trạng thái, thử mở lại mục này.'
@@ -192,7 +195,7 @@ export const TwoFactorSection: React.FC<TwoFactorSectionProps> = ({ status, load
               <button
                 type="button"
                 onClick={() => goTo({ kind: 'disable' })}
-                className={`${secondaryButton} text-rose-600 dark:text-rose-400`}
+                className={`${secondaryButton} text-danger`}
               >
                 Tắt xác thực 2 bước
               </button>
@@ -207,7 +210,7 @@ export const TwoFactorSection: React.FC<TwoFactorSectionProps> = ({ status, load
 
       {step.kind === 'setup-password' && (
         <form onSubmit={handleSetup} className="space-y-3">
-          <p className="text-[11px] text-slate-500">Xác nhận mật khẩu để bắt đầu.</p>
+          <p className="text-[11px] text-fg-muted">Xác nhận mật khẩu để bắt đầu.</p>
           {passwordInput}
           {errorLine}
           <div className="flex gap-2">
@@ -219,27 +222,27 @@ export const TwoFactorSection: React.FC<TwoFactorSectionProps> = ({ status, load
 
       {step.kind === 'setup-verify' && (
         <form onSubmit={handleEnable} className="space-y-3">
-          <p className="text-[11px] text-slate-500">
+          <p className="text-[11px] text-fg-muted">
             1. Trong ứng dụng xác thực, chọn thêm tài khoản bằng khoá thiết lập và nhập khoá dưới đây (loại: theo thời
             gian). Trên điện thoại có thể bấm “Mở trong ứng dụng”.
           </p>
           <div className="flex items-center gap-2">
-            <code className="flex-1 px-3 py-2 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 font-mono text-xs text-slate-900 dark:text-white break-all select-all">
+            <code className="flex-1 min-w-0 px-3 py-2 rounded-xl bg-surface-2 border border-line font-mono text-xs text-fg break-all select-all">
               {groupSecret(step.setup.secret)}
             </code>
             <button
               type="button"
-              onClick={() => copy(step.setup.secret, 'Đã sao chép khoá')}
+              onClick={() => copy(step.setup.secret, 'secret')}
               className={secondaryButton}
-              aria-label="Sao chép khoá"
+              aria-label={copied.isFlashed('secret') ? 'Đã sao chép khoá' : 'Sao chép khoá'}
             >
-              <Copy className="w-3.5 h-3.5" />
+              {copied.isFlashed('secret') ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
             </button>
           </div>
-          <a href={step.setup.otpauthUrl} className="inline-block text-xs font-semibold text-sky-600 dark:text-sky-400 hover:underline">
+          <a href={step.setup.otpauthUrl} className="inline-block text-xs font-semibold text-accent hover:underline">
             Mở trong ứng dụng
           </a>
-          <p className="text-[11px] text-slate-500">2. Nhập mã 6 số ứng dụng hiển thị (khoá hết hạn sau 10 phút).</p>
+          <p className="text-[11px] text-fg-muted">2. Nhập mã 6 số ứng dụng hiển thị (khoá hết hạn sau 10 phút).</p>
           {codeInput('123456')}
           {errorLine}
           <div className="flex gap-2">
@@ -251,20 +254,28 @@ export const TwoFactorSection: React.FC<TwoFactorSectionProps> = ({ status, load
 
       {step.kind === 'codes' && (
         <div className="space-y-3">
-          <p className="text-[11px] text-amber-600 dark:text-amber-400">
+          <p className="text-[11px] text-amber-700 dark:text-amber-400">
             Lưu các mã dự phòng này ở nơi an toàn. Mỗi mã dùng được một lần khi không có ứng dụng xác thực. Chúng chỉ
             hiện một lần.
           </p>
-          <ul className="grid grid-cols-2 gap-1.5 font-mono text-xs text-slate-900 dark:text-white">
+          <ul className="grid grid-cols-2 gap-1.5 font-mono text-xs text-fg">
             {step.codes.map((c) => (
-              <li key={c} className="px-2 py-1 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-center select-all">
+              <li key={c} className="px-2 py-1 rounded-lg bg-surface-2 border border-line text-center select-all">
                 {c}
               </li>
             ))}
           </ul>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => copy(step.codes.join('\n'), 'Đã sao chép mã dự phòng')} className={secondaryButton}>
-              <Copy className="w-3.5 h-3.5" /> Sao chép
+            <button type="button" onClick={() => copy(step.codes.join('\n'), 'codes')} className={secondaryButton}>
+              {copied.isFlashed('codes') ? (
+                <>
+                  <Check className="w-3.5 h-3.5" /> Đã sao chép
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5" /> Sao chép
+                </>
+              )}
             </button>
             <button type="button" onClick={() => downloadCodes(step.codes)} className={secondaryButton}>
               <Download className="w-3.5 h-3.5" /> Tải .txt
@@ -273,12 +284,13 @@ export const TwoFactorSection: React.FC<TwoFactorSectionProps> = ({ status, load
               Tôi đã lưu
             </button>
           </div>
+          {errorLine}
         </div>
       )}
 
       {step.kind === 'disable' && (
         <form onSubmit={handleDisable} className="space-y-3">
-          <p className="text-[11px] text-slate-500">Nhập mật khẩu và mã 6 số trong ứng dụng (hoặc một mã dự phòng).</p>
+          <p className="text-[11px] text-fg-muted">Nhập mật khẩu và mã 6 số trong ứng dụng (hoặc một mã dự phòng).</p>
           {passwordInput}
           {codeInput('Mã xác thực')}
           {errorLine}
@@ -291,7 +303,7 @@ export const TwoFactorSection: React.FC<TwoFactorSectionProps> = ({ status, load
 
       {step.kind === 'regenerate' && (
         <form onSubmit={handleRegenerate} className="space-y-3">
-          <p className="text-[11px] text-slate-500">
+          <p className="text-[11px] text-fg-muted">
             Các mã dự phòng cũ sẽ ngừng hoạt động. Cần mã 6 số trong ứng dụng (không dùng mã dự phòng).
           </p>
           {passwordInput}

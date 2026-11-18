@@ -12,10 +12,10 @@ interface ChatTabProps {
   // Mobile: chat window shown instead of the list (also set by other tabs before opening /chat)
   mobileViewChat: boolean;
   setMobileViewChat: (value: boolean) => void;
-  showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
   enterToSend: boolean;
   mutedConversationIds: Set<string>;
-  onSetMuted: (conversationId: string, muted: boolean) => void;
+  // Rejects with an Error shown under the chat header
+  onSetMuted: (conversationId: string, muted: boolean) => Promise<void>;
 }
 
 // The chat tab: conversation list, the open conversation and its group info panel
@@ -24,7 +24,6 @@ export const ChatTab: React.FC<ChatTabProps> = ({
   isMobile,
   mobileViewChat,
   setMobileViewChat,
-  showToast,
   enterToSend,
   mutedConversationIds,
   onSetMuted,
@@ -36,15 +35,15 @@ export const ChatTab: React.FC<ChatTabProps> = ({
     chat.activeConversation?.type === 'group' && chat.activeConversation._id === groupInfoFor
       ? chat.activeConversation
       : null;
+  const [muteError, setMuteError] = useState<{ conversationId: string; message: string } | null>(null);
 
-  // Runs a group change and reports it; never throws (the panel only tracks busy state)
-  const runGroupAction = async (action: () => Promise<void>, success: string) => {
+  // Runs a group change; a failure becomes an Error with the server's message, shown by the panel
+  const runGroupAction = async (action: () => Promise<void>) => {
     try {
       await action();
-      showToast(success, 'success');
     } catch (err: unknown) {
       const apiErr = err as { response?: { data?: { message?: string } } };
-      showToast(apiErr?.response?.data?.message || 'Không thể cập nhật nhóm', 'error');
+      throw new Error(apiErr?.response?.data?.message || 'Không thể cập nhật nhóm');
     }
   };
 
@@ -83,10 +82,10 @@ export const ChatTab: React.FC<ChatTabProps> = ({
               if (isMobile) {
                 setMobileViewChat(true);
               }
-              showToast('Đã tạo/mở cuộc trò chuyện', 'success');
             } catch (err: unknown) {
+              // Shown in the "new conversation" modal, which stays open
               const apiErr = err as { response?: { data?: { message?: string } } };
-              showToast(apiErr?.response?.data?.message || 'Lỗi tạo cuộc trò chuyện', 'error');
+              throw new Error(apiErr?.response?.data?.message || 'Không thể tạo cuộc trò chuyện');
             }
           }}
           onDeleteConversation={async (convId) => {
@@ -98,10 +97,10 @@ export const ChatTab: React.FC<ChatTabProps> = ({
                   setMobileViewChat(false);
                 }
               }
-              showToast('Đã xóa cuộc trò chuyện', 'success');
             } catch (err: unknown) {
+              // Shown under the conversation in the list
               const apiErr = err as { response?: { data?: { message?: string } } };
-              showToast(apiErr?.response?.data?.message || 'Lỗi khi xóa', 'error');
+              throw new Error(apiErr?.response?.data?.message || 'Không thể xóa cuộc trò chuyện');
             }
           }}
         />
@@ -125,11 +124,16 @@ export const ChatTab: React.FC<ChatTabProps> = ({
           onSendMessage={chat.messagesHook.sendMessage}
           onRetryMessage={chat.messagesHook.retryMessage}
           onBackMobile={() => setMobileViewChat(false)}
-          onShowToast={showToast}
           currentUserId={chat.currentUser?._id || ''}
           messagesError={chat.messagesHook.error}
           onRefreshMessages={chat.messagesHook.refetch}
-          onRevokeMessage={(id) => chat.messagesHook.revokeMessage(id).catch(err => showToast(err?.response?.data?.message || 'Lỗi thu hồi tin nhắn', 'error'))}
+          onRevokeMessage={(id) =>
+            chat.messagesHook.revokeMessage(id).catch((err: unknown) => {
+              // Shown under the message
+              const apiErr = err as { response?: { data?: { message?: string } } };
+              throw new Error(apiErr?.response?.data?.message || 'Không thể thu hồi tin nhắn');
+            })
+          }
           onOpenGroupInfo={() => setGroupInfoFor(chat.activeConversationId)}
           onlineIds={chat.presence.onlineIds}
           typingUserIds={
@@ -143,8 +147,17 @@ export const ChatTab: React.FC<ChatTabProps> = ({
           isMuted={!!chat.activeConversationId && mutedConversationIds.has(chat.activeConversationId)}
           onToggleMute={() => {
             const id = chat.activeConversationId;
-            if (id) onSetMuted(id, !mutedConversationIds.has(id));
+            if (!id) return;
+            setMuteError(null);
+            onSetMuted(id, !mutedConversationIds.has(id)).catch((err: unknown) => {
+              setMuteError({
+                conversationId: id,
+                message: err instanceof Error && err.message ? err.message : 'Không thể thay đổi thông báo của cuộc trò chuyện',
+              });
+            });
           }}
+          muteError={muteError?.conversationId === chat.activeConversationId ? muteError.message : null}
+          onDismissMuteError={() => setMuteError(null)}
         />
       </div>
 
@@ -155,23 +168,23 @@ export const ChatTab: React.FC<ChatTabProps> = ({
           onlineIds={chat.presence.onlineIds}
           onClose={() => setGroupInfoFor(null)}
           onRename={(name) =>
-            runGroupAction(() => chat.renameGroup(groupInfoConversation._id, name), 'Đã đổi tên nhóm')
+            runGroupAction(() => chat.renameGroup(groupInfoConversation._id, name))
           }
           onAddMembers={(userIds) =>
-            runGroupAction(() => chat.addMembers(groupInfoConversation._id, userIds), 'Đã thêm thành viên')
+            runGroupAction(() => chat.addMembers(groupInfoConversation._id, userIds))
           }
           onRemoveMember={(userId) =>
-            runGroupAction(() => chat.removeMember(groupInfoConversation._id, userId), 'Đã xóa thành viên khỏi nhóm')
+            runGroupAction(() => chat.removeMember(groupInfoConversation._id, userId))
           }
           onTransferOwner={(userId) =>
-            runGroupAction(() => chat.transferOwner(groupInfoConversation._id, userId), 'Đã chuyển quyền trưởng nhóm')
+            runGroupAction(() => chat.transferOwner(groupInfoConversation._id, userId))
           }
           onLeave={() =>
             runGroupAction(async () => {
               await chat.leaveGroup(groupInfoConversation._id);
               setGroupInfoFor(null);
               if (isMobile) setMobileViewChat(false);
-            }, 'Đã rời nhóm')
+            })
           }
         />
       )}

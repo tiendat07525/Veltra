@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Bell, Moon, MessageSquare, Lock, Smartphone, Volume2 } from 'lucide-react';
+import { Bell, Moon, Sun, Monitor, MessageSquare, Lock, Smartphone, Volume2, UserCircle, LogOut } from 'lucide-react';
 import { useSettings } from '@/hooks/use-settings';
 import type { BrowserNotificationPermission } from '@/hooks/use-browser-notifications';
 import { authService } from '@/services/api/auth.service';
@@ -9,8 +9,9 @@ import { playNotificationSound } from '@/lib/notification-sound';
 import { ChangePasswordForm } from './ChangePasswordForm';
 import { TwoFactorSection } from './TwoFactorSection';
 import { TwoFactorStatus } from '@/types/auth';
+import { InlineError } from '@/components/ui/InlineError';
 
-type Section = 'appearance' | 'notifications' | 'chat' | 'security';
+type Section = 'appearance' | 'notifications' | 'chat' | 'security' | 'account';
 
 interface SettingsViewProps {
   theme: 'dark' | 'light' | 'system';
@@ -18,7 +19,8 @@ interface SettingsViewProps {
   settingsHook: ReturnType<typeof useSettings>;
   browserPermission: BrowserNotificationPermission;
   onRequestBrowserPermission: () => void;
-  showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+  // Sign out of this device (the only sign-out entry on mobile, where there is no left rail)
+  onLogout: () => void;
 }
 
 const SECTIONS: { id: Section; label: string; icon: React.ElementType }[] = [
@@ -26,6 +28,7 @@ const SECTIONS: { id: Section; label: string; icon: React.ElementType }[] = [
   { id: 'notifications', label: 'Thông báo', icon: Bell },
   { id: 'chat', label: 'Trò chuyện', icon: MessageSquare },
   { id: 'security', label: 'Bảo mật', icon: Lock },
+  { id: 'account', label: 'Tài khoản', icon: UserCircle },
 ];
 
 // "Chrome trên Windows" from a user agent string (display only)
@@ -58,6 +61,8 @@ function describeUserAgent(ua: string | null): string {
 
 const formatDateTime = (iso: string) => `${formatDate(iso)} · ${formatTime(iso)}`;
 
+type SettingKey = 'browser' | 'sound' | 'doNotDisturb' | 'enterToSend';
+
 interface ToggleRowProps {
   title: string;
   description: string;
@@ -65,24 +70,37 @@ interface ToggleRowProps {
   disabled?: boolean;
   onChange: (checked: boolean) => void;
   children?: React.ReactNode;
+  // Save failed for this toggle (it is switched back by useSettings)
+  error?: string | null;
+  onDismissError?: () => void;
 }
 
-const ToggleRow: React.FC<ToggleRowProps> = ({ title, description, checked, disabled, onChange, children }) => (
-  <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 space-y-2">
+const ToggleRow: React.FC<ToggleRowProps> = ({
+  title,
+  description,
+  checked,
+  disabled,
+  onChange,
+  children,
+  error,
+  onDismissError,
+}) => (
+  <div className="py-4 first:pt-0 last:pb-0 space-y-2">
     <label className="flex items-center justify-between gap-4 cursor-pointer">
       <div>
-        <h4 className="text-xs font-semibold text-slate-900 dark:text-white">{title}</h4>
-        <p className="text-[11px] text-slate-500">{description}</p>
+        <h4 className="text-xs font-semibold text-fg">{title}</h4>
+        <p className="text-[11px] text-fg-muted">{description}</p>
       </div>
       <input
         type="checkbox"
         checked={checked}
         disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
-        className="w-5 h-5 shrink-0 accent-sky-500 rounded cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+        className="w-5 h-5 shrink-0 accent-primary rounded cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
       />
     </label>
     {children}
+    <InlineError message={error} onDismiss={onDismissError} />
   </div>
 );
 
@@ -92,7 +110,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   settingsHook,
   browserPermission,
   onRequestBrowserPermission,
-  showToast,
+  onLogout,
 }) => {
   const [activeSection, setActiveSection] = useState<Section>('appearance');
   const [session, setSession] = useState<CurrentSession | null>(null);
@@ -119,106 +137,128 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       .catch(() => setTwoFactorLoadFailed(true));
   }
 
-  const save = (patch: UserSettingsPatch) => {
-    settingsHook.update(patch).catch(() => showToast('Không thể lưu cài đặt', 'error'));
+  const [saveError, setSaveError] = useState<SettingKey | null>(null);
+  const save = (key: SettingKey, patch: UserSettingsPatch) => {
+    setSaveError(null);
+    settingsHook.update(patch).catch(() => setSaveError(key));
   };
+  const toggleErrorProps = (key: SettingKey) => ({
+    error: saveError === key ? 'Không thể lưu cài đặt. Thử lại sau.' : null,
+    onDismissError: () => setSaveError(null),
+  });
 
-  const themeOption = (value: 'light' | 'dark' | 'system', icon: string, label: string) => (
+  const themeOption = (
+    value: 'light' | 'dark' | 'system',
+    Icon: React.ElementType,
+    label: string,
+    note?: string
+  ) => (
     <button
       type="button"
+      role="radio"
+      aria-checked={theme === value}
       onClick={() => onThemeChange(value)}
-      className={`p-4 rounded-2xl border flex flex-col items-center gap-2 text-xs font-medium transition-all ${
+      className={`p-3 sm:p-4 rounded-2xl border flex flex-col items-center gap-2 text-xs font-semibold text-center transition-colors ${
         theme === value
-          ? 'border-sky-500 bg-sky-50/50 dark:bg-sky-950/40 text-sky-500'
-          : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
+          ? 'border-primary bg-accent-soft text-accent'
+          : 'border-line text-fg hover:bg-surface-2'
       }`}
     >
-      <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xs flex items-center justify-center">
-        {icon}
-      </div>
+      <span
+        className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+          theme === value ? 'bg-surface text-accent' : 'bg-surface-2 text-fg-muted'
+        }`}
+      >
+        <Icon className="w-5 h-5" aria-hidden="true" />
+      </span>
       <span>{label}</span>
+      {note && <span className="-mt-1.5 text-[10px] font-medium text-fg-muted">{note}</span>}
     </button>
+  );
+  const sectionTitle = (title: string, description: string) => (
+    <div>
+      <h3 className="text-base font-bold text-fg">{title}</h3>
+      <p className="text-xs text-fg-muted mt-0.5">{description}</p>
+    </div>
   );
 
   return (
-    <div className="flex-1 h-full flex flex-col bg-slate-50 dark:bg-slate-950 overflow-hidden">
+    <div className="flex-1 h-full flex flex-col bg-app overflow-hidden">
       {/* Header */}
-      <header className="h-16 px-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center shrink-0">
-        <h1 className="text-xl font-bold text-slate-900 dark:text-white">Cài đặt</h1>
+      <header className="h-16 px-4 sm:px-6 border-b border-line bg-surface flex items-center shrink-0">
+        <h1 className="text-xl font-bold text-fg">Cài đặt</h1>
       </header>
 
-      <div className="flex-1 overflow-hidden flex flex-col md:flex-row max-w-6xl w-full mx-auto p-4 sm:p-6 gap-6">
+      <div className="flex-1 overflow-hidden flex flex-col md:flex-row max-w-6xl w-full mx-auto p-3 sm:p-6 gap-3 md:gap-6">
         {/* Section navigation */}
-        <div className="w-full md:w-60 flex md:flex-col gap-1 overflow-x-auto shrink-0">
+        {/* Mobile: 5 equal cells (icon above label), no sideways scrolling. Desktop: vertical list. */}
+        <div
+          className="w-full md:w-60 grid grid-cols-5 md:flex md:flex-col gap-1 shrink-0"
+          role="tablist"
+          aria-label="Mục cài đặt"
+        >
           {SECTIONS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               type="button"
+              role="tab"
+              aria-selected={activeSection === id}
               onClick={() => setActiveSection(id)}
-              className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-semibold text-left transition-all shrink-0 ${
-                activeSection === id
-                  ? 'bg-sky-500 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-900'
+              className={`flex flex-col md:flex-row items-center gap-1 md:gap-3 px-1 md:px-4 py-2 md:py-2.5 rounded-xl text-[10px] md:text-xs font-semibold md:text-left transition-colors ${
+                activeSection === id ? 'bg-accent-soft text-accent' : 'text-fg-muted hover:text-fg hover:bg-surface-2'
               }`}
             >
-              <Icon className="w-4 h-4" />
-              <span>{label}</span>
+              <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
+              <span className="leading-tight text-center md:text-left">{label}</span>
             </button>
           ))}
         </div>
 
         {/* Section detail */}
-        <div className="flex-1 overflow-y-auto bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-6 shadow-xs">
+        <div className="flex-1 overflow-y-auto bg-surface border border-line rounded-3xl p-4 sm:p-6">
           {activeSection === 'appearance' && (
             <div className="space-y-6">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">Chủ đề giao diện</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Chọn cách Veltra hiển thị trên thiết bị này.
-                </p>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                {themeOption('light', '☀️', 'Sáng')}
-                {themeOption('dark', '🌙', 'Tối (Mặc định)')}
-                {themeOption('system', '💻', 'Theo hệ thống')}
+              {sectionTitle('Chủ đề giao diện', 'Chọn cách Veltra hiển thị trên thiết bị này.')}
+              <div className="grid grid-cols-3 gap-2 sm:gap-3" role="radiogroup" aria-label="Chủ đề giao diện">
+                {themeOption('light', Sun, 'Sáng')}
+                {themeOption('dark', Moon, 'Tối')}
+                {themeOption('system', Monitor, 'Theo hệ thống', 'Mặc định')}
               </div>
             </div>
           )}
 
           {activeSection === 'notifications' && (
             <div className="space-y-5">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">Thông báo & Âm thanh</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Áp dụng cho mọi thiết bị bạn đăng nhập. Hội thoại đã tắt thông báo không phát âm thanh hay
-                  hiện thông báo.
-                </p>
-              </div>
+              {sectionTitle(
+                'Thông báo & Âm thanh',
+                'Áp dụng cho mọi thiết bị bạn đăng nhập. Hội thoại đã tắt thông báo không phát âm thanh hay hiện thông báo.'
+              )}
 
-              <div className="space-y-3">
+              <div className="divide-y divide-line">
                 <ToggleRow
                   title="Thông báo trình duyệt"
                   description="Hiện thông báo hệ thống khi Veltra đang ở tab ẩn (không kèm nội dung tin nhắn)"
                   checked={settings.notifications.browser}
                   disabled={!loaded}
-                  onChange={(browser) => save({ notifications: { browser } })}
+                  onChange={(browser) => save('browser', { notifications: { browser } })}
+                  {...toggleErrorProps('browser')}
                 >
                   {settings.notifications.browser && browserPermission === 'default' && (
                     <button
                       type="button"
                       onClick={onRequestBrowserPermission}
-                      className="px-3 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-[11px] font-medium"
+                      className="min-h-9 px-3 rounded-xl bg-primary hover:bg-primary-hover text-on-primary text-[11px] font-semibold"
                     >
                       Cho phép trên trình duyệt này
                     </button>
                   )}
                   {settings.notifications.browser && browserPermission === 'denied' && (
-                    <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                    <p className="text-[11px] text-amber-700 dark:text-amber-400">
                       Trình duyệt đang chặn thông báo của Veltra; hãy cho phép trong cài đặt trang của trình duyệt.
                     </p>
                   )}
                   {settings.notifications.browser && browserPermission === 'unsupported' && (
-                    <p className="text-[11px] text-slate-500">Trình duyệt này không hỗ trợ thông báo.</p>
+                    <p className="text-[11px] text-fg-muted">Trình duyệt này không hỗ trợ thông báo.</p>
                   )}
                 </ToggleRow>
 
@@ -227,14 +267,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   description="Khi tab bị ẩn hoặc tin nhắn thuộc hội thoại khác hội thoại đang mở"
                   checked={settings.notifications.sound}
                   disabled={!loaded}
-                  onChange={(sound) => save({ notifications: { sound } })}
+                  onChange={(sound) => save('sound', { notifications: { sound } })}
+                  {...toggleErrorProps('sound')}
                 >
                   <button
                     type="button"
                     onClick={playNotificationSound}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-[11px] font-medium"
+                    className="flex items-center gap-1.5 min-h-9 px-3 rounded-xl bg-surface-2 hover:bg-line text-fg text-[11px] font-semibold"
                   >
-                    <Volume2 className="w-3.5 h-3.5" />
+                    <Volume2 className="w-3.5 h-3.5" aria-hidden="true" />
                     Nghe thử
                   </button>
                 </ToggleRow>
@@ -244,7 +285,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   description="Tắt mọi âm thanh và thông báo trình duyệt; số chưa đọc vẫn hiển thị"
                   checked={settings.notifications.doNotDisturb}
                   disabled={!loaded}
-                  onChange={(doNotDisturb) => save({ notifications: { doNotDisturb } })}
+                  onChange={(doNotDisturb) => save('doNotDisturb', { notifications: { doNotDisturb } })}
+                  {...toggleErrorProps('doNotDisturb')}
                 />
               </div>
             </div>
@@ -252,10 +294,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           {activeSection === 'chat' && (
             <div className="space-y-5">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">Trò chuyện</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Cách gõ và gửi tin nhắn.</p>
-              </div>
+              {sectionTitle('Trò chuyện', 'Cách gõ và gửi tin nhắn.')}
               <ToggleRow
                 title="Nhấn Enter để gửi"
                 description={
@@ -265,53 +304,67 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 }
                 checked={settings.chat.enterToSend}
                 disabled={!loaded}
-                onChange={(enterToSend) => save({ chat: { enterToSend } })}
+                onChange={(enterToSend) => save('enterToSend', { chat: { enterToSend } })}
+                {...toggleErrorProps('enterToSend')}
               />
             </div>
           )}
 
           {activeSection === 'security' && (
             <div className="space-y-5">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">Bảo mật</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Mỗi tài khoản chỉ có một phiên đăng nhập: đăng nhập ở nơi khác sẽ đăng xuất phiên này.
-                </p>
+              {sectionTitle(
+                'Bảo mật',
+                'Mỗi tài khoản chỉ có một phiên đăng nhập: đăng nhập ở nơi khác sẽ đăng xuất phiên này.'
+              )}
+
+              {/* Sub-sections separated by lines, no boxes inside the card */}
+              <div className="divide-y divide-line">
+                <div className="pb-5 flex items-start gap-3">
+                  <Smartphone className="w-5 h-5 text-accent shrink-0 mt-0.5" aria-hidden="true" />
+                  {session ? (
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-fg">
+                        {describeUserAgent(session.userAgent)} (phiên hiện tại)
+                      </p>
+                      <p className="text-[11px] text-fg-muted">
+                        Đăng nhập {formatDateTime(session.createdAt)} · Hết hạn {formatDateTime(session.expiresAt)}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-fg-muted">Đang tải thông tin phiên…</p>
+                  )}
+                </div>
+
+                <TwoFactorSection
+                  status={twoFactor}
+                  loadFailed={twoFactorLoadFailed}
+                  onChanged={loadTwoFactor}
+                />
+
+                <ChangePasswordForm
+                  twoFactorEnabled={!!twoFactor?.enabled}
+                  onSuccess={() => {
+                    // The session was replaced: show the new one
+                    authService.getSession().then(setSession).catch(() => {});
+                    // A backup code may have been used
+                    loadTwoFactor();
+                  }}
+                />
               </div>
+            </div>
+          )}
 
-              <div className="p-3 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center gap-3">
-                <Smartphone className="w-5 h-5 text-sky-500 shrink-0" />
-                {session ? (
-                  <div>
-                    <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                      {describeUserAgent(session.userAgent)} (phiên hiện tại)
-                    </p>
-                    <p className="text-[11px] text-slate-500">
-                      Đăng nhập {formatDateTime(session.createdAt)} · Hết hạn {formatDateTime(session.expiresAt)}
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-500">Đang tải thông tin phiên…</p>
-                )}
-              </div>
-
-              <TwoFactorSection
-                status={twoFactor}
-                loadFailed={twoFactorLoadFailed}
-                onChanged={loadTwoFactor}
-                showToast={showToast}
-              />
-
-              <ChangePasswordForm
-                twoFactorEnabled={!!twoFactor?.enabled}
-                onSuccess={(message) => {
-                  showToast(message, 'success');
-                  // The session was replaced: show the new one
-                  authService.getSession().then(setSession).catch(() => {});
-                  // A backup code may have been used
-                  loadTwoFactor();
-                }}
-              />
+          {activeSection === 'account' && (
+            <div className="space-y-5">
+              {sectionTitle('Tài khoản', 'Đăng xuất khỏi Veltra trên thiết bị này.')}
+              <button
+                type="button"
+                onClick={onLogout}
+                className="flex items-center gap-2 min-h-10 px-4 rounded-xl border border-line text-xs font-semibold text-danger hover:bg-danger-soft transition-colors"
+              >
+                <LogOut className="w-4 h-4" aria-hidden="true" />
+                Đăng xuất
+              </button>
             </div>
           )}
         </div>

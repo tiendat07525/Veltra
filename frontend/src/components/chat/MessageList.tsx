@@ -17,7 +17,7 @@ interface MessageListProps {
   hasMoreMessages: boolean;
   loadingMore: boolean;
   onLoadMore?: () => void;
-  onRevokeMessage?: (id: string) => void;
+  onRevokeMessage?: (id: string) => Promise<void>;
   onRetryMessage?: (clientMsgId: string) => void;
   onOpenImage: (url: string, name: string) => void;
 }
@@ -107,41 +107,41 @@ export const MessageList: React.FC<MessageListProps> = ({
     <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-3">
       {loadingMessages ? (
         <div className="flex items-center justify-center h-full">
-          <Loader2 className="w-6 h-6 animate-spin text-sky-500" />
-          <span className="ml-2 text-xs text-slate-400">Đang tải tin nhắn...</span>
+          <Loader2 className="w-6 h-6 animate-spin text-primary" aria-hidden="true" />
+          <span className="ml-2 text-xs text-fg-muted">Đang tải tin nhắn...</span>
         </div>
       ) : messagesError ? (
-        <div className="flex flex-col items-center justify-center h-full text-slate-400">
-          <AlertCircle className="w-8 h-8 text-rose-400 mb-2" />
-          <p className="text-xs text-rose-400 mb-2">{messagesError}</p>
+        <div className="flex flex-col items-center justify-center h-full text-center" role="alert">
+          <AlertCircle className="w-8 h-8 text-danger mb-2" aria-hidden="true" />
+          <p className="text-xs text-danger mb-2">{messagesError}</p>
           <button
             onClick={onRefreshMessages}
-            className="flex items-center gap-1 text-xs text-sky-400 hover:underline"
+            className="flex items-center gap-1 min-h-9 px-3 rounded-xl text-xs font-semibold text-accent hover:bg-accent-soft"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             Thử lại
           </button>
         </div>
       ) : messages.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-full text-slate-400">
-          <MessageSquare className="w-8 h-8 opacity-40 mb-2" />
+        <div className="flex flex-col items-center justify-center h-full text-center text-fg-muted">
+          <MessageSquare className="w-8 h-8 opacity-50 mb-2" aria-hidden="true" />
           <p className="text-xs">Chưa có tin nhắn nào. Hãy gửi tin nhắn đầu tiên!</p>
         </div>
       ) : (
         <>
           {loadingMore ? (
-            <div className="flex items-center justify-center py-2 text-xs text-slate-400">
-              <Loader2 className="w-4 h-4 animate-spin text-sky-500" />
+            <div className="flex items-center justify-center py-2 text-xs text-fg-muted">
+              <Loader2 className="w-4 h-4 animate-spin text-primary" aria-hidden="true" />
               <span className="ml-2">Đang tải tin cũ…</span>
             </div>
           ) : !hasMoreMessages ? (
-            <p className="py-2 text-center text-[11px] text-slate-400 select-none">Đầu cuộc trò chuyện</p>
+            <p className="py-2 text-center text-[11px] text-fg-muted select-none">Đầu cuộc trò chuyện</p>
           ) : null}
           {groupedMessages.map((group) => (
             <div key={group.date}>
               {/* Date separator */}
               <div className="flex items-center justify-center my-4">
-                <span className="px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-[11px] font-medium text-slate-500">
+                <span className="px-3 py-1 rounded-full bg-surface-2 text-[11px] font-medium text-fg-muted">
                   {group.date}
                 </span>
               </div>

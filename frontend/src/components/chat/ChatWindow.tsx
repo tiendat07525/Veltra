@@ -8,6 +8,7 @@ import { ImageViewerModal } from './ImageViewerModal';
 import { ChatHeader } from './ChatHeader';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
+import { InlineError } from '@/components/ui/InlineError';
 
 interface ChatWindowProps {
   conversation: Conversation | null;
@@ -22,11 +23,11 @@ interface ChatWindowProps {
   onSendMessage: (content: string, files: File[]) => void;
   onRetryMessage?: (clientMsgId: string) => void;
   onBackMobile: () => void;
-  onShowToast: (msg: string, type?: 'success' | 'info' | 'error') => void;
   currentUserId: string;
   messagesError: string | null;
   onRefreshMessages: () => void;
-  onRevokeMessage?: (id: string) => void;
+  // Rejects with an Error shown under the message
+  onRevokeMessage?: (id: string) => Promise<void>;
   // Groups only: opens the group info panel
   onOpenGroupInfo?: () => void;
   // Presence / typing (usePresence)
@@ -37,6 +38,9 @@ interface ChatWindowProps {
   enterToSend?: boolean;
   isMuted?: boolean;
   onToggleMute?: () => void;
+  // Failed mute / unmute of this conversation, shown under the header
+  muteError?: string | null;
+  onDismissMuteError?: () => void;
 }
 
 // The open conversation: header, history, composer, and the image viewer they share
@@ -52,7 +56,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   onSendMessage,
   onRetryMessage,
   onBackMobile,
-  onShowToast,
   currentUserId,
   messagesError,
   onRefreshMessages,
@@ -65,31 +68,34 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   enterToSend,
   isMuted,
   onToggleMute,
+  muteError,
+  onDismissMuteError,
 }) => {
   const [viewer, setViewer] = useState<{ url: string; name: string } | null>(null);
 
   // Empty state
   if (!conversation) {
     return (
-      <div className="flex-1 h-full flex flex-col bg-slate-50 dark:bg-slate-950">
-        <header className="h-16 px-4 md:px-6 border-b border-slate-200/80 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 backdrop-blur-md flex items-center shrink-0 md:hidden">
+      <div className="flex-1 h-full flex flex-col bg-app">
+        <header className="h-16 px-2 border-b border-line bg-surface flex items-center shrink-0 md:hidden">
           <button
             type="button"
             onClick={onBackMobile}
-            className="p-2 -ml-2 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-xl transition-colors"
+            className="p-2.5 text-fg-muted hover:text-fg hover:bg-surface-2 rounded-xl transition-colors"
+            aria-label="Quay lại danh sách"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <span className="ml-2 font-bold text-slate-800 dark:text-white">Tin nhắn</span>
+          <span className="ml-1 font-bold text-fg">Tin nhắn</span>
         </header>
-        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400">
-          <div className="w-16 h-16 rounded-3xl bg-sky-500/10 text-sky-500 flex items-center justify-center mb-4">
-            <MessageSquare className="w-8 h-8 stroke-[1.75]" />
+        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+          <div className="w-16 h-16 rounded-3xl bg-accent-soft text-accent flex items-center justify-center mb-4">
+            <MessageSquare className="w-8 h-8 stroke-[1.75]" aria-hidden="true" />
           </div>
-          <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-1">
+          <h3 className="text-lg font-bold text-fg mb-1">
             Chưa chọn cuộc trò chuyện nào
           </h3>
-          <p className="text-xs max-w-sm text-slate-500 leading-relaxed">
+          <p className="text-xs max-w-sm text-fg-muted leading-relaxed">
             Chọn một cuộc trò chuyện từ danh sách hoặc bắt đầu tin nhắn mới.
           </p>
         </div>
@@ -98,7 +104,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   }
 
   return (
-    <div className="flex-1 h-full flex flex-col min-w-0 bg-white dark:bg-slate-950">
+    <div className="flex-1 h-full flex flex-col min-w-0 bg-surface">
       <ChatHeader
         conversation={conversation}
         conversationName={conversationName}
@@ -110,6 +116,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         isMuted={isMuted}
         onToggleMute={onToggleMute}
       />
+      <InlineError message={muteError} onDismiss={onDismissMuteError} className="mx-4 mt-2 shrink-0" />
 
       <MessageList
         conversation={conversation}
@@ -130,7 +137,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         conversation={conversation}
         conversationName={conversationName}
         onSendMessage={onSendMessage}
-        onShowToast={onShowToast}
         typingUserIds={typingUserIds}
         onTyping={onTyping}
         onStopTyping={onStopTyping}

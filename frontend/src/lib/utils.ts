@@ -2,26 +2,42 @@ export function cn(...classes: (string | boolean | undefined | null)[]): string 
   return classes.filter(Boolean).join(' ');
 }
 
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+// 24h "17:14" in the viewer's local time (built by hand: vi-VN Intl output varies by engine)
 export function formatTime(dateStr: string): string {
   try {
     const d = new Date(dateStr);
     if (isNaN(d.getTime())) return dateStr;
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
   } catch {
     return dateStr;
   }
 }
 
+// "Hôm nay" / "Hôm qua" / "25/11" (+ "/2025" for another year), local time
 export function formatDate(dateStr: string): string {
   try {
     const d = new Date(dateStr);
     if (isNaN(d.getTime())) return dateStr;
     const today = new Date();
-    if (d.toDateString() === today.toDateString()) return 'Today';
+    if (d.toDateString() === today.toDateString()) return 'Hôm nay';
     const yesterday = new Date(today);
     yesterday.setDate(today.getDate() - 1);
-    if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
-    return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: d.getFullYear() !== today.getFullYear() ? 'numeric' : undefined });
+    if (d.toDateString() === yesterday.toDateString()) return 'Hôm qua';
+    const dm = `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}`;
+    return d.getFullYear() === today.getFullYear() ? dm : `${dm}/${d.getFullYear()}`;
+  } catch {
+    return dateStr;
+  }
+}
+
+// Conversation list: "17:14" today, otherwise the day ("Hôm qua", "25/11")
+export function formatListTime(dateStr: string): string {
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toDateString() === new Date().toDateString() ? formatTime(dateStr) : formatDate(dateStr);
   } catch {
     return dateStr;
   }

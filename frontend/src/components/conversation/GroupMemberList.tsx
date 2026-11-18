@@ -41,7 +41,7 @@ export const GroupMemberList: React.FC<GroupMemberListProps> = ({
 
   return (
     <section>
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">Thành viên</p>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-fg-muted mb-2">Thành viên</p>
       <ul className="space-y-1">
         {sortedMembers.map((member) => {
           const memberIsOwner = member._id === ownerId;
@@ -49,7 +49,7 @@ export const GroupMemberList: React.FC<GroupMemberListProps> = ({
           return (
             <li
               key={member._id}
-              className="flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/60"
+              className="flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-surface-2"
             >
               <UserAvatar
                 src={member.avatarUrl}
@@ -59,13 +59,13 @@ export const GroupMemberList: React.FC<GroupMemberListProps> = ({
                 showStatus={!!onlineIds?.has(member._id)}
               />
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate">
+                <p className="text-xs font-semibold text-fg truncate">
                   {nameOf(member)}
-                  {isMe && <span className="ml-1 font-normal text-slate-400">(Bạn)</span>}
+                  {isMe && <span className="ml-1 font-normal text-fg-muted">(Bạn)</span>}
                 </p>
                 {memberIsOwner && (
-                  <p className="flex items-center gap-1 text-[10px] text-amber-500">
-                    <Crown className="w-3 h-3" /> Trưởng nhóm
+                  <p className="flex items-center gap-1 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                    <Crown className="w-3 h-3" aria-hidden="true" /> Trưởng nhóm
                   </p>
                 )}
               </div>
@@ -75,21 +75,21 @@ export const GroupMemberList: React.FC<GroupMemberListProps> = ({
                     type="button"
                     onClick={() => onTransfer(member)}
                     disabled={busy}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-amber-500 hover:bg-amber-500/10"
+                    className="p-2 rounded-lg text-fg-muted hover:text-amber-700 dark:hover:text-amber-400 hover:bg-amber-500/10"
                     title="Chuyển quyền trưởng nhóm"
                     aria-label={`Chuyển quyền trưởng nhóm cho ${nameOf(member)}`}
                   >
-                    <Crown className="w-3.5 h-3.5" />
+                    <Crown className="w-3.5 h-3.5" aria-hidden="true" />
                   </button>
                   <button
                     type="button"
                     onClick={() => onRemove(member)}
                     disabled={busy}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-500/10"
+                    className="p-2 rounded-lg text-fg-muted hover:text-danger hover:bg-danger-soft"
                     title="Xóa khỏi nhóm"
                     aria-label={`Xóa ${nameOf(member)} khỏi nhóm`}
                   >
-                    <UserMinus className="w-3.5 h-3.5" />
+                    <UserMinus className="w-3.5 h-3.5" aria-hidden="true" />
                   </button>
                 </div>
               )}
