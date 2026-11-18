@@ -1,0 +1,13 @@
+[Unit]
+Description=Delete Cloudinary uploads no Veltra message references (older than 24 h, max 500 per run)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=dat07525
+WorkingDirectory=/home/dat07525/VeltraV2/backend
+# Reads MONGODB_URL and CLOUDINARY_URL from backend/.env
+ExecStart=/usr/bin/env node dist/maintenance/cleanup-uploads.js --apply
+TimeoutStartSec=30min
+Nice=10

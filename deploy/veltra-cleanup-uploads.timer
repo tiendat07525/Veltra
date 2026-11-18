@@ -1,0 +1,10 @@
+[Unit]
+Description=Clean up orphaned Veltra uploads every day at 04:00
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
