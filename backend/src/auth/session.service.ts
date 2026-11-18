@@ -50,6 +50,12 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  // Health check: throws when Redis does not answer (the caller applies a timeout)
+  async ping(): Promise<void> {
+    if (!this.client?.isOpen) throw new Error('Redis client is not open');
+    await this.client.ping();
+  }
+
   async createSession(
     userId: string,
     sessionId: string,

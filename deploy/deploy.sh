@@ -68,10 +68,15 @@ check_port() {
   [[ "$code" != "000" && "$code" != 5* ]]
 }
 
+# Backend: GET /health = 200 only when MongoDB and Redis both answer
+check_backend() {
+  [[ "$(curl -s -o /dev/null -m 5 -w '%{http_code}' "http://127.0.0.1:4000/health" || true)" == "200" ]]
+}
+
 echo "== Health check"
 healthy=0
 for _ in $(seq 1 15); do
-  if check_port 3000 && check_port 4000; then healthy=1; break; fi
+  if check_port 3000 && check_backend; then healthy=1; break; fi
   sleep 2
 done
 [[ $healthy -eq 1 ]] || { echo "App không phản hồi sau 30s"; false; }
