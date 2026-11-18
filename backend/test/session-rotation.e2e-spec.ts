@@ -80,6 +80,8 @@ describe('Refresh Token Rotation Concurrency (Real Redis E2E)', () => {
       mockJwtService as any,
       sessionService,
       mockRealtimeService as any,
+      // 2FA off: login opens the session directly
+      { isEnabled: () => Promise.resolve(false) } as any,
     );
   });
 
@@ -92,10 +94,14 @@ describe('Refresh Token Rotation Concurrency (Real Redis E2E)', () => {
   });
 
   const login = async () => {
-    const { refreshTokenString } = await authService.login({
+    const result = await authService.login({
       username: 'rotation-user',
       password: 'password123',
     });
+    if (!('refreshTokenString' in result)) {
+      throw new Error('expected a session, got a 2FA challenge');
+    }
+    const { refreshTokenString } = result;
     // Login itself disconnects prior sockets (single-session policy); ignore that call
     mockRealtimeService.disconnectUser.mockClear();
     return refreshTokenString;

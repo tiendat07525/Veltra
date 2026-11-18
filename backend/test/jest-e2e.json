@@ -4,8 +4,24 @@
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
   "transform": {
-    "^.+\\.(t|j)s$": "ts-jest"
+    "^.+\\.ts$": "ts-jest",
+    "/node_modules/(.*/node_modules/)?(@scure/base|@noble/hashes)/.+\\.js$": [
+      "ts-jest",
+      {
+        "isolatedModules": true,
+        "tsconfig": {
+          "allowJs": true,
+          "module": "commonjs",
+          "moduleResolution": "node10",
+          "verbatimModuleSyntax": false
+        }
+      }
+    ],
+    "^.+\\.js$": "ts-jest"
   },
+  "transformIgnorePatterns": [
+    "/node_modules/(?!(.*/node_modules/)?(@scure/base|@noble/hashes)/)"
+  ],
   "moduleNameMapper": {
     "^src/(.*)$": "<rootDir>/../src/$1"
   }

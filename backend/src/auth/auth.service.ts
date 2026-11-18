@@ -17,6 +17,7 @@ import { RealtimeService } from 'src/realtime/realtime.service';
 import { forwardRef, Inject } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { isDuplicateKeyError } from '../common/mongo-errors';
+import { TwoFactorService } from './two-factor/two-factor.service';
 
 // Same message for every conflict so the response does not reveal which field is taken
 const REGISTER_CONFLICT_MESSAGE = 'Email hoặc username đã được sử dụng';
@@ -37,6 +38,7 @@ export class AuthService {
     private readonly sessionService: SessionService,
     @Inject(forwardRef(() => RealtimeService))
     private readonly realtimeService: RealtimeService,
+    private readonly twoFactorService: TwoFactorService,
   ) {}
 
   async register(registerDto: RegisterDto) {
@@ -77,6 +79,36 @@ export class AuthService {
       throw new UnauthorizedException('Username hoặc mật khẩu không chính xác');
     }
 
+    // 2FA on: no session yet (other devices stay signed in), only a one-time challenge
+    if (await this.twoFactorService.isEnabled(user._id)) {
+      const challengeToken = await this.twoFactorService.createLoginChallenge(
+        user._id.toString(),
+      );
+      return {
+        message: 'Cần mã xác thực 2 bước',
+        twoFactorRequired: true as const,
+        challengeToken,
+      };
+    }
+
+    return this.createSessionAndTokens(user, userAgent, ipAddress);
+  }
+
+  // Second step of a 2FA login: the challenge from login + a TOTP or backup code
+  async completeTwoFactorLogin(
+    challengeToken: string,
+    code: string,
+    userAgent?: string,
+    ipAddress?: string,
+  ) {
+    const userId = await this.twoFactorService.completeLoginChallenge(
+      challengeToken,
+      code,
+    );
+    const user = await this.usersService.findByIdWithPassword(userId);
+    if (!user) {
+      throw new UnauthorizedException('Người dùng không tồn tại');
+    }
     return this.createSessionAndTokens(user, userAgent, ipAddress);
   }
 
@@ -215,6 +247,15 @@ export class AuthService {
     }
     if (await bcrypt.compare(dto.newPassword, user.password)) {
       throw new BadRequestException('Mật khẩu mới phải khác mật khẩu hiện tại');
+    }
+    // 2FA on: a TOTP or backup code too (checked last, so a wrong password does not use it up)
+    if (await this.twoFactorService.isEnabled(user._id)) {
+      if (!dto.code) {
+        throw new BadRequestException('Cần mã xác thực 2 bước');
+      }
+      if (!(await this.twoFactorService.verifyCode(userId, dto.code))) {
+        throw new BadRequestException('Mã xác thực không đúng');
+      }
     }
 
     const passwordHash = await bcrypt.hash(dto.newPassword, 10);

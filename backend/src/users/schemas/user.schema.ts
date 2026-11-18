@@ -50,6 +50,38 @@ export class UserSettings {
 
 export const UserSettingsSchema = SchemaFactory.createForClass(UserSettings);
 
+// Two-step verification (TOTP). Read and written only by TwoFactorService; `select: false`.
+// Secrets are AES-256-GCM encrypted with TWO_FACTOR_ENCRYPTION_KEY (TwoFactorCryptoService).
+@Schema({ _id: false })
+export class TwoFactor {
+  @Prop({ type: Boolean, default: false })
+  enabled: boolean;
+
+  // Encrypted TOTP secret, set once the first code was confirmed
+  @Prop({ type: String })
+  secret?: string;
+
+  @Prop({ type: Date })
+  enabledAt?: Date;
+
+  // Encrypted secret shown during setup, not active until confirmed (expires after 10 min)
+  @Prop({ type: String })
+  pendingSecret?: string;
+
+  @Prop({ type: Date })
+  pendingCreatedAt?: Date;
+
+  // SHA-256 hex of the unused backup codes (each usable once)
+  @Prop({ type: [String], default: [] })
+  backupCodes: string[];
+
+  // Last accepted TOTP time step: a code is never accepted twice
+  @Prop({ type: Number })
+  lastUsedStep?: number;
+}
+
+export const TwoFactorSchema = SchemaFactory.createForClass(TwoFactor);
+
 @Schema({
   timestamps: true,
 })
@@ -111,6 +143,10 @@ export class User {
   // Absent on users created before feature/user-settings: defaults are filled in when read
   @Prop({ type: UserSettingsSchema, default: () => ({}), select: false })
   settings?: UserSettings;
+
+  // Absent = two-step verification never set up
+  @Prop({ type: TwoFactorSchema, select: false })
+  twoFactor?: TwoFactor;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
