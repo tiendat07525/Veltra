@@ -3,7 +3,7 @@ import { JwtStrategy, JwtPayload } from '../src/auth/jwt.strategy';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from 'src/users/users.service';
 import { SessionService } from '../src/auth/session.service';
-import { UnauthorizedException } from '@nestjs/common';
+import { NotFoundException, UnauthorizedException } from '@nestjs/common';
 
 describe('JwtStrategy (Token Validation & Session Revocation - FULLAUDIT-005)', () => {
   let strategy: JwtStrategy;
@@ -165,7 +165,10 @@ describe('JwtStrategy (Token Validation & Session Revocation - FULLAUDIT-005)', 
 
     it('should throw UnauthorizedException when user does not exist in database', async () => {
       mockSessionService.getSession.mockResolvedValue(activeSession);
-      mockUsersService.findOne.mockResolvedValue(null);
+      // What UsersService.findOne really does for a missing user
+      mockUsersService.findOne.mockRejectedValue(
+        new NotFoundException('User không tồn tại'),
+      );
 
       const payload = {
         id: 'nonexistentUser',
@@ -175,6 +178,16 @@ describe('JwtStrategy (Token Validation & Session Revocation - FULLAUDIT-005)', 
       await expect(strategy.validate(payload)).rejects.toThrow(
         new UnauthorizedException('Người dùng không tồn tại'),
       );
+    });
+
+    it('should not turn a database error into 401', async () => {
+      mockSessionService.getSession.mockResolvedValue(activeSession);
+      const dbError = new Error('MongoServerSelectionError');
+      mockUsersService.findOne.mockRejectedValue(dbError);
+
+      await expect(
+        strategy.validate({ id: 'user123', sessionId: 'sess_abc123' }),
+      ).rejects.toBe(dbError);
     });
   });
 });
