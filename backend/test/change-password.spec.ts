@@ -15,6 +15,8 @@ import { UsersService } from '../src/users/users.service';
 import { RealtimeService } from '../src/realtime/realtime.service';
 import { ChangePasswordDto } from '../src/auth/dto/change-password.dto';
 import { TwoFactorService } from '../src/auth/two-factor/two-factor.service';
+import { AttemptLimitService } from '../src/auth/attempt-limit.service';
+import { fakeAttemptLimit } from './helpers/attempt-limit';
 
 describe('AuthService.changePassword / getCurrentSession', () => {
   let service: AuthService;
@@ -56,6 +58,7 @@ describe('AuthService.changePassword / getCurrentSession', () => {
         { provide: SessionService, useValue: mockSessionService },
         { provide: RealtimeService, useValue: mockRealtimeService },
         { provide: TwoFactorService, useValue: mockTwoFactorService },
+        { provide: AttemptLimitService, useValue: fakeAttemptLimit() },
       ],
     }).compile();
     service = module.get(AuthService);

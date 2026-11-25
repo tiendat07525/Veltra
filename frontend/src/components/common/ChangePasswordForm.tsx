@@ -3,6 +3,7 @@ import { Check, Loader2 } from 'lucide-react';
 import { authService } from '@/services/api/auth.service';
 import { useCopyFeedback } from '@/hooks/use-copy-feedback';
 import { InlineError } from '@/components/ui/InlineError';
+import { apiErrorText } from '@/lib/api-error';
 
 interface ChangePasswordFormProps {
   // Called after the password changed (the button shows "Đã đổi" for 2 s)
@@ -55,13 +56,7 @@ export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({ onSucces
       done.flash();
       onSuccess();
     } catch (err: unknown) {
-      const apiErr = err as { response?: { status?: number; data?: { message?: string | string[] } } };
-      const message = apiErr.response?.data?.message;
-      setError(
-        apiErr.response?.status === 429
-          ? 'Thử lại quá nhiều lần, vui lòng đợi một phút'
-          : (Array.isArray(message) ? message[0] : message) || 'Không thể đổi mật khẩu'
-      );
+      setError(apiErrorText(err, 'Không thể đổi mật khẩu'));
     } finally {
       setSubmitting(false);
     }

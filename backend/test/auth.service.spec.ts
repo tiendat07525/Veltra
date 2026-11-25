@@ -7,6 +7,8 @@ import { RealtimeService } from 'src/realtime/realtime.service';
 import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { TwoFactorService } from '../src/auth/two-factor/two-factor.service';
+import { AttemptLimitService } from '../src/auth/attempt-limit.service';
+import { fakeAttemptLimit } from './helpers/attempt-limit';
 
 describe('AuthService (Security & Registration)', () => {
   let service: AuthService;
@@ -63,6 +65,7 @@ describe('AuthService (Security & Registration)', () => {
           useValue: mockRealtimeService,
         },
         { provide: TwoFactorService, useValue: mockTwoFactorService },
+        { provide: AttemptLimitService, useValue: fakeAttemptLimit() },
       ],
     }).compile();
 

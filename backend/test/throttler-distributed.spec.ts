@@ -193,6 +193,20 @@ describe('Distributed Rate Limiting (FULLAUDIT-008)', () => {
       expect(tracker).toBe('203.0.113.195');
     });
 
+    it.each([
+      ['2001:db8:1:2:3:4:5:6', '2001:db8:1:2::/64'],
+      ['2001:db8:1:2::9', '2001:db8:1:2::/64'],
+      ['2001:db8:1:3::9', '2001:db8:1:3::/64'],
+      ['::ffff:203.0.113.7', '203.0.113.7'],
+      ['::1', '::1'],
+    ])('should group IPv6 clients by /64: %s → %s', async (ip, expected) => {
+      const tracker = await (guard as any).getTracker({
+        originalUrl: '/auth/login',
+        ip,
+      });
+      expect(tracker).toBe(expected);
+    });
+
     it('should extract anonymized sessionId hash for valid /auth/refresh request without exposing raw token', async () => {
       const rawSecretToken = 'superSecretCryptographicRawTokenValue987654321';
       const sessionId = 'session-uuid-1234-abcd';

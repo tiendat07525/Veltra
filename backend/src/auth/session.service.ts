@@ -87,6 +87,60 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
     return (await this.client.del(`2fa:challenge:${tokenHash}`)) === 1;
   }
 
+  // ── Wrong attempts per account (AttemptLimitService): counter with a fixed window ──
+
+  // 0 = attempt counted on every limit; otherwise nothing is counted and the result is the
+  // time (ms) until the last reached limit reopens
+  async takeAttempt(
+    limits: { key: string; max: number; windowSeconds: number }[],
+  ): Promise<number> {
+    const luaScript = `
+      local wait = 0
+      for i = 1, #KEYS do
+        local count = tonumber(redis.call('GET', KEYS[i]) or '0')
+        if count >= tonumber(ARGV[2 * i - 1]) then
+          local pttl = redis.call('PTTL', KEYS[i])
+          if pttl < 0 then
+            pttl = tonumber(ARGV[2 * i])
+            redis.call('PEXPIRE', KEYS[i], pttl)
+          end
+          wait = math.max(wait, pttl, 1)
+        end
+      end
+      if wait > 0 then return wait end
+      for i = 1, #KEYS do
+        if redis.call('INCR', KEYS[i]) == 1 then
+          redis.call('PEXPIRE', KEYS[i], tonumber(ARGV[2 * i]))
+        end
+      end
+      return 0
+    `;
+    const wait = await this.client.eval(luaScript, {
+      keys: limits.map((l) => l.key),
+      arguments: limits.flatMap((l) => [
+        l.max.toString(),
+        (l.windowSeconds * 1000).toString(),
+      ]),
+    });
+    return Number(wait);
+  }
+
+  // The attempt was not a wrong one. Never below 0, never re-creates an expired counter
+  async giveBackAttempt(limits: { key: string }[]): Promise<void> {
+    const luaScript = `
+      for i = 1, #KEYS do
+        local count = tonumber(redis.call('GET', KEYS[i]) or '0')
+        if count > 0 then redis.call('DECR', KEYS[i]) end
+      end
+      return 0
+    `;
+    await this.client.eval(luaScript, { keys: limits.map((l) => l.key) });
+  }
+
+  async clearAttempts(key: string): Promise<void> {
+    await this.client.del(key);
+  }
+
   // Health check: throws when Redis does not answer (the caller applies a timeout)
   async ping(): Promise<void> {
     if (!this.client?.isOpen) throw new Error('Redis client is not open');

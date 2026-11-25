@@ -7,6 +7,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { JwtStrategy } from './jwt.strategy';
 import { PassportModule } from '@nestjs/passport';
 import { SessionService } from './session.service';
+import { AttemptLimitService } from './attempt-limit.service';
 import { RealtimeModule } from 'src/realtime/realtime.module';
 import { forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
@@ -43,6 +44,7 @@ import { TwoFactorCryptoService } from './two-factor/two-factor-crypto.service';
     AuthService,
     JwtStrategy,
     SessionService,
+    AttemptLimitService,
     TwoFactorService,
     TwoFactorCryptoService,
   ],

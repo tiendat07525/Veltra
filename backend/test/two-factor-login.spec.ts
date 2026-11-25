@@ -10,6 +10,8 @@ import { SessionService } from '../src/auth/session.service';
 import { UsersService } from '../src/users/users.service';
 import { RealtimeService } from '../src/realtime/realtime.service';
 import { TwoFactorService } from '../src/auth/two-factor/two-factor.service';
+import { AttemptLimitService } from '../src/auth/attempt-limit.service';
+import { fakeAttemptLimit } from './helpers/attempt-limit';
 import { TwoFactorController } from '../src/auth/two-factor/two-factor.controller';
 
 describe('AuthService two-step login', () => {
@@ -53,6 +55,7 @@ describe('AuthService two-step login', () => {
         { provide: SessionService, useValue: mockSessionService },
         { provide: RealtimeService, useValue: mockRealtimeService },
         { provide: TwoFactorService, useValue: mockTwoFactorService },
+        { provide: AttemptLimitService, useValue: fakeAttemptLimit() },
       ],
     }).compile();
     service = module.get(AuthService);

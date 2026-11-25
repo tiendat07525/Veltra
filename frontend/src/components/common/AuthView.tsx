@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Radio, Mail, Lock, User, ArrowRight, ArrowLeft, ShieldCheck, KeyRound, Loader2, CheckCircle2 } from 'lucide-react';
 import { authService } from '@/services/api/auth.service';
 import { InlineError } from '@/components/ui/InlineError';
+import { apiErrorText } from '@/lib/api-error';
 
 interface AuthViewProps {
   initialMode?: 'login' | 'register';
@@ -42,12 +43,11 @@ export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLog
       await authService.loginTwoFactor(challengeToken, code.trim());
       onLoginSuccess();
     } catch (err: unknown) {
-      const apiErr = err as { response?: { status?: number; data?: { message?: string | string[] } } };
-      const rawMsg = apiErr?.response?.data?.message;
-      const msg = (Array.isArray(rawMsg) ? rawMsg[0] : rawMsg) || 'Đã xảy ra lỗi. Vui lòng thử lại.';
-      if (apiErr?.response?.status === 429) {
-        setErrorMsg('Thử lại quá nhiều lần, vui lòng đợi một phút');
-      } else if (apiErr?.response?.status === 401 && msg !== 'Mã xác thực không đúng') {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      const msg = apiErrorText(err, 'Đã xảy ra lỗi. Vui lòng thử lại.');
+      if (status === 429) {
+        setErrorMsg(msg);
+      } else if (status === 401 && msg !== 'Mã xác thực không đúng') {
         // Challenge expired or too many wrong codes: start again from the password
         backToPassword(msg);
       } else {
@@ -98,12 +98,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLog
         setPassword('');
       }
     } catch (err: unknown) {
-      const apiErr = err as { response?: { data?: { message?: string | string[] } } };
-      const rawMsg = apiErr?.response?.data?.message;
-      const msg =
-        (Array.isArray(rawMsg) ? rawMsg[0] : rawMsg) ||
-        'Đã xảy ra lỗi. Vui lòng thử lại.';
-      setErrorMsg(typeof msg === 'string' ? msg : 'Đã xảy ra lỗi. Vui lòng thử lại.');
+      setErrorMsg(apiErrorText(err, 'Đã xảy ra lỗi. Vui lòng thử lại.'));
     } finally {
       setLoading(false);
     }
