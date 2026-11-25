@@ -80,3 +80,35 @@ describe('useConversations: connect', () => {
     expect(ids(result.current.allConversations)).toEqual(['z']);
   });
 });
+
+describe('useConversations: search', () => {
+  const person = (id: string, username: string, displayName?: string) => ({ _id: id, username, displayName });
+  const list: Conversation[] = [
+    { ...conv('with-an'), type: 'direct', participants: [person('me', 'myself', 'Tôi Đây'), person('u1', 'an_nguyen')] },
+    { ...conv('with-binh'), type: 'direct', participants: [person('me', 'myself', 'Tôi Đây'), person('u2', 'b2', 'Bình')] },
+    { ...conv('group'), group: { name: 'Lớp học' }, participants: [person('me', 'myself', 'Tôi Đây')], lastMessage: { content: 'Xin chào' } },
+  ];
+  const search = async (query: string) => {
+    const { result } = await renderLoaded(list);
+    act(() => result.current.setSearchQuery(query));
+    return ids(result.current.conversations);
+  };
+
+  it('finds a user without a display name by username', async () => {
+    expect(await search('AN_NG')).toEqual(['with-an']);
+  });
+
+  it('finds by display name, group name and last message', async () => {
+    expect(await search(' bình ')).toEqual(['with-binh']);
+    cleanup();
+    expect(await search('lớp')).toEqual(['group']);
+    cleanup();
+    expect(await search('xin chào')).toEqual(['group']);
+  });
+
+  it('my own name does not match every conversation', async () => {
+    expect(await search('tôi đây')).toEqual([]);
+    cleanup();
+    expect(await search('myself')).toEqual([]);
+  });
+});

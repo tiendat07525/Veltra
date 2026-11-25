@@ -196,6 +196,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
       {/* New Conversation Modal */}
       <NewConversationModal
         isOpen={showNewModal}
+        currentUserId={currentUserId}
         onClose={() => setShowNewModal(false)}
         onCreateConversation={onCreateNewConversation}
       />

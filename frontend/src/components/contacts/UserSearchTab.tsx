@@ -1,59 +1,12 @@
 'use client';
 
-import React, { useCallback, useRef, useState } from 'react';
+import React from 'react';
 import { Check, Clock, Loader2, Search, UserPlus, X } from 'lucide-react';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { User } from '@/types/user';
 import { FriendshipStatus } from '@/types/friend';
-import { userService } from '@/services/api/user.service';
+import { useUserSearch } from '@/hooks/use-user-search';
 import { InlineError } from '@/components/ui/InlineError';
-
-/**
- * Debounced user search (400 ms). Called by ContactsView, so the query and results stay
- * when the user switches to another tab and back.
- */
-export function useUserSearch(currentUserId: string | undefined) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchError, setSearchError] = useState<string | null>(null);
-  const [searchResults, setSearchResults] = useState<User[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Latest query sent; a slower response to an older query must not overwrite newer results
-  const latestSearchRef = useRef('');
-
-  const handleSearchChange = useCallback(
-    (value: string) => {
-      setSearchQuery(value);
-      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-
-      const query = value.trim();
-      latestSearchRef.current = query;
-      setSearchError(null);
-      if (!query) {
-        setSearchResults([]);
-        setSearchLoading(false);
-        return;
-      }
-
-      setSearchLoading(true);
-      searchTimeoutRef.current = setTimeout(async () => {
-        try {
-          // Server matches username / displayName (case-insensitive, partial)
-          const users = await userService.getUsers({ search: query });
-          if (latestSearchRef.current !== query) return;
-          setSearchResults(users.filter((u) => u._id !== currentUserId));
-        } catch {
-          if (latestSearchRef.current === query) setSearchError('Không thể tìm kiếm người dùng. Thử lại sau.');
-        } finally {
-          if (latestSearchRef.current === query) setSearchLoading(false);
-        }
-      }, 400);
-    },
-    [currentUserId]
-  );
-
-  return { searchQuery, searchResults, searchLoading, searchError, setSearchError, handleSearchChange };
-}
 
 interface UserSearchTabProps {
   search: ReturnType<typeof useUserSearch>;
@@ -150,7 +103,7 @@ export const UserSearchTab: React.FC<UserSearchTabProps> = ({
         <Search className="w-4 h-4 text-fg-muted absolute left-3 top-1/2 -translate-y-1/2" aria-hidden="true" />
         <input
           type="text"
-          placeholder="Tìm theo tên, username, email..."
+          placeholder="Tìm theo tên hoặc username..."
           value={searchQuery}
           onChange={(e) => handleSearchChange(e.target.value)}
           aria-label="Tìm người dùng"
@@ -208,7 +161,7 @@ export const UserSearchTab: React.FC<UserSearchTabProps> = ({
         <div className="text-center py-12 text-fg-muted">
           <Search className="w-8 h-8 mx-auto mb-3 opacity-50" aria-hidden="true" />
           <p className="text-sm font-medium text-fg">Tìm kiếm người dùng</p>
-          <p className="text-xs mt-1">Nhập tên, username hoặc email để tìm bạn bè mới</p>
+          <p className="text-xs mt-1">Nhập tên hoặc username để tìm bạn bè mới</p>
         </div>
       )}
     </div>

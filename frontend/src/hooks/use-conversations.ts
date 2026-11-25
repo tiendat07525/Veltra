@@ -4,6 +4,7 @@ import { Message } from '@/types/message';
 import { conversationService } from '@/services/api/conversation.service';
 import { socketService } from '@/services/socket/socket.service';
 import { mergeConversationList, upsertConversation } from '@/lib/conversation-list';
+import { userNameMatches } from '@/lib/user-search';
 
 export function useConversations(enabled: boolean = true, currentUserId: string | null = null) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -226,13 +227,11 @@ export function useConversations(enabled: boolean = true, currentUserId: string 
       const query = searchQuery.toLowerCase().trim();
       if (query) {
         const name = conv.group?.name || '';
-        const participantNames = conv.participants
-          .map((p) => p.displayName || '')
-          .join(' ');
         const lastMsg = conv.lastMessage?.content || '';
         const matchesSearch =
           name.toLowerCase().includes(query) ||
-          participantNames.toLowerCase().includes(query) ||
+          // Not my own name: it would match every conversation
+          conv.participants.some((p) => p._id !== currentUserId && userNameMatches(p, query)) ||
           lastMsg.toLowerCase().includes(query);
         if (!matchesSearch) return false;
       }
