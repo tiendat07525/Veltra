@@ -254,7 +254,7 @@ describe('ChangePasswordDto', () => {
 
   it('accepts a valid body', async () => {
     expect(
-      await errorsFor({ currentPassword: 'x', newPassword: '123456' }),
+      await errorsFor({ currentPassword: 'x', newPassword: 'Abc12!' }),
     ).toHaveLength(0);
   });
 
@@ -262,27 +262,27 @@ describe('ChangePasswordDto', () => {
     expect(
       await errorsFor({
         currentPassword: 'x',
-        newPassword: '123456',
+        newPassword: 'Abc12!',
         code: '123456',
       }),
     ).toHaveLength(0);
   });
 
   it.each([
-    ['a short new password', { currentPassword: 'x', newPassword: '12345' }],
-    ['a missing current password', { newPassword: '123456' }],
-    ['a non-string', { currentPassword: 1, newPassword: '123456' }],
+    ['a short new password', { currentPassword: 'x', newPassword: 'Ab1!' }],
+    ['a missing current password', { newPassword: 'Abc12!' }],
+    ['a non-string', { currentPassword: 1, newPassword: 'Abc12!' }],
     [
       'a non-string code',
-      { currentPassword: 'x', newPassword: '123456', code: 123456 },
+      { currentPassword: 'x', newPassword: 'Abc12!', code: 123456 },
     ],
     [
       'a too long code',
-      { currentPassword: 'x', newPassword: '123456', code: 'x'.repeat(21) },
+      { currentPassword: 'x', newPassword: 'Abc12!', code: 'x'.repeat(21) },
     ],
     [
       'an extra field',
-      { currentPassword: 'x', newPassword: '123456', userId: 'someone' },
+      { currentPassword: 'x', newPassword: 'Abc12!', userId: 'someone' },
     ],
   ])('rejects %s', async (_label, body) => {
     expect((await errorsFor(body)).length).toBeGreaterThan(0);
