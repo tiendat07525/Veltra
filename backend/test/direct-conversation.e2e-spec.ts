@@ -1,5 +1,6 @@
 import * as dotenv from 'dotenv';
 dotenv.config();
+import * as os from 'os';
 import mongoose, { Connection, Model, Types } from 'mongoose';
 import {
   Conversation,
@@ -20,7 +21,10 @@ describe('Direct Conversation Database Integration & Concurrency (Real MongoDB)'
     // Connect strictly to an isolated temporary test database to preserve production data
     const u = new URL(baseUri);
     u.pathname = '/test_veltra_integration_p31';
-    connection = await mongoose.createConnection(u.toString()).asPromise();
+    // Driver >= 7.6 loads 'os' with import(), which Jest does not support without a flag
+    connection = await mongoose
+      .createConnection(u.toString(), { runtimeAdapters: { os } })
+      .asPromise();
 
     conversationModel = connection.model<Conversation>(
       'Conversation',

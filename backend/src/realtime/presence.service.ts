@@ -53,7 +53,7 @@ export class PresenceService implements OnModuleDestroy {
         .lean(),
       this.conversationModel
         .find({ 'participants.userId': id }, { 'participants.userId': 1 })
-        .lean(),
+        .lean<Pick<Conversation, 'participants'>[]>(),
     ]);
 
     const audience = new Set<string>();
@@ -174,7 +174,7 @@ export class PresenceService implements OnModuleDestroy {
         },
         { 'participants.userId': 1 },
       )
-      .lean();
+      .lean<Pick<Conversation, 'participants'> | null>();
     if (!conversation) return null;
 
     return (conversation.participants ?? [])
