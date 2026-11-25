@@ -36,7 +36,9 @@ export class ProfileController {
     return this.profileService.setAvatar(req.user.id, dto);
   }
 
+  // Both PATCH routes emit user:updated to the friends and co-members
   @Patch('profile')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   async updateProfile(
     @Req() req: AuthenticatedRequest,
     @Body() dto: UpdateUserDto,
@@ -45,6 +47,7 @@ export class ProfileController {
   }
 
   @Patch(':id')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   update(
     @Param('id') id: string,
     @Body() dto: UpdateUserDto,

@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Conversation, ConversationFilter } from '@/types/conversation';
 import { Message } from '@/types/message';
+import { UserBasicInfo, UserUpdatedEvent } from '@/types/user';
 import { conversationService } from '@/services/api/conversation.service';
 import { socketService } from '@/services/socket/socket.service';
-import { mergeConversationList, upsertConversation } from '@/lib/conversation-list';
+import { mergeConversationList, updateParticipant, upsertConversation } from '@/lib/conversation-list';
 import { userNameMatches } from '@/lib/user-search';
 
 export function useConversations(enabled: boolean = true, currentUserId: string | null = null) {
@@ -24,6 +25,8 @@ export function useConversations(enabled: boolean = true, currentUserId: string 
   // Re-read the list without a loading state, keeping what changed here meanwhile.
   // One request at a time; a call during one runs it once more afterwards.
   const reloadRef = useRef({ running: false, again: false });
+  // Profiles changed while the list is read: its answer may hold the old name / avatar
+  const updatedUsersRef = useRef<UserBasicInfo[]>([]);
   const reload = useCallback(async () => {
     const state = reloadRef.current;
     if (state.running) {
@@ -34,10 +37,12 @@ export function useConversations(enabled: boolean = true, currentUserId: string 
     do {
       state.again = false;
       const before = conversationsRef.current;
+      updatedUsersRef.current = [];
       try {
         const incoming = await conversationService.getConversations();
+        const fresh = updatedUsersRef.current.reduce(updateParticipant, incoming);
         setConversations((current) =>
-          mergeConversationList(before, current, incoming, currentUserIdRef.current)
+          mergeConversationList(before, current, fresh, currentUserIdRef.current)
         );
         setError(null);
       } catch (err: unknown) {
@@ -132,6 +137,14 @@ export function useConversations(enabled: boolean = true, currentUserId: string 
       setConversations((prev) => prev.filter((c) => c._id !== removedId));
     };
 
+    // A friend, co-member or I (any tab) changed name or avatar
+    const handleUserUpdated = (payload: UserUpdatedEvent) => {
+      const user = payload?.user;
+      if (!user?._id) return;
+      if (reloadRef.current.running) updatedUsersRef.current.push(user);
+      setConversations((prev) => updateParticipant(prev, user));
+    };
+
     // Events missed while disconnected
     const handleConnect = () => void reload();
 
@@ -140,12 +153,14 @@ export function useConversations(enabled: boolean = true, currentUserId: string 
     socketService.on('message:revoked', handleRevokeMessageEvent);
     socketService.on('conversation:updated', handleConversationUpdated);
     socketService.on('conversation:removed', handleConversationRemoved);
+    socketService.on('user:updated', handleUserUpdated);
     return () => {
       socketService.off('connect', handleConnect);
       socketService.off('message:new', handleNewMessage);
       socketService.off('message:revoked', handleRevokeMessageEvent);
       socketService.off('conversation:updated', handleConversationUpdated);
       socketService.off('conversation:removed', handleConversationRemoved);
+      socketService.off('user:updated', handleUserUpdated);
     };
   }, [reload]);
 

@@ -38,6 +38,9 @@ const avatarId = (owner = me) =>
   `veltra/avatars/${owner}/${crypto.randomUUID()}`;
 const destroyed = () => destroy.mock.calls.map((c) => c[0] as string);
 
+const friend = new Types.ObjectId().toString();
+const coMember = new Types.ObjectId().toString();
+
 const makeService = (
   previous: Record<string, unknown> | null = { _id: me },
   url: string | null = CLOUDINARY_URL,
@@ -56,12 +59,18 @@ const makeService = (
   const usersService = {
     findOne: jest.fn().mockResolvedValue({ _id: me, username: 'an' }),
   };
+  const presenceService = {
+    audienceOf: jest.fn().mockResolvedValue([friend, coMember]),
+  };
+  const realtimeService = { emitToUser: jest.fn() };
   const service = new ProfileService(
     userModel as any,
     usersService as any,
     new CloudinaryService({ get: () => url ?? undefined } as any),
+    presenceService as any,
+    realtimeService as any,
   );
-  return { service, userModel, usersService };
+  return { service, userModel, usersService, presenceService, realtimeService };
 };
 const stored = (publicId: string, over: Record<string, unknown> = {}) =>
   explicit.mockResolvedValue({
@@ -307,6 +316,132 @@ describe('ProfileService.update', () => {
     await expect(
       makeService(null).service.update(me, { bio: 'x' }),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('ProfileService user:updated', () => {
+  const profile = {
+    _id: new Types.ObjectId(me),
+    username: 'an',
+    displayName: 'An Mới',
+    avatarUrl: 'https://x/a.png',
+    email: 'an@x.vn',
+    phone: '0900000000',
+    bio: 'Chào',
+  };
+  const user = {
+    _id: me,
+    username: 'an',
+    displayName: 'An Mới',
+    avatarUrl: 'https://x/a.png',
+  };
+  const setup = (previous: Record<string, unknown> | null) => {
+    const made = makeService(previous);
+    made.usersService.findOne.mockResolvedValue(profile);
+    const sentTo = () =>
+      made.realtimeService.emitToUser.mock.calls.map((c) => c[0] as string);
+    return { ...made, sentTo };
+  };
+
+  it('should send the new name to the own tabs, friends and co-members, public fields only', async () => {
+    const { service, presenceService, realtimeService, sentTo } = setup({
+      _id: me,
+      displayName: 'An',
+    });
+    await expect(service.update(me, { displayName: 'An Mới' })).resolves.toBe(
+      profile,
+    );
+    expect(presenceService.audienceOf).toHaveBeenCalledWith(me);
+    expect(sentTo()).toEqual([me, friend, coMember]);
+    for (const [, event, payload] of realtimeService.emitToUser.mock.calls) {
+      expect(event).toBe('user:updated');
+      expect(payload).toEqual({ user });
+    }
+  });
+
+  it('should send a new avatar and a removed one to everyone', async () => {
+    const publicId = avatarId();
+    stored(publicId);
+    const first = setup({ _id: me });
+    await first.service.setAvatar(me, { publicId });
+    expect(first.sentTo()).toEqual([me, friend, coMember]);
+
+    const second = setup({ _id: me, avatarUrl: 'https://x/a.png' });
+    await second.service.update(me, { avatarUrl: '' });
+    expect(second.sentTo()).toEqual([me, friend, coMember]);
+  });
+
+  it.each([
+    ['bio / phone changed', { bio: 'x', phone: '' }],
+    ['the name is the stored one', { displayName: 'An' }],
+    ['there was no avatar to remove', { avatarUrl: '' }],
+  ])('should send to the own tabs only when %s', async (_l, dto) => {
+    const { service, presenceService, sentTo } = setup({
+      _id: me,
+      displayName: 'An',
+      avatarUrl: '',
+    });
+    await service.update(me, dto);
+    expect(presenceService.audienceOf).not.toHaveBeenCalled();
+    expect(sentTo()).toEqual([me]);
+  });
+
+  it('should send to the own tabs only when there was never an avatar to remove', async () => {
+    const { service, sentTo } = setup({ _id: me, displayName: 'An' });
+    await service.update(me, { avatarUrl: '' });
+    expect(sentTo()).toEqual([me]);
+  });
+
+  it('should read the profile and emit after the write', async () => {
+    const order: string[] = [];
+    const made = setup({ _id: me });
+    const write = made.userModel.findByIdAndUpdate.getMockImplementation()!;
+    made.userModel.findByIdAndUpdate.mockImplementation((...args) => {
+      order.push('write');
+      return write(...args);
+    });
+    made.usersService.findOne.mockImplementation(() => {
+      order.push('read');
+      return Promise.resolve(profile);
+    });
+    made.realtimeService.emitToUser.mockImplementation(() =>
+      order.push('emit'),
+    );
+    await made.service.update(me, { displayName: 'An Mới' });
+    expect(order).toEqual(['write', 'read', 'emit', 'emit', 'emit']);
+  });
+
+  it('should send nothing when the write fails, is refused or finds no user', async () => {
+    const failing = setup({ _id: me });
+    failing.userModel.findByIdAndUpdate.mockImplementation(() => {
+      throw new Error('mongo down');
+    });
+    await expect(
+      failing.service.update(me, { displayName: 'x' }),
+    ).rejects.toThrow('mongo down');
+
+    const other = setup({ _id: me });
+    await expect(
+      other.service.update('target', { displayName: 'x' }, me),
+    ).rejects.toThrow(ForbiddenException);
+
+    const gone = setup(null);
+    await expect(
+      gone.service.update(me, { displayName: 'x' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    for (const { sentTo } of [failing, other, gone]) {
+      expect(sentTo()).toEqual([]);
+    }
+  });
+
+  it('should still save, and tell the own tabs, when the audience cannot be read', async () => {
+    const { service, presenceService, sentTo } = setup({ _id: me });
+    presenceService.audienceOf.mockRejectedValue(new Error('mongo down'));
+    await expect(service.update(me, { displayName: 'An Mới' })).resolves.toBe(
+      profile,
+    );
+    expect(sentTo()).toEqual([me]);
   });
 });
 

@@ -38,6 +38,50 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+describe('useConversations: user:updated', () => {
+  const withMembers = (id: string, displayName: string): Conversation => ({
+    ...conv(id),
+    participants: [
+      { _id: 'bi', username: 'binh', displayName, avatarUrl: 'https://x/old.png' },
+      { _id: 'me', username: 'me' },
+    ],
+  });
+  const updated = { user: { _id: 'bi', username: 'binh', displayName: 'Bình Mới' } };
+
+  it('shows the new name and avatar of a member', async () => {
+    const { result } = await renderLoaded([withMembers('a', 'Bình'), conv('b')]);
+    const untouched = result.current.allConversations[1];
+    await emit('user:updated', updated);
+    expect(result.current.allConversations[0].participants).toEqual([
+      { _id: 'bi', username: 'binh', displayName: 'Bình Mới', avatarUrl: undefined },
+      { _id: 'me', username: 'me' },
+    ]);
+    expect(result.current.allConversations[1]).toBe(untouched);
+  });
+
+  it('is not undone by a list read before it, but by a later read', async () => {
+    const { result } = await renderLoaded([withMembers('a', 'Bình')]);
+    const name = () => result.current.allConversations[0].participants[0].displayName;
+    const answer = deferred<Conversation[]>();
+    getConversations.mockReturnValueOnce(answer.promise);
+    await emit('connect');
+    await emit('user:updated', updated);
+    await act(async () => answer.resolve([withMembers('a', 'Bình')]));
+    expect(name()).toBe('Bình Mới');
+
+    getConversations.mockResolvedValueOnce([withMembers('a', 'Bình Sau')]);
+    await emit('connect');
+    expect(name()).toBe('Bình Sau');
+  });
+
+  it('ignores an event without a user', async () => {
+    const { result } = await renderLoaded([withMembers('a', 'Bình')]);
+    const before = result.current.allConversations;
+    await emit('user:updated', undefined);
+    expect(result.current.allConversations).toBe(before);
+  });
+});
+
 describe('useConversations: connect', () => {
   it('reads the list again without a loading state', async () => {
     const { result } = await renderLoaded([conv('a')]);

@@ -49,6 +49,17 @@ describe('ProfileController (identity comes from req.user only)', () => {
     );
   });
 
+  // Each of these emits to the friends and co-members, or signs an upload
+  it.each(['updateProfile', 'update', 'setAvatar', 'signAvatar'] as const)(
+    'should limit %s to 10 / 60 s',
+    (method) => {
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      const handler = ProfileController.prototype[method];
+      expect(Reflect.getMetadata('THROTTLER:LIMITdefault', handler)).toBe(10);
+      expect(Reflect.getMetadata('THROTTLER:TTLdefault', handler)).toBe(60000);
+    },
+  );
+
   it('should sign and set the avatar of the caller', () => {
     const sign = { fileName: 'a.png', mimeType: 'image/png', size: 1 };
     controller.signAvatar(asReq({ id: 'user1' }), sign);
