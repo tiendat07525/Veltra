@@ -5,20 +5,29 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CurrentUserProfile } from '@/types/user';
 
 type Profile = CurrentUserProfile;
-const { getCurrentUser, updateProfile } = vi.hoisted(() => ({
+const { getCurrentUser, updateProfile, upload } = vi.hoisted(() => ({
   getCurrentUser: vi.fn<() => Promise<CurrentUserProfile>>(),
   updateProfile: vi.fn<(updates: Partial<CurrentUserProfile>) => Promise<CurrentUserProfile>>(),
+  upload: vi.fn<(file: File, onProgress?: (fraction: number) => void) => Promise<CurrentUserProfile>>(),
 }));
 vi.mock('@/services/api/auth.service', () => ({ authService: { getCurrentUser } }));
 vi.mock('@/services/api/user.service', () => ({ userService: { updateProfile } }));
+vi.mock('@/services/api/avatar.service', async (original) => ({
+  ...(await original<typeof import('@/services/api/avatar.service')>()),
+  avatarService: { upload },
+}));
 
 import { useProfileForm } from '@/hooks/use-profile-form';
 
 const me: Profile = { _id: 'me', username: 'an', email: 'an@x.vn', displayName: 'An', bio: 'Chào' };
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((res) => (resolve = res));
-  return { promise, resolve };
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
 };
 // The profile is owned outside the form (useChat)
 const render = (initial: Profile | null = me) =>
@@ -44,6 +53,7 @@ const save = async (view: View) => {
 
 beforeEach(() => {
   getCurrentUser.mockReset().mockResolvedValue(me);
+  upload.mockReset();
   updateProfile.mockReset().mockImplementation(async (updates) => ({ ...me, ...updates }));
 });
 afterEach(cleanup);
@@ -147,5 +157,101 @@ describe('useProfileForm', () => {
     edit(view, 'bio', 'x');
     expect(await save(view)).toBe(false);
     expect(updateProfile).not.toHaveBeenCalled();
+  });
+});
+
+describe('useProfileForm: avatar', () => {
+  const photo = new File(['x'], 'me.png', { type: 'image/png' });
+  const uploaded = { ...me, avatarUrl: 'https://res.cloudinary.com/demo/me' };
+  const change = (view: View, file: File) =>
+    act(async () => {
+      void view.result.current.form.changeAvatar(file);
+    });
+
+  it('stores the uploaded avatar at once and keeps the other edits', async () => {
+    const done = deferred<Profile>();
+    upload.mockReturnValue(done.promise);
+    const view = await open();
+    edit(view, 'bio', 'Đang gõ');
+    await change(view, photo);
+    act(() => upload.mock.calls[0][1]?.(0.5));
+    expect(view.result.current.form.avatarProgress).toBe(0.5);
+    await act(async () => done.resolve(uploaded));
+    expect(view.result.current.form).toMatchObject({
+      avatarUrl: uploaded.avatarUrl,
+      bio: 'Đang gõ',
+      avatarProgress: null,
+      avatarError: null,
+    });
+    expect(view.result.current.user?.avatarUrl).toBe(uploaded.avatarUrl);
+    expect(updateProfile).not.toHaveBeenCalled();
+  });
+
+  it('forgets a removal that was not saved', async () => {
+    upload.mockResolvedValue(uploaded);
+    const view = await open({ ...me, avatarUrl: 'https://old.example/a.png' });
+    edit(view, 'avatarUrl', '');
+    await change(view, photo);
+    expect(view.result.current.form.avatarUrl).toBe(uploaded.avatarUrl);
+    await save(view);
+    expect(updateProfile).not.toHaveBeenCalled();
+  });
+
+  it('keeps the current avatar and a pending removal when the upload fails', async () => {
+    upload.mockRejectedValue({ response: { data: { message: 'Ảnh sai định dạng hoặc quá dung lượng' } } });
+    const stored = { ...me, avatarUrl: 'https://old.example/a.png' };
+    getCurrentUser.mockResolvedValue(stored);
+    const view = await open(stored);
+    await change(view, photo);
+    expect(view.result.current.form).toMatchObject({
+      avatarUrl: stored.avatarUrl,
+      avatarError: 'Ảnh sai định dạng hoặc quá dung lượng',
+      avatarProgress: null,
+    });
+    edit(view, 'avatarUrl', '');
+    await change(view, photo);
+    expect(view.result.current.form.avatarUrl).toBe('');
+  });
+
+  it.each([
+    [new File(['x'], 'me.gif', { type: 'image/gif' }), 'Ảnh phải là file jpg, png hoặc webp'],
+    [new File(['x'], 'me.png', { type: 'text/html' }), 'Ảnh phải là file jpg, png hoặc webp'],
+    [new File([], 'me.png', { type: 'image/png' }), 'File ảnh rỗng'],
+    [new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'me.png', { type: 'image/png' }), 'Ảnh vượt quá 5 MB'],
+  ])('refuses a bad file without a request (%#)', async (file, message) => {
+    const view = await open();
+    await change(view, file);
+    expect(view.result.current.form.avatarError).toBe(message);
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it('runs one request at a time: no save during an upload, no upload during a save', async () => {
+    const done = deferred<Profile>();
+    upload.mockReturnValue(done.promise);
+    const view = await open();
+    await change(view, photo);
+    await change(view, photo);
+    expect(upload).toHaveBeenCalledTimes(1);
+    edit(view, 'bio', 'x');
+    expect(await save(view)).toBe(false);
+    expect(updateProfile).not.toHaveBeenCalled();
+    await act(async () => done.resolve(uploaded));
+
+    const stored = deferred<Profile>();
+    updateProfile.mockReturnValue(stored.promise);
+    act(() => void view.result.current.form.save());
+    await change(view, photo);
+    expect(upload).toHaveBeenCalledTimes(1);
+    await act(async () => stored.resolve({ ...uploaded, bio: 'x' }));
+  });
+
+  it('does not go back to the profile read on opening when an upload came first', async () => {
+    const read = deferred<Profile>();
+    getCurrentUser.mockReturnValue(read.promise);
+    upload.mockResolvedValue(uploaded);
+    const view = await open();
+    await change(view, photo);
+    await act(async () => read.resolve(me));
+    expect(view.result.current.form.avatarUrl).toBe(uploaded.avatarUrl);
   });
 });

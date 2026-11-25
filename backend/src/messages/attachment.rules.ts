@@ -1,3 +1,4 @@
+import type { ResourceType } from 'src/storage/cloudinary.service';
 import type { AttachmentKind, Attachment } from './schemas/message.schema';
 
 // Attachment rules and pure helpers shared by AttachmentService and MessageService.
@@ -5,8 +6,6 @@ import type { AttachmentKind, Attachment } from './schemas/message.schema';
 
 export const MAX_ATTACHMENTS_PER_MESSAGE = 10;
 export const MB = 1024 * 1024;
-
-export type ResourceType = 'image' | 'video' | 'raw';
 
 export interface KindRule {
   resourceType: ResourceType;
@@ -74,7 +73,8 @@ export const ATTACHMENT_RULES: Record<AttachmentKind, KindRule> = {
 };
 
 export const ROOT_FOLDER = 'veltra';
-const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+export const UUID =
+  '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 // veltra/{conversationId}/{uploaderId}/{uuid}[.ext]  (raw files keep their extension)
 export const PUBLIC_ID_PATTERN = new RegExp(
   `^${ROOT_FOLDER}/([0-9a-f]{24})/([0-9a-f]{24})/${UUID}(?:\\.([a-z0-9]{2,4}))?$`,

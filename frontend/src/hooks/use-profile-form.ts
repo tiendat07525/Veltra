@@ -1,14 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CurrentUserProfile } from '@/types/user';
 import { authService } from '@/services/api/auth.service';
+import { avatarFileError, avatarService } from '@/services/api/avatar.service';
 import { userService } from '@/services/api/user.service';
+
+// Server message (a string, or a list from the DTO check), else the Vietnamese fallback
+const serverMessage = (err: unknown, fallback: string) => {
+  const message = (err as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
+  return (Array.isArray(message) ? message[0] : message) || fallback;
+};
 
 type EditableField = 'displayName' | 'bio' | 'phone' | 'avatarUrl';
 
 /**
  * Profile form: shows `currentUser` with the fields edited here on top, and sends only the
  * fields that changed, so it never writes back an old copy of the others.
- * `onProfile` gets the profile re-read when the form opens and the one returned by a save.
+ * A new avatar is uploaded and stored at once, without the save button.
+ * `onProfile` gets the profile re-read when the form opens and the one returned by a save or an upload.
  */
 export function useProfileForm(
   currentUser: CurrentUserProfile | null,
@@ -19,7 +27,10 @@ export function useProfileForm(
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  // A save started: the copy read when the form opened may be older than it
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  // 0..1 while an avatar is uploading
+  const [avatarProgress, setAvatarProgress] = useState<number | null>(null);
+  // A save or an avatar upload started: the copy read when the form opened may be older than it
   const saveStarted = useRef(false);
 
   useEffect(() => {
@@ -45,7 +56,7 @@ export function useProfileForm(
 
   // Resolves to true once the profile is stored (also when nothing changed)
   const save = async (): Promise<boolean> => {
-    if (!currentUser || saving) return false;
+    if (!currentUser || saving || avatarProgress !== null) return false;
     setPhoneError(null);
     setSaveError(null);
 
@@ -76,12 +87,7 @@ export function useProfileForm(
       try {
         onProfile(await userService.updateProfile(updates));
       } catch (err: unknown) {
-        const apiErr = err as { response?: { data?: { message?: string | string[] } } };
-        const message = apiErr?.response?.data?.message;
-        setSaveError(
-          (Array.isArray(message) ? message[0] : message) ||
-            'Lưu cài đặt hồ sơ thất bại. Vui lòng kiểm tra lại thông tin.'
-        );
+        setSaveError(serverMessage(err, 'Lưu cài đặt hồ sơ thất bại. Vui lòng kiểm tra lại thông tin.'));
         return false;
       } finally {
         setSaving(false);
@@ -99,6 +105,31 @@ export function useProfileForm(
     return true;
   };
 
+  // One request at a time: a save and an upload would each answer with a profile that misses the other's change
+  const changeAvatar = async (file: File): Promise<void> => {
+    if (!currentUser || saving || avatarProgress !== null) return;
+    const fileError = avatarFileError(file);
+    setAvatarError(fileError);
+    if (fileError) return;
+
+    setAvatarProgress(0);
+    saveStarted.current = true;
+    try {
+      const profile = await avatarService.upload(file, setAvatarProgress);
+      // A removal picked before but not saved no longer applies
+      setDraft((prev) => {
+        const next = { ...prev };
+        delete next.avatarUrl;
+        return next;
+      });
+      onProfile(profile);
+    } catch (err: unknown) {
+      setAvatarError(serverMessage(err, 'Không thể tải ảnh lên. Thử lại sau.'));
+    } finally {
+      setAvatarProgress(null);
+    }
+  };
+
   return {
     displayName: valueOf('displayName'),
     bio: valueOf('bio'),
@@ -106,6 +137,10 @@ export function useProfileForm(
     avatarUrl: valueOf('avatarUrl'),
     setField,
     save,
+    changeAvatar,
+    avatarProgress,
+    avatarError,
+    clearAvatarError: () => setAvatarError(null),
     saving,
     loadError,
     phoneError,

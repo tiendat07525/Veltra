@@ -3,7 +3,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { v2 as cloudinary } from 'cloudinary';
 import { Message, MessageSchema } from 'src/messages/schemas/message.schema';
-import { AttachmentService } from 'src/messages/attachment.service';
+import { User, UserSchema } from 'src/users/schemas/user.schema';
+import { CloudinaryService } from 'src/storage/cloudinary.service';
 import {
   CLOUDINARY_ADMIN,
   CloudinaryAdmin,
@@ -27,7 +28,10 @@ import {
         autoIndex: false,
       }),
     }),
-    MongooseModule.forFeature([{ name: Message.name, schema: MessageSchema }]),
+    MongooseModule.forFeature([
+      { name: Message.name, schema: MessageSchema },
+      { name: User.name, schema: UserSchema },
+    ]),
   ],
   providers: [
     OrphanUploadsService,
@@ -35,7 +39,7 @@ import {
       provide: CLOUDINARY_ADMIN,
       inject: [ConfigService],
       useFactory: (config: ConfigService): CloudinaryAdmin => {
-        const credentials = AttachmentService.parseUrl(
+        const credentials = CloudinaryService.parseUrl(
           config.get<string>('CLOUDINARY_URL'),
         );
         if (!credentials) {

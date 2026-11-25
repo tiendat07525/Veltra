@@ -2,6 +2,22 @@ export function cn(...classes: (string | boolean | undefined | null)[]): string 
   return classes.filter(Boolean).join(' ');
 }
 
+// Missing in older browsers (Firefox < 125): code points are used there
+const graphemes =
+  typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
+// What a reader sees as one character: an accented letter or a whole emoji, never half of it
+const firstCharacters = (text: string, count: number) =>
+  (graphemes ? Array.from(graphemes.segment(text), (s) => s.segment) : Array.from(text)).slice(0, count).join('');
+
+// Letters of an avatar without a picture: first character of the first two words ("Nhóm Đồ Án" → "NĐ"),
+// or the first two characters of a single word ("Veltra" → "VE")
+export function initialsOf(name: string): string {
+  const [first, second] = name.trim().split(/\s+/);
+  if (!first) return 'V';
+  const initials = second ? firstCharacters(first, 1) + firstCharacters(second, 1) : firstCharacters(first, 2);
+  return initials.toUpperCase();
+}
+
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
 // 24h "17:14" in the viewer's local time (built by hand: vi-VN Intl output varies by engine)

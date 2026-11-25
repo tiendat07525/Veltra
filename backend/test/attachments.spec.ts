@@ -7,6 +7,7 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { Types } from 'mongoose';
 import { v2 as cloudinary } from 'cloudinary';
+import { CloudinaryService } from '../src/storage/cloudinary.service';
 import { AttachmentService } from '../src/messages/attachment.service';
 import {
   attachmentPreview,
@@ -44,7 +45,10 @@ const makeService = (url: string | null = CLOUDINARY_URL) => {
   const conversationModel = { exists: jest.fn().mockResolvedValue(true) };
   const config = { get: jest.fn(() => url ?? undefined) };
   return {
-    service: new AttachmentService(conversationModel as any, config as any),
+    service: new AttachmentService(
+      conversationModel as any,
+      new CloudinaryService(config as any),
+    ),
     conversationModel,
   };
 };

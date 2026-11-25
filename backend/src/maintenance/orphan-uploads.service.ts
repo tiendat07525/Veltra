@@ -2,11 +2,10 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Message, MessageDocument } from 'src/messages/schemas/message.schema';
-import {
-  PUBLIC_ID_PATTERN,
-  ResourceType,
-  ROOT_FOLDER,
-} from 'src/messages/attachment.rules';
+import { PUBLIC_ID_PATTERN, ROOT_FOLDER } from 'src/messages/attachment.rules';
+import { User, UserDocument } from 'src/users/schemas/user.schema';
+import { AVATAR_PUBLIC_ID_PATTERN } from 'src/profile/avatar.rules';
+import type { ResourceType } from 'src/storage/cloudinary.service';
 
 // An asset is "orphaned" when nobody sent it within this time (sign → upload → send takes seconds)
 export const ORPHAN_MIN_AGE_MS = 24 * 60 * 60 * 1000;
@@ -51,7 +50,7 @@ export interface OrphanUploadsReport {
   scanned: number; // assets listed under veltra/
   ignored: number; // under veltra/ but not an id the server signs (never touched)
   recent: number; // younger than ORPHAN_MIN_AGE_MS
-  referenced: number; // used by a stored message
+  referenced: number; // used by a stored message or as an avatar
   orphans: OrphanAsset[]; // to delete this run (oldest first, at most MAX_DELETES_PER_RUN)
   deferred: number; // orphans beyond the cap, left for the next run
   deleted: number;
@@ -59,10 +58,15 @@ export interface OrphanUploadsReport {
   failed: string[]; // public ids Cloudinary did not delete
 }
 
+// An id the server signs (message attachment or avatar)
+const isSignedId = (publicId: string) =>
+  PUBLIC_ID_PATTERN.test(publicId) || AVATAR_PUBLIC_ID_PATTERN.test(publicId);
+
 /**
- * Deletes Cloudinary uploads that no message references: files uploaded with a signature
- * from POST /message/attachments/sign but never sent (tab closed, send failed for good).
- * Only ids matching PUBLIC_ID_PATTERN and older than ORPHAN_MIN_AGE_MS are considered.
+ * Deletes Cloudinary uploads nothing references: files uploaded with a signature from
+ * POST /message/attachments/sign but never sent (tab closed, send failed for good), and avatars
+ * uploaded but never set (or whose removal failed when they were replaced).
+ * Only ids matching PUBLIC_ID_PATTERN / AVATAR_PUBLIC_ID_PATTERN and older than ORPHAN_MIN_AGE_MS are considered.
  * Dry run unless `apply` is set.
  */
 @Injectable()
@@ -72,6 +76,8 @@ export class OrphanUploadsService {
   constructor(
     @InjectModel(Message.name)
     private readonly messageModel: Model<MessageDocument>,
+    @InjectModel(User.name)
+    private readonly userModel: Model<UserDocument>,
     @Inject(CLOUDINARY_ADMIN) private readonly admin: CloudinaryAdmin,
   ) {}
 
@@ -107,10 +113,7 @@ export class OrphanUploadsService {
         for (const asset of page.resources) {
           report.scanned += 1;
           const createdAt = Date.parse(asset.created_at);
-          if (
-            !PUBLIC_ID_PATTERN.test(asset.public_id) ||
-            Number.isNaN(createdAt)
-          ) {
+          if (!isSignedId(asset.public_id) || Number.isNaN(createdAt)) {
             report.ignored += 1;
           } else if (createdAt > cutoff) {
             report.recent += 1;
@@ -127,7 +130,7 @@ export class OrphanUploadsService {
       } while (cursor);
     }
 
-    // 2. Drop those a stored message references
+    // 2. Drop those a stored message or a user's avatar references
     const referenced = await this.findReferenced(
       candidates.map((c) => c.publicId),
     );
@@ -169,10 +172,14 @@ export class OrphanUploadsService {
   }
 
   private async findReferenced(publicIds: string[]): Promise<Set<string>> {
+    const avatars = publicIds.filter((id) => AVATAR_PUBLIC_ID_PATTERN.test(id));
+    const attachments = publicIds.filter(
+      (id) => !AVATAR_PUBLIC_ID_PATTERN.test(id),
+    );
     const wanted = new Set(publicIds);
     const found = new Set<string>();
-    for (let i = 0; i < publicIds.length; i += REFERENCE_QUERY_BATCH) {
-      const batch = publicIds.slice(i, i + REFERENCE_QUERY_BATCH);
+    for (let i = 0; i < attachments.length; i += REFERENCE_QUERY_BATCH) {
+      const batch = attachments.slice(i, i + REFERENCE_QUERY_BATCH);
       const messages = await this.messageModel
         .find(
           { 'attachments.publicId': { $in: batch } },
@@ -183,6 +190,15 @@ export class OrphanUploadsService {
         for (const attachment of message.attachments ?? []) {
           if (wanted.has(attachment.publicId)) found.add(attachment.publicId);
         }
+      }
+    }
+    for (let i = 0; i < avatars.length; i += REFERENCE_QUERY_BATCH) {
+      const batch = avatars.slice(i, i + REFERENCE_QUERY_BATCH);
+      const users = await this.userModel
+        .find({ avatarPublicId: { $in: batch } }, { avatarPublicId: 1 })
+        .lean<{ avatarPublicId?: string }[]>();
+      for (const user of users) {
+        if (user.avatarPublicId) found.add(user.avatarPublicId);
       }
     }
     return found;

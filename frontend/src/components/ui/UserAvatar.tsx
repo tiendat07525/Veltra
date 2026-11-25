@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import Image from 'next/image';
 import { UserStatus } from '@/types/user';
+import { initialsOf } from '@/lib/utils';
 import { OnlineStatusDot } from './OnlineStatusDot';
 
 interface UserAvatarProps {
@@ -41,14 +42,6 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
     xl: 'lg',
   };
 
-  // Generate deterministic gradient background for fallback avatar
-  const getInitials = (n: string) => {
-    if (!n) return 'V';
-    const parts = n.trim().split(' ');
-    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-    return n.slice(0, 2).toUpperCase();
-  };
-
   return (
     <div id={id} className={`relative shrink-0 select-none ${sizeClasses[size]} ${className}`}>
       {src && src !== failedSrc ? (
@@ -62,7 +55,7 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
         />
       ) : (
         <div className="w-full h-full rounded-2xl bg-gradient-to-tr from-sky-600 via-indigo-600 to-cyan-500 flex items-center justify-center text-white font-medium shadow-xs ring-1 ring-sky-400/20">
-          {getInitials(name)}
+          {initialsOf(name)}
         </div>
       )}
 

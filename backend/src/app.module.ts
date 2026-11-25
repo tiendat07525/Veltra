@@ -5,6 +5,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
 import { UsersModule } from './users/users.module';
+import { ProfileModule } from './profile/profile.module';
 import { AuthModule } from './auth/auth.module';
 import { ConversationModule } from './conversation/conversation.module';
 import { MessageModule } from './messages/message.module';
@@ -36,6 +37,7 @@ import { AppThrottlerGuard } from './auth/app-throttler.guard';
     }),
     MongooseModule.forRoot(process.env.MONGODB_URL!),
     UsersModule,
+    ProfileModule,
     AuthModule,
     ConversationModule,
     MessageModule,

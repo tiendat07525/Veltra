@@ -1,19 +1,10 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Param,
-  Patch,
-  Query,
-  Req,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { UsersService } from './users.service';
-import { UpdateUserDto } from './dto/update-user.dto';
 import { QueryUsersDto } from './dto/query-users.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import type { AuthenticatedRequest } from 'src/auth/authenticated-request';
 
+// Reads only; changes to one's own profile are in ProfileController
 @Controller('users')
 @UseGuards(JwtAuthGuard)
 export class UsersController {
@@ -24,14 +15,6 @@ export class UsersController {
     return this.userService.findOne(req.user.id);
   }
 
-  @Patch('profile')
-  async updateProfile(
-    @Req() req: AuthenticatedRequest,
-    @Body() dto: UpdateUserDto,
-  ) {
-    return this.userService.update(req.user.id, dto);
-  }
-
   @Get()
   findAll(@Query() query?: QueryUsersDto) {
     return this.userService.findAll(query);
@@ -40,14 +23,5 @@ export class UsersController {
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.userService.findPublicProfile(id);
-  }
-
-  @Patch(':id')
-  update(
-    @Param('id') id: string,
-    @Body() dto: UpdateUserDto,
-    @Req() req: AuthenticatedRequest,
-  ) {
-    return this.userService.update(id, dto, req.user.id);
   }
 }

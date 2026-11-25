@@ -2,10 +2,8 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { UserDocument, User } from './schemas/user.schema';
@@ -155,29 +153,5 @@ export class UsersService {
       throw new BadRequestException('Email không hợp lệ');
     }
     return this.userModel.findOne({ email });
-  }
-
-  async update(id: string, dto: UpdateUserDto, currentUserId?: string) {
-    if (currentUserId && id !== currentUserId) {
-      throw new ForbiddenException(
-        'Bạn không có quyền chỉnh sửa tài khoản này',
-      );
-    }
-
-    const user = await this.userModel
-      .findByIdAndUpdate(
-        id,
-        { $set: dto },
-        {
-          new: true,
-          runValidators: true,
-        },
-      )
-      .select('-password')
-      .lean();
-    if (!user) {
-      throw new NotFoundException(`User không tồn tại`);
-    }
-    return user;
   }
 }
