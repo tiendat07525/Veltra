@@ -80,3 +80,13 @@
 .dark ::-webkit-scrollbar-thumb:hover {
   background: rgba(148, 163, 184, 0.35);
 }
+
+/* iOS Safari zooms into any focused field under 16px and does not zoom back out.
+   Unlayered on purpose: it beats the text-xs / text-sm utilities (in @layer utilities) on touch screens only. */
+@media (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
