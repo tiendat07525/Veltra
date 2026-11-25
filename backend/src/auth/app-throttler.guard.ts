@@ -1,12 +1,37 @@
 import { Injectable } from '@nestjs/common';
-import { normalizeIp, ThrottlerGuard } from '@nestjs/throttler';
+import {
+  normalizeIp,
+  ThrottlerGuard,
+  ThrottlerRequest,
+} from '@nestjs/throttler';
 import * as crypto from 'crypto';
 import type { Request } from 'express';
 
 const REFRESH_PATH = '/auth/refresh';
 
+// /auth/refresh is limited per session (the cookie is chosen by the client), so all the
+// refresh calls of one address together have a cap too
+export const REFRESH_IP_LIMIT = 60;
+export const REFRESH_IP_WINDOW_MS = 60_000;
+
 @Injectable()
 export class AppThrottlerGuard extends ThrottlerGuard {
+  // The address cap is checked first: once over it, no per-session bucket is created
+  protected async handleRequest(props: ThrottlerRequest): Promise<boolean> {
+    const { req } = this.getRequestResponse(props.context);
+    const request = req as Request;
+    if (this.isRefresh(request)) {
+      await super.handleRequest({
+        ...props,
+        limit: REFRESH_IP_LIMIT,
+        ttl: REFRESH_IP_WINDOW_MS,
+        blockDuration: REFRESH_IP_WINDOW_MS,
+        getTracker: () => Promise.resolve(`${this.clientIp(request)}:refresh`),
+      });
+    }
+    return super.handleRequest(props);
+  }
+
   /**
    * Generates a privacy-conscious, secret-free tracker for distributed rate limiting.
    * - For general endpoints: client IP (IPv6: its /64, one client usually owns all of it)
@@ -16,18 +41,9 @@ export class AppThrottlerGuard extends ThrottlerGuard {
   protected getTracker(req: Record<string, any>): Promise<string> {
     // ThrottlerGuard passes the Express request under a loose type
     const request = req as Request;
-    const rawIp = request.ips?.length
-      ? request.ips[0]
-      : request.ip || '127.0.0.1';
-    // Clean and normalize IP
-    const ip = normalizeIp(
-      typeof rawIp === 'string' ? rawIp.trim() : '127.0.0.1',
-    );
+    const ip = this.clientIp(request);
 
-    // Exact path, without the query string: the client controls the query, so
-    // "/auth/login?x=/auth/refresh" must not get the cookie-based bucket
-    const path = (request.originalUrl || request.url || '').split('?', 1)[0];
-    if (path === REFRESH_PATH) {
+    if (this.isRefresh(request)) {
       const refreshToken: unknown = request.cookies?.refreshToken;
       if (typeof refreshToken === 'string' && refreshToken.length > 0) {
         const parts = refreshToken.split('.');
@@ -55,5 +71,20 @@ export class AppThrottlerGuard extends ThrottlerGuard {
     }
 
     return Promise.resolve(ip);
+  }
+
+  private clientIp(request: Request): string {
+    const rawIp = request.ips?.length
+      ? request.ips[0]
+      : request.ip || '127.0.0.1';
+    // Clean and normalize IP
+    return normalizeIp(typeof rawIp === 'string' ? rawIp.trim() : '127.0.0.1');
+  }
+
+  // Exact path, without the query string: the client controls the query, so
+  // "/auth/login?x=/auth/refresh" must not get the cookie-based bucket
+  private isRefresh(request: Request): boolean {
+    const path = (request.originalUrl || request.url || '').split('?', 1)[0];
+    return path === REFRESH_PATH;
   }
 }
