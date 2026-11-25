@@ -9,6 +9,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import {
   Conversation,
   ConversationDocument,
+  computeSeenBy,
   computeUnreadCounts,
   getDirectKey,
 } from './schemas/conversation.schema';
@@ -364,9 +365,6 @@ export class ConversationService {
     const updated = await this.conversationModel.findOneAndUpdate(
       { _id: conversation._id, 'participants.userId': userObjectId },
       {
-        $addToSet: {
-          seenBy: userObjectId,
-        },
         // $max: lastReadSeq never goes back (e.g. a stale request arriving late)
         $max: {
           'participants.$.lastReadSeq': readTo,
@@ -384,7 +382,7 @@ export class ConversationService {
     return {
       message: 'Đã đánh dấu là đã xem',
 
-      seenBy: updated?.seenBy || [],
+      seenBy: updated ? computeSeenBy(updated) : [],
 
       myUnreadCount: updated ? (computeUnreadCounts(updated)[userId] ?? 0) : 0,
 

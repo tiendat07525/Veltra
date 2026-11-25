@@ -216,7 +216,6 @@ export class MessageService {
         { _id: conversationId },
         {
           $set: {
-            seenBy: [],
             lastMessageAt: created.createdAt,
             lastMessage: {
               _id: created._id,

@@ -108,6 +108,15 @@ export function getDirectKey(
   return idA < idB ? `${idA}:${idB}` : `${idB}:${idA}`;
 }
 
+// Id of a user reference: a raw id, or a populated user object
+function userIdOf(user: unknown): string | undefined {
+  const rawId =
+    user instanceof Types.ObjectId
+      ? user
+      : (user as { _id?: unknown } | null | undefined)?._id;
+  return rawId instanceof Types.ObjectId ? rawId.toString() : undefined;
+}
+
 /**
  * Unread count per member, computed (never stored): max(0, lastSeq − lastReadSeq).
  * Accepts raw or populated participants (`userId` as an id or as a user object).
@@ -122,15 +131,35 @@ export function computeUnreadCounts(conversation: {
   const lastSeq = conversation.lastSeq ?? 0;
   const counts: Record<string, number> = {};
   for (const participant of conversation.participants ?? []) {
-    const user = participant.userId;
-    const rawId = user instanceof Types.ObjectId ? user : user?._id;
-    if (!(rawId instanceof Types.ObjectId)) continue;
-    counts[rawId.toString()] = Math.max(
-      0,
-      lastSeq - (participant.lastReadSeq ?? 0),
-    );
+    const id = userIdOf(participant.userId);
+    if (!id) continue;
+    counts[id] = Math.max(0, lastSeq - (participant.lastReadSeq ?? 0));
   }
   return counts;
+}
+
+/**
+ * Members who have read up to the newest message (its sender left out), computed (never stored).
+ * Each is returned as the participant holds it: an id, or a user object when populated.
+ */
+export function computeSeenBy<T>(conversation: {
+  lastSeq?: number;
+  lastMessage?: {
+    senderId?: Types.ObjectId | { _id?: unknown } | null;
+  } | null;
+  participants?: { userId?: T | null; lastReadSeq?: number }[];
+}): T[] {
+  const lastSeq = conversation.lastSeq ?? 0;
+  if (!conversation.lastMessage || lastSeq === 0) return [];
+
+  const senderId = userIdOf(conversation.lastMessage.senderId);
+  const seenBy: T[] = [];
+  for (const { userId, lastReadSeq } of conversation.participants ?? []) {
+    const id = userIdOf(userId);
+    if (!userId || !id || id === senderId) continue;
+    if ((lastReadSeq ?? 0) >= lastSeq) seenBy.push(userId);
+  }
+  return seenBy;
 }
 
 @Schema({
@@ -167,6 +196,7 @@ export class Conversation {
   })
   lastMessageAt?: Date;
 
+  // RETIRED: no longer written or read; seen is computeSeenBy(). Kept until removed via the runbook.
   @Prop({
     type: [Types.ObjectId],
     ref: 'User',
