@@ -34,6 +34,7 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
     create: jest.fn(),
     findByIdAndUpdate: jest.fn(),
     findOneAndUpdate: jest.fn(),
+    exists: jest.fn(),
   };
 
   const mockMessageModel: any = {
@@ -811,13 +812,45 @@ describe('FULLAUDIT-010: Direct Conversation Deduplication & Concurrency Protect
       expect(mockConnection.transaction).toHaveBeenCalledTimes(1);
       expect(mockConversationModel.findOneAndUpdate).toHaveBeenNthCalledWith(
         1,
-        { _id: convId },
+        { _id: convId, 'participants.userId': userAId },
         { $inc: { lastSeq: 1 } },
         { new: true, session },
       );
       expect(createdDoc()).toEqual(expect.objectContaining({ seq: 5 }));
       expect(result.data.seq).toBe(5);
     });
+
+    it.each([
+      [
+        'removed from the conversation',
+        { _id: convId },
+        new BadRequestException('Bạn không có quyền gửi tin nhắn'),
+      ],
+      [
+        'in a conversation deleted meanwhile',
+        null,
+        new NotFoundException('Không tìm thấy hội thoại'),
+      ],
+    ])(
+      'should store and emit nothing when the sender is %s before the write',
+      async (_case, existing, expected) => {
+        // resolveConversation still saw the sender; the conditional $inc matches nothing
+        mockConversationModel.findOneAndUpdate.mockResolvedValue(null);
+        const inSession = jest.fn().mockResolvedValue(existing);
+        mockConversationModel.exists.mockReturnValue({ session: inSession });
+        jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        await expect(send()).rejects.toThrow(expected);
+
+        expect(mockConversationModel.exists).toHaveBeenCalledWith({
+          _id: convId,
+        });
+        expect(inSession).toHaveBeenCalledWith(session);
+        expect(mockConversationModel.findOneAndUpdate).toHaveBeenCalledTimes(1);
+        expect(mockMessageModel.create).not.toHaveBeenCalled();
+        expect(mockRealtimeService.emitToUser).not.toHaveBeenCalled();
+      },
+    );
 
     it('should set lastMessage with its seq and raise only the sender lastReadSeq with $max', async () => {
       await send();
