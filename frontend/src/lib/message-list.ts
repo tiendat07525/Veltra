@@ -29,3 +29,36 @@ export function upsertMessage(list: Message[], msg: Message): Message[] {
   const at = rest.findIndex((m) => m.seq === undefined || m.seq > seq);
   return at === -1 ? [...rest, msg] : [...rest.slice(0, at), msg, ...rest.slice(at)];
 }
+
+// Put the newest page of history into what is already held: messages that arrived by socket while the
+// page was loading are newer than its last message and stay; everything else comes from the page.
+export function mergeNewestPage(held: Message[], page: Message[]): Message[] {
+  const lastSeq = page[page.length - 1]?.seq ?? 0;
+  const pageIds = new Set(page.map((m) => String(m._id)));
+  const newer = held.filter((m) => m.seq !== undefined && m.seq > lastSeq && !pageIds.has(String(m._id)));
+  return [...page, ...newer];
+}
+
+// Put an older page in front, without the messages already held
+export function prependOlderPage(held: Message[], page: Message[]): Message[] {
+  const heldIds = new Set(held.map((m) => String(m._id)));
+  return [...page.filter((m) => !heldIds.has(String(m._id))), ...held];
+}
+
+// A message is never un-revoked: a response built before the revoke must not bring its content back.
+// `revoked` maps message id -> the text shown instead.
+export function applyRevokes(list: Message[], revoked: ReadonlyMap<string, string>): Message[] {
+  if (revoked.size === 0) return list;
+  return list.map((m) => {
+    const content = revoked.get(String(m._id));
+    return content === undefined ? m : { ...m, isRevoked: true, content, attachments: undefined };
+  });
+}
+
+// Stored messages, then this conversation's unsent ones (never the ones already stored)
+export function withOutbox(stored: Message[], outbox: Message[], conversationId: string): Message[] {
+  const unsent = outbox.filter((m) => m.conversationId === conversationId);
+  if (unsent.length === 0) return stored;
+  const storedKeys = new Set(stored.map((m) => m.clientMsgId));
+  return [...stored, ...unsent.filter((m) => !storedKeys.has(m.clientMsgId))];
+}

@@ -1,14 +1,32 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Message } from '@/types/message';
 import { messageService } from '@/services/api/message.service';
 import { conversationService } from '@/services/api/conversation.service';
 import { socketService } from '@/services/socket/socket.service';
-import { uuidv7 } from '@/lib/utils';
-import { isRetryableSendError, upsertMessage } from '@/lib/message-list';
-import { useAttachmentUploads } from './use-attachment-uploads';
+import {
+  applyRevokes,
+  mergeNewestPage,
+  prependOlderPage,
+  upsertMessage,
+  withOutbox,
+} from '@/lib/message-list';
+import { useOutbox } from './use-outbox';
 
-const SEND_MAX_RETRIES = 5;
-const SEND_RETRY_BASE_MS = 1000; // waits 1, 2, 4, 8, 16 s between attempts
+// Stored messages of one conversation. Replaced as a whole when another conversation is opened.
+interface History {
+  conversationId: string;
+  // Ascending seq; also collects socket messages while the first page is loading
+  messages: Message[];
+  loading: boolean;
+  error: string | null;
+  hasMore: boolean;
+  loadingMore: boolean;
+  // Message id -> text shown instead; applied to every response that arrives later
+  revoked: ReadonlyMap<string, string>;
+}
+
+const NO_MESSAGES: Message[] = [];
+const REVOKED_TEXT = 'Tin nhắn đã thu hồi';
 
 export function useMessages(
   conversationId: string | null,
@@ -16,244 +34,210 @@ export function useMessages(
   enabled: boolean = true,
   currentUserId: string | null = null
 ) {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState<boolean>(false);
-  const [loadingMore, setLoadingMore] = useState<boolean>(false);
-  // Files of optimistic messages, kept until each message is stored
-  const uploads = useAttachmentUploads(setMessages);
+  const [history, setHistory] = useState<History | null>(null);
+  // Same value, readable by async steps and socket handlers between renders
+  const historyRef = useRef<History | null>(null);
+  // Grows with every load and every switch; a response of an older generation is dropped
+  const generationRef = useRef(0);
+  const nextGeneration = useCallback(() => ++generationRef.current, []);
 
-  const activeConvIdRef = useRef<string | null>(conversationId);
   const onMarkAsSeenRef = useRef(onMarkAsSeen);
-
   useEffect(() => {
-    activeConvIdRef.current = conversationId;
     onMarkAsSeenRef.current = onMarkAsSeen;
-  }, [conversationId, onMarkAsSeen]);
+  }, [onMarkAsSeen]);
+
+  const replaceHistory = useCallback((next: History | null) => {
+    historyRef.current = next;
+    setHistory(next);
+  }, []);
+
+  // Change the loaded history, only if it is the one of this conversation
+  const updateHistory = useCallback(
+    (convId: string, change: (h: History) => Partial<History>) => {
+      const held = historyRef.current;
+      if (held && held.conversationId === convId) replaceHistory({ ...held, ...change(held) });
+    },
+    [replaceHistory]
+  );
+
+  const addStored = useCallback(
+    (message: Message) =>
+      updateHistory(String(message.conversationId), (h) => ({
+        messages: applyRevokes(upsertMessage(h.messages, message), h.revoked),
+      })),
+    [updateHistory]
+  );
+
+  // Optimistic messages of every conversation
+  const { outbox, send, retry, settle, dropConversation } = useOutbox(addStored);
+
+  const markSeen = useCallback((convId: string, upToSeq?: number) => {
+    if (onMarkAsSeenRef.current) {
+      onMarkAsSeenRef.current(convId, upToSeq);
+    } else {
+      void conversationService.markAsSeen(convId, upToSeq).catch(() => undefined);
+    }
+  }, []);
 
   const fetchMessages = useCallback(async () => {
+    const generation = nextGeneration();
     if (!enabled || !conversationId) {
-      setMessages([]);
-      setLoading(false);
-      setHasMore(false);
+      replaceHistory(null);
       return;
     }
 
-    setLoading(true);
-    setError(null);
+    const held = historyRef.current?.conversationId === conversationId ? historyRef.current : null;
+    replaceHistory({
+      conversationId,
+      messages: held?.messages ?? NO_MESSAGES,
+      loading: true,
+      error: null,
+      hasMore: false,
+      loadingMore: false,
+      revoked: held?.revoked ?? new Map(),
+    });
     try {
       const data = await messageService.getMessages(conversationId);
-      setMessages(data.messages);
-      setHasMore(data.hasMore);
-
-      // Read up to the newest message now on screen
-      const upToSeq = data.messages[data.messages.length - 1]?.seq;
-      try {
-        if (onMarkAsSeenRef.current) {
-          onMarkAsSeenRef.current(conversationId, upToSeq);
-        } else {
-          await conversationService.markAsSeen(conversationId, upToSeq);
-        }
-      } catch {
-
-      }
+      if (generation !== generationRef.current) return;
+      settle(data.messages);
+      updateHistory(conversationId, (h) => ({
+        messages: applyRevokes(mergeNewestPage(h.messages, data.messages), h.revoked),
+        hasMore: data.hasMore,
+        loading: false,
+      }));
     } catch (err: unknown) {
+      if (generation !== generationRef.current) return;
       console.error('Lỗi khi lấy tin nhắn:', err);
       const apiErr = err as { response?: { data?: { message?: string } } };
-      setError(apiErr?.response?.data?.message || 'Không thể tải tin nhắn');
-    } finally {
-      setLoading(false);
+      updateHistory(conversationId, () => ({
+        loading: false,
+        error: apiErr?.response?.data?.message || 'Không thể tải tin nhắn',
+      }));
+      return;
     }
-  }, [conversationId, enabled]);
+
+    // Read up to the newest message now on screen
+    const shown = historyRef.current?.messages ?? NO_MESSAGES;
+    markSeen(conversationId, shown[shown.length - 1]?.seq);
+  }, [conversationId, enabled, nextGeneration, replaceHistory, updateHistory, settle, markSeen]);
 
   useEffect(() => {
-    if (enabled) {
-      void Promise.resolve().then(() => {
-        fetchMessages();
-      });
-    }
-  }, [fetchMessages, enabled]);
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) void fetchMessages();
+    });
+    return () => {
+      cancelled = true;
+      // Responses still on the way belong to the conversation being left
+      nextGeneration();
+    };
+  }, [fetchMessages, nextGeneration]);
 
   useEffect(() => {
     const handleNewMessage = (payload: { message: Message; conversation?: unknown }) => {
       const newMsg = payload?.message;
       if (!newMsg) return;
 
-      const currentConvId = activeConvIdRef.current;
-      if (currentConvId && String(newMsg.conversationId) === String(currentConvId)) {
-        setMessages((prev) => upsertMessage(prev, newMsg));
+      // Own message, of any conversation: the optimistic copy is done
+      settle([newMsg]);
 
-        try {
-          if (onMarkAsSeenRef.current) {
-            onMarkAsSeenRef.current(currentConvId, newMsg.seq);
-          } else {
-            conversationService.markAsSeen(currentConvId, newMsg.seq);
-          }
-        } catch {
-          // Ignore
-        }
-      }
+      const held = historyRef.current;
+      if (!held || String(newMsg.conversationId) !== held.conversationId) return;
+      addStored(newMsg);
+      // Not on screen yet while loading / on error: marked when the page is shown
+      if (!held.loading && !held.error) markSeen(held.conversationId, newMsg.seq);
     };
 
-    const handleRevokeMessageEvent = (payload: { messageId: string; conversationId: string; content: string; isRevoked: boolean }) => {
-      const currentConvId = activeConvIdRef.current;
-      if (currentConvId && String(payload.conversationId) === String(currentConvId)) {
-        setMessages((prev) =>
-          prev.map((m) =>
-            String(m._id) === String(payload.messageId)
-              ? { ...m, isRevoked: true, content: payload.content || 'Tin nhắn đã thu hồi', attachments: undefined }
-              : m
-          )
-        );
-      }
+    const handleRevoked = (payload: { messageId: string; conversationId: string; content: string; isRevoked: boolean }) => {
+      updateHistory(String(payload.conversationId), (h) => {
+        const revoked = new Map(h.revoked).set(String(payload.messageId), payload.content || REVOKED_TEXT);
+        return { revoked, messages: applyRevokes(h.messages, revoked) };
+      });
     };
+
+    const handleRemoved = (payload: { conversationId: string }) => dropConversation(String(payload.conversationId));
 
     socketService.on('message:new', handleNewMessage);
-    socketService.on('message:revoked', handleRevokeMessageEvent);
+    socketService.on('message:revoked', handleRevoked);
+    socketService.on('conversation:removed', handleRemoved);
     return () => {
       socketService.off('message:new', handleNewMessage);
-      socketService.off('message:revoked', handleRevokeMessageEvent);
+      socketService.off('message:revoked', handleRevoked);
+      socketService.off('conversation:removed', handleRemoved);
     };
-  }, []);
+  }, [addStored, updateHistory, settle, dropConversation, markSeen]);
 
   const loadMore = useCallback(async () => {
+    const held = historyRef.current;
+    if (!held || held.conversationId !== conversationId) return;
     // The list is in ascending seq, so the first message with a seq is the oldest held
-    const beforeSeq = messages.find((m) => m.seq !== undefined)?.seq;
-    if (!conversationId || !hasMore || beforeSeq === undefined || loadingMore) return;
+    const beforeSeq = held.messages.find((m) => m.seq !== undefined)?.seq;
+    if (!held.hasMore || held.loading || held.loadingMore || beforeSeq === undefined) return;
 
-    setLoadingMore(true);
+    const generation = generationRef.current;
+    updateHistory(conversationId, () => ({ loadingMore: true }));
     try {
       const data = await messageService.getMessages(conversationId, 50, beforeSeq);
-      setMessages((prev) => {
-        const existingIds = new Set(prev.map((m) => String(m._id)));
-        const newOlder = data.messages.filter((m) => !existingIds.has(String(m._id)));
-        return [...newOlder, ...prev];
-      });
-      setHasMore(data.hasMore);
+      if (generation !== generationRef.current) return;
+      settle(data.messages);
+      updateHistory(conversationId, (h) => ({
+        messages: applyRevokes(prependOlderPage(h.messages, data.messages), h.revoked),
+        hasMore: data.hasMore,
+        loadingMore: false,
+      }));
     } catch (err: unknown) {
+      if (generation !== generationRef.current) return;
       console.error('Lỗi khi tải thêm tin nhắn:', err);
-    } finally {
-      setLoadingMore(false);
+      updateHistory(conversationId, () => ({ loadingMore: false }));
     }
-  }, [conversationId, messages, hasMore, loadingMore]);
+  }, [conversationId, updateHistory, settle]);
 
-  const markFailed = useCallback((clientMsgId: string) => {
-    // Leave it alone if the socket event already brought the stored copy
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.clientMsgId === clientMsgId && m.status === 'sending' ? { ...m, status: 'failed' } : m
-      )
-    );
-  }, []);
-
-  // Send one pending message, retrying with the same clientMsgId so the server stores it once
-  const deliver = useCallback(async (pending: Message) => {
-    const clientMsgId = pending.clientMsgId;
-    if (!clientMsgId) return;
-
-    let attachments: Awaited<ReturnType<typeof uploads.uploadAll>>;
-    try {
-      attachments = await uploads.uploadAll(clientMsgId, pending.conversationId);
-    } catch (err: unknown) {
-      console.error('Lỗi khi tải file lên:', err);
-      markFailed(clientMsgId);
-      return;
-    }
-
-    for (let attempt = 0; ; attempt++) {
-      try {
-        const res = await messageService.sendMessage({
-          conversationId: pending.conversationId,
-          content: pending.content || undefined,
-          clientMsgId,
-          ...(attachments.length ? { attachments } : {}),
-        });
-        const saved = res.data;
-        if (saved) {
-          // Only swap the optimistic copy; after a conversation switch the list no longer holds it
-          setMessages((prev) =>
-            prev.some((m) => m.clientMsgId === clientMsgId) ? upsertMessage(prev, saved) : prev
-          );
-        }
-        uploads.release(clientMsgId);
-        return;
-      } catch (err: unknown) {
-        if (!isRetryableSendError(err) || attempt >= SEND_MAX_RETRIES) {
-          console.error('Lỗi khi gửi tin nhắn:', err);
-          markFailed(clientMsgId);
-          return;
-        }
-        await new Promise((resolve) => setTimeout(resolve, SEND_RETRY_BASE_MS * 2 ** attempt));
-      }
-    }
-  }, [uploads, markFailed]);
-
-  const handleSendMessage = useCallback(
+  const sendMessage = useCallback(
     (content: string, files: File[] = []) => {
-      const text = content.trim();
       if (!conversationId || !currentUserId) return;
-
-      const clientMsgId = uuidv7();
-      const attachments = uploads.prepare(clientMsgId, files);
-      if (!text && attachments.length === 0) return;
-
-      const pending: Message = {
-        _id: `pending:${clientMsgId}`,
-        clientMsgId,
-        conversationId,
-        senderId: currentUserId,
-        content: text || undefined,
-        ...(attachments.length ? { attachments } : {}),
-        // Display only (date separator); the list is never sorted by this
-        createdAt: new Date().toISOString(),
-        status: 'sending',
-      };
-      setMessages((prev) => [...prev, pending]);
-      void deliver(pending);
+      send(conversationId, currentUserId, content, files);
     },
-    [conversationId, currentUserId, uploads, deliver]
+    [conversationId, currentUserId, send]
   );
 
-  const handleRetryMessage = useCallback(
-    (clientMsgId: string) => {
-      const failed = messages.find((m) => m.clientMsgId === clientMsgId && m.status === 'failed');
-      if (!failed) return;
-
-      const pending: Message = { ...failed, status: 'sending' };
-      setMessages((prev) => prev.map((m) => (m.clientMsgId === clientMsgId ? pending : m)));
-      void deliver(pending);
+  const revokeMessage = useCallback(
+    async (messageId: string) => {
+      const convId = historyRef.current?.conversationId;
+      try {
+        await messageService.revokeMessage(messageId);
+      } catch (err: unknown) {
+        console.error('Lỗi khi thu hồi tin nhắn:', err);
+        throw err;
+      }
+      if (!convId) return;
+      updateHistory(convId, (h) => {
+        const revoked = new Map(h.revoked).set(messageId, REVOKED_TEXT);
+        return { revoked, messages: applyRevokes(h.messages, revoked) };
+      });
     },
-    [messages, deliver]
+    [updateHistory]
   );
 
-  const handleRevokeMessage = useCallback(async (messageId: string) => {
-    try {
-      await messageService.revokeMessage(messageId);
-      setMessages((prev) =>
-        prev.map((m) =>
-          String(m._id) === messageId
-            ? { ...m, isRevoked: true, content: 'Tin nhắn đã thu hồi', attachments: undefined }
-            : m
-        )
-      );
-    } catch (err: unknown) {
-      console.error('Lỗi khi thu hồi tin nhắn:', err);
-      throw err;
-    }
-  }, []);
+  // Never the history of another conversation: after a switch it counts as loading until its own arrives
+  const open = history && history.conversationId === conversationId ? history : null;
+  const loading = enabled && !!conversationId && (!open || open.loading);
+  const stored = open?.messages ?? NO_MESSAGES;
+  const messages = useMemo(
+    // Empty until the first page is there, so the list opens once, at its newest message
+    () => (conversationId && !loading ? withOutbox(stored, outbox, conversationId) : NO_MESSAGES),
+    [conversationId, loading, stored, outbox]
+  );
 
   return {
     messages,
     loading,
-    error,
-    hasMore,
-    loadingMore,
-    sendMessage: handleSendMessage,
-    retryMessage: handleRetryMessage,
+    error: open?.error ?? null,
+    hasMore: open?.hasMore ?? false,
+    loadingMore: open?.loadingMore ?? false,
+    sendMessage,
+    retryMessage: retry,
     loadMore,
     refetch: fetchMessages,
-    setMessages,
-    revokeMessage: handleRevokeMessage,
+    revokeMessage,
   };
 }
