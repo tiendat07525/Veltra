@@ -3,14 +3,15 @@
 import React, { useState, useEffect } from 'react';
 import { X, Search, MessageSquarePlus, Check, Loader2 } from 'lucide-react';
 import { UserAvatar } from '@/components/ui/UserAvatar';
-import { User, UserBasicInfo } from '@/types/user';
-import { authService } from '@/services/api/auth.service';
-import { userService } from '@/services/api/user.service';
+import { UserBasicInfo } from '@/types/user';
+import { useUserSearch } from '@/hooks/use-user-search';
+import { userNameMatches } from '@/lib/user-search';
 import { friendService } from '@/services/api/friend.service';
 import { InlineError } from '@/components/ui/InlineError';
 
 interface NewConversationModalProps {
   isOpen: boolean;
+  currentUserId: string;
   onClose: () => void;
   onCreateConversation: (params: {
     type: 'direct' | 'group';
@@ -22,60 +23,90 @@ interface NewConversationModalProps {
 
 export const NewConversationModal: React.FC<NewConversationModalProps> = ({
   isOpen,
+  currentUserId,
   onClose,
   onCreateConversation,
 }) => {
   const [tab, setTab] = useState<'direct' | 'group'>('direct');
   const [groupName, setGroupName] = useState('');
-  const [search, setSearch] = useState('');
+  // Group tab: filters the loaded friends. The direct tab searches all users on the server.
+  const [friendQuery, setFriendQuery] = useState('');
+  const { searchQuery, searchResults, searchLoading, searchError, handleSearchChange } = useUserSearch(
+    currentUserId || undefined
+  );
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
-  const [availableUsers, setAvailableUsers] = useState<User[]>([]);
   // Groups may only include friends (enforced by the backend)
   const [friends, setFriends] = useState<UserBasicInfo[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
+      let cancelled = false;
       void Promise.resolve().then(() => {
+        if (cancelled) return;
         setLoading(true);
+        setLoadError(null);
         setSelectedUserIds([]);
-        setSearch('');
+        setFriendQuery('');
+        handleSearchChange('');
         setSubmitError(null);
         setGroupName('');
         setTab('direct');
       });
       async function load() {
         try {
-          const [me, users, friendList] = await Promise.all([
-            authService.getCurrentUser(),
-            userService.getUsers(),
-            friendService.getFriends().catch((err: unknown) => {
-              console.error('Lỗi khi tải danh sách bạn bè:', err);
-              return [] as UserBasicInfo[];
-            }),
-          ]);
-          setAvailableUsers(users.filter((u) => u._id !== me._id));
-          setFriends(friendList);
-        } catch (err) {
-          console.error('Lỗi khi tải danh sách người dùng:', err);
+          const friendList = await friendService.getFriends();
+          if (!cancelled) setFriends(friendList);
+        } catch {
+          if (!cancelled) setLoadError('Không thể tải danh sách bạn bè. Thử lại sau.');
         } finally {
-          setLoading(false);
+          if (!cancelled) setLoading(false);
         }
       }
-      load();
+      void load();
+      return () => {
+        cancelled = true;
+      };
     }
-  }, [isOpen]);
+  }, [isOpen, handleSearchChange]);
 
   if (!isOpen) return null;
 
-  const listedUsers: UserBasicInfo[] = tab === 'group' ? friends : availableUsers;
-  const filteredUsers = listedUsers.filter(
-    (u) =>
-      (u.displayName || '').toLowerCase().includes(search.toLowerCase().trim()) ||
-      (u.username || '').toLowerCase().includes(search.toLowerCase().trim())
-  );
+  const query = tab === 'direct' ? searchQuery : friendQuery;
+  const searchingServer = tab === 'direct' && query.trim() !== '';
+  // Direct: server search, friends while the box is empty. Group: friends only (backend rule).
+  const listedUsers: UserBasicInfo[] = searchingServer
+    ? searchResults
+    : friends.filter((u) => userNameMatches(u, query.toLowerCase().trim()));
+  const listLoading = searchingServer ? searchLoading : loading;
+  const listError = searchingServer ? searchError : loadError;
+
+  const handleQueryChange = (value: string) => {
+    if (tab === 'direct') {
+      // The selected user may no longer be in the list
+      setSelectedUserIds([]);
+      handleSearchChange(value);
+    } else {
+      setFriendQuery(value);
+    }
+  };
+
+  const switchTab = (next: 'direct' | 'group') => {
+    setTab(next);
+    setSelectedUserIds([]);
+    setFriendQuery('');
+    handleSearchChange('');
+  };
+
+  const emptyText =
+    tab === 'group' && friends.length === 0
+      ? 'Bạn cần kết bạn trước khi tạo nhóm'
+      : tab === 'direct' && !searchingServer
+        ? 'Nhập tên hoặc username để tìm người trò chuyện'
+        : 'Không tìm thấy người dùng nào';
 
   const toggleUserSelection = (id: string) => {
     if (tab === 'direct') {
@@ -144,10 +175,7 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
         <div className="grid grid-cols-2 p-1 bg-surface-2 rounded-xl my-4 text-xs font-semibold" role="tablist">
           <button
             type="button"
-            onClick={() => {
-              setTab('direct');
-              setSelectedUserIds([]);
-            }}
+            onClick={() => switchTab('direct')}
             role="tab"
             aria-selected={tab === 'direct'}
             className={`min-h-9 rounded-lg transition-colors ${
@@ -158,10 +186,7 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => {
-              setTab('group');
-              setSelectedUserIds([]);
-            }}
+            onClick={() => switchTab('group')}
             role="tab"
             aria-selected={tab === 'group'}
             className={`min-h-9 rounded-lg transition-colors ${
@@ -194,28 +219,30 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
           <Search className="w-4 h-4 text-fg-muted absolute left-3 top-1/2 -translate-y-1/2" aria-hidden="true" />
           <input
             type="text"
-            placeholder={tab === 'group' ? 'Tìm kiếm bạn bè...' : 'Tìm kiếm người dùng...'}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            aria-label="Tìm bạn bè"
+            placeholder={tab === 'group' ? 'Tìm kiếm bạn bè...' : 'Tìm theo tên hoặc username...'}
+            value={query}
+            onChange={(e) => handleQueryChange(e.target.value)}
+            aria-label={tab === 'group' ? 'Tìm bạn bè' : 'Tìm người dùng'}
             className="w-full min-h-10 pl-9 pr-3 py-2 bg-surface-2 rounded-xl text-xs text-fg placeholder:text-fg-muted focus:ring-2 focus:ring-primary/30 focus:outline-hidden"
           />
         </div>
 
+        {/* Stays until the next search / opening: without it an empty list would read as "no friends" */}
+        <InlineError message={listError} className="mb-3" />
+
         {/* Users list */}
         <div className="max-h-60 overflow-y-auto space-y-1 pr-1">
-          {loading ? (
+          {listLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="w-5 h-5 animate-spin text-primary" aria-hidden="true" />
             </div>
-          ) : filteredUsers.length === 0 ? (
-            <div className="text-center py-8 text-xs text-fg-muted">
-              {tab === 'group' && friends.length === 0
-                ? 'Bạn cần kết bạn trước khi tạo nhóm'
-                : 'Không tìm thấy người dùng nào'}
-            </div>
+          ) : listedUsers.length === 0 ? (
+            // The error above explains an empty list
+            listError ? null : (
+              <div className="text-center py-8 text-xs text-fg-muted">{emptyText}</div>
+            )
           ) : (
-            filteredUsers.map((user) => {
+            listedUsers.map((user) => {
               const isSelected = selectedUserIds.includes(user._id);
               return (
                 <button

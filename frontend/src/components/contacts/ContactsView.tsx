@@ -3,11 +3,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { CurrentUserProfile, UserBasicInfo } from '@/types/user';
 import { useFriends } from '@/hooks/use-friends';
+import { useUserSearch } from '@/hooks/use-user-search';
 import { authService } from '@/services/api/auth.service';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { FriendsTab } from './FriendsTab';
 import { FriendRequestsTab } from './FriendRequestsTab';
-import { UserSearchTab, useUserSearch } from './UserSearchTab';
+import { UserSearchTab } from './UserSearchTab';
 
 export type ContactsTab = 'friends' | 'requests' | 'search';
 
