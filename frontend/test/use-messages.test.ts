@@ -473,3 +473,169 @@ describe('useMessages: outbox', () => {
     revoke.mockRestore();
   });
 });
+
+describe('useMessages: resync', () => {
+  const range = (from: number, to: number, over: Partial<Message> = {}) =>
+    Array.from({ length: to - from + 1 }, (_, i) => msg({ seq: from + i, ...over }));
+  const seqs = (list: Message[]) => list.map((m) => m.seq);
+  const reconnect = () => act(async () => handlers.get('connect')!(undefined));
+
+  it('adds the missed messages without a loading state and marks them seen', async () => {
+    const { result } = await renderLoaded(page(range(1, 3)));
+    const answer = deferred<MessagesResponse>();
+    getMessages.mockReturnValueOnce(answer.promise);
+    await reconnect();
+    expect(result.current.loading).toBe(false);
+    expect(result.current.messages).toHaveLength(3);
+    await act(async () => answer.resolve(page(range(1, 5))));
+    expect(seqs(result.current.messages)).toEqual([1, 2, 3, 4, 5]);
+    expect(onSeen).toHaveBeenLastCalledWith('c1', 5);
+  });
+
+  it('changes nothing and marks nothing when nothing was missed', async () => {
+    const { result } = await renderLoaded(page(range(1, 3)));
+    onSeen.mockClear();
+    getMessages.mockResolvedValueOnce(page(range(1, 3)));
+    await reconnect();
+    expect(seqs(result.current.messages)).toEqual([1, 2, 3]);
+    expect(onSeen).not.toHaveBeenCalled();
+  });
+
+  it('shows a revoke that was missed', async () => {
+    const { result } = await renderLoaded(page(range(1, 2)));
+    getMessages.mockResolvedValueOnce(page([msg({ seq: 1, isRevoked: true, content: 'Đã thu hồi' }), msg({ seq: 2 })]));
+    await reconnect();
+    expect(result.current.messages[0]).toMatchObject({ isRevoked: true, content: 'Đã thu hồi' });
+  });
+
+  it('reads pages back until it covers what is held, and keeps the older page state', async () => {
+    const { result } = await renderLoaded(page(range(51, 100), true));
+    getMessages
+      .mockResolvedValueOnce(page(range(131, 180), true))
+      .mockResolvedValueOnce(page(range(81, 130), true))
+      .mockResolvedValueOnce(page(range(31, 80), true));
+    getMessages.mockClear();
+    await reconnect();
+    expect(getMessages.mock.calls.map((c) => c[2])).toEqual([undefined, 131, 81]);
+    expect(seqs(result.current.messages)).toEqual(seqs(range(31, 180)));
+    expect(result.current.hasMore).toBe(true);
+  });
+
+  it('too far behind: keeps the newest pages only, and an older page on the way is dropped', async () => {
+    const { result } = await renderLoaded(page(range(51, 100), true));
+    const older = deferred<MessagesResponse>();
+    getMessages.mockReturnValueOnce(older.promise);
+    act(() => void result.current.loadMore());
+    for (let to = 1000; to > 800; to -= 50) getMessages.mockResolvedValueOnce(page(range(to - 49, to), true));
+    await reconnect();
+    expect(seqs(result.current.messages)).toEqual(seqs(range(801, 1000)));
+    expect(result.current).toMatchObject({ hasMore: true, loadingMore: false });
+    await act(async () => older.resolve(page(range(1, 50))));
+    expect(result.current.messages[0].seq).toBe(801);
+    expect(result.current.hasMore).toBe(true);
+  });
+
+  it('keeps a message and a revoke that arrive while it runs', async () => {
+    const { result } = await renderLoaded(page(range(1, 2)));
+    const answer = deferred<MessagesResponse>();
+    getMessages.mockReturnValueOnce(answer.promise);
+    await reconnect();
+    emit('message:new', { message: msg({ seq: 4 }) });
+    emit('message:revoked', { messageId: 'id-1', conversationId: 'c1', content: 'Đã thu hồi', isRevoked: true });
+    await act(async () => answer.resolve(page(range(1, 3))));
+    expect(seqs(result.current.messages)).toEqual([1, 2, 3, 4]);
+    expect(result.current.messages[0].isRevoked).toBe(true);
+  });
+
+  it('keeps unsent messages', async () => {
+    const { result } = await renderLoaded(page(range(1, 1)));
+    sendMessage.mockRejectedValueOnce(httpError(403));
+    act(() => result.current.sendMessage('a'));
+    await waitFor(() => expect(result.current.messages[1].status).toBe('failed'));
+    getMessages.mockResolvedValueOnce(page(range(1, 2)));
+    await reconnect();
+    expect(result.current.messages.map((m) => m.seq ?? m.status)).toEqual([1, 2, 'failed']);
+  });
+
+  it('keeps the list when it fails', async () => {
+    const { result } = await renderLoaded(page(range(1, 2)));
+    getMessages.mockRejectedValueOnce(httpError(500));
+    await reconnect();
+    expect(seqs(result.current.messages)).toEqual([1, 2]);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('loads a history that could not be loaded before', async () => {
+    getMessages.mockRejectedValueOnce(httpError(500));
+    const { result } = render();
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    getMessages.mockResolvedValueOnce(page(range(1, 2)));
+    await reconnect();
+    expect(seqs(result.current.messages)).toEqual([1, 2]);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('waits for the first page, then reads again', async () => {
+    const first = deferred<MessagesResponse>();
+    getMessages.mockReturnValueOnce(first.promise).mockResolvedValueOnce(page(range(1, 3)));
+    const { result } = render();
+    await waitFor(() => expect(getMessages).toHaveBeenCalledTimes(1));
+    await reconnect();
+    expect(getMessages).toHaveBeenCalledTimes(1);
+    await act(async () => first.resolve(page(range(1, 2))));
+    expect(seqs(result.current.messages)).toEqual([1, 2, 3]);
+  });
+
+  it('a run for the previous conversation does not touch or block the next one', async () => {
+    const { result, rerender } = await renderLoaded(page(range(1, 2)));
+    const late = deferred<MessagesResponse>();
+    getMessages.mockReturnValueOnce(late.promise);
+    await reconnect();
+    getMessages.mockResolvedValueOnce(page(range(1, 1, { conversationId: 'c2' })));
+    rerender({ conv: 'c2' });
+    await waitFor(() => expect(result.current.messages).toHaveLength(1));
+    await reconnect(); // asked while the old run is still going
+    getMessages.mockResolvedValueOnce(page(range(1, 2, { conversationId: 'c2' })));
+    await act(async () => late.resolve(page(range(1, 9))));
+    expect(seqs(result.current.messages)).toEqual([1, 2]);
+  });
+
+  describe('gap', () => {
+    it('asks for a message that never came, once', async () => {
+      const { result } = await renderLoaded(page(range(1, 2)));
+      vi.useFakeTimers();
+      getMessages.mockClear();
+      getMessages.mockResolvedValueOnce(page(range(1, 5)));
+      emit('message:new', { message: msg({ seq: 5 }) });
+      await act(() => vi.advanceTimersByTimeAsync(400));
+      expect(getMessages).not.toHaveBeenCalled();
+      await act(() => vi.advanceTimersByTimeAsync(200));
+      expect(seqs(result.current.messages)).toEqual([1, 2, 3, 4, 5]);
+      expect(getMessages).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not ask when the missing one comes by itself', async () => {
+      await renderLoaded(page(range(1, 2)));
+      vi.useFakeTimers();
+      getMessages.mockClear();
+      emit('message:new', { message: msg({ seq: 4 }) });
+      await act(() => vi.advanceTimersByTimeAsync(300));
+      emit('message:new', { message: msg({ seq: 3 }) });
+      await act(() => vi.advanceTimersByTimeAsync(5000));
+      expect(getMessages).not.toHaveBeenCalled();
+    });
+
+    it('does not ask again and again for one the server does not have', async () => {
+      await renderLoaded(page(range(1, 2)));
+      vi.useFakeTimers();
+      getMessages.mockClear();
+      getMessages.mockResolvedValue(page([...range(1, 2), msg({ seq: 4 })]));
+      emit('message:new', { message: msg({ seq: 4 }) });
+      await act(() => vi.advanceTimersByTimeAsync(5000));
+      emit('message:new', { message: msg({ seq: 5 }) });
+      await act(() => vi.advanceTimersByTimeAsync(5000));
+      expect(getMessages).toHaveBeenCalledTimes(1);
+      getMessages.mockReset();
+    });
+  });
+});

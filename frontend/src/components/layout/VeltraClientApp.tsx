@@ -8,6 +8,7 @@ import { useSocket } from '@/hooks/use-socket/use-socket';
 import { useRouter, usePathname, useSearchParams } from '@/lib/navigation';
 import { MainSidebar, NavTab } from '@/components/layout/MainSidebar';
 import { ChatTab } from '@/components/layout/ChatTab';
+import { ConnectionBanner } from '@/components/layout/ConnectionBanner';
 import { ContactsView, ContactsTab } from '@/components/contacts/ContactsView';
 import { NotificationsView } from '@/components/common/NotificationsView';
 import { SettingsView } from '@/components/common/SettingsView';
@@ -28,7 +29,7 @@ export function VeltraClientApp() {
   const { theme, resolvedTheme, toggleTheme, setTheme } = useTheme();
   const { isMobile } = useMobile();
   // Socket.IO infrastructure - tied directly to authentication lifecycle
-  useSocket();
+  const { isConnected } = useSocket();
 
   // Determine active tab from pathname
   const getTabFromPath = (path: string): NavTab => {
@@ -194,6 +195,8 @@ export function VeltraClientApp() {
 
       {/* Main Content Area */}
       <main className="flex-1 min-h-0 md:h-full flex overflow-hidden relative">
+        <ConnectionBanner isConnected={isConnected} />
+
         {/* Chat Tab: 3-column layout */}
         {activeTab === 'chat' && (
           <ChatTab
