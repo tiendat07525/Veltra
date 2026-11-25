@@ -1,13 +1,16 @@
-import { Controller, HttpCode, INestApplication, Post } from '@nestjs/common';
+import { Controller, HttpCode, Post } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { APP_GUARD, Reflector } from '@nestjs/core';
 import { Throttle, ThrottlerModule } from '@nestjs/throttler';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
-import { App } from 'supertest/types';
 import { ThrottlerStorageRedisService } from '../src/auth/throttler-storage-redis.service';
-import { AppThrottlerGuard } from '../src/auth/app-throttler.guard';
+import {
+  AppThrottlerGuard,
+  REFRESH_IP_LIMIT,
+} from '../src/auth/app-throttler.guard';
 import * as crypto from 'crypto';
 
 // Same limits as AuthController, without its services
@@ -299,7 +302,7 @@ describe('Distributed Rate Limiting (FULLAUDIT-008)', () => {
   });
 
   describe('AppThrottlerGuard over HTTP', () => {
-    let app: INestApplication<App>;
+    let app: NestExpressApplication;
 
     beforeEach(async () => {
       const module = await Test.createTestingModule({
@@ -312,16 +315,18 @@ describe('Distributed Rate Limiting (FULLAUDIT-008)', () => {
         controllers: [LimitedAuthController],
         providers: [{ provide: APP_GUARD, useClass: AppThrottlerGuard }],
       }).compile();
-      app = module.createNestApplication();
+      app = module.createNestApplication<NestExpressApplication>();
+      app.set('trust proxy', 1);
       app.use(cookieParser());
       await app.init();
     });
 
     afterEach(() => app.close());
 
-    const post = (path: string, cookie: string) =>
+    const post = (path: string, cookie: string, ip = '203.0.113.7') =>
       request(app.getHttpServer())
         .post(path)
+        .set('X-Forwarded-For', ip)
         .set('Cookie', `refreshToken=${cookie}`);
 
     it('should limit login by IP even with ?x=/auth/refresh and a new cookie each time', async () => {
@@ -342,6 +347,45 @@ describe('Distributed Rate Limiting (FULLAUDIT-008)', () => {
       }
       expect((await post('/auth/refresh', 'user.s1.token')).status).toBe(429);
       expect((await post('/auth/refresh', 'user.s2.token')).status).toBe(200);
+    });
+
+    it('should cap /auth/refresh per IP even with a new cookie each time', async () => {
+      // well-formed and malformed cookies share the cap
+      for (let i = 0; i < REFRESH_IP_LIMIT; i++) {
+        const cookie = i % 2 ? `user.session-${i}.token` : `junk-${i}`;
+        expect((await post('/auth/refresh', cookie)).status).toBe(200);
+      }
+      const blocked = await post('/auth/refresh', 'user.session-new.token');
+      expect(blocked.status).toBe(429);
+      expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
+
+      // a query string does not get a new budget
+      expect((await post('/auth/refresh?x=1', 'user.s-q.token')).status).toBe(
+        429,
+      );
+      // another address and other routes are not affected
+      expect(
+        (await post('/auth/refresh', 'user.session-new.token', '203.0.113.8'))
+          .status,
+      ).toBe(200);
+      expect((await post('/auth/login', 'user.s1.token')).status).toBe(200);
+    });
+
+    it('should count one IPv6 /64 as one address for the refresh cap', async () => {
+      for (let i = 0; i < REFRESH_IP_LIMIT; i++) {
+        const ip = `2001:db8:1:2::${(i + 1).toString(16)}`;
+        expect(
+          (await post('/auth/refresh', `user.session-${i}.token`, ip)).status,
+        ).toBe(200);
+      }
+      expect(
+        (await post('/auth/refresh', 'user.s-new.token', '2001:db8:1:2::ffff'))
+          .status,
+      ).toBe(429);
+      expect(
+        (await post('/auth/refresh', 'user.s-new.token', '2001:db8:1:3::1'))
+          .status,
+      ).toBe(200);
     });
   });
 });
