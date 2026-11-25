@@ -1,5 +1,4 @@
 import {
-  IsEmail,
   IsOptional,
   IsString,
   IsUrl,
@@ -13,10 +12,6 @@ export class UpdateUserDto {
   @IsString()
   @MaxLength(100)
   displayName?: string;
-
-  @IsOptional()
-  @IsEmail()
-  email?: string;
 
   @IsOptional()
   @IsString()
