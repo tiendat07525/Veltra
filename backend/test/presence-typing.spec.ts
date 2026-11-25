@@ -4,6 +4,8 @@ import {
   PresenceService,
 } from '../src/realtime/presence.service';
 import {
+  PRESENCE_SYNC_LIMIT,
+  PRESENCE_SYNC_WINDOW_MS,
   RealtimeGateway,
   TYPING_MIN_INTERVAL_MS,
 } from '../src/realtime/realtime.gateway';
@@ -234,6 +236,47 @@ describe('RealtimeGateway presence / typing handlers', () => {
   it('presence:sync rejects an unauthenticated socket', async () => {
     const ack = await gateway.handlePresenceSync(socket());
     expect(ack).toMatchObject({ ok: false, error: { code: 'UNAUTHORIZED' } });
+  });
+
+  it('rate-limits presence:sync per socket and window (no lookup when over)', async () => {
+    jest.useFakeTimers();
+    const client = socket(me);
+    for (let i = 0; i < PRESENCE_SYNC_LIMIT; i++) {
+      expect(await gateway.handlePresenceSync(client)).toMatchObject({
+        ok: true,
+      });
+    }
+    expect(await gateway.handlePresenceSync(client)).toMatchObject({
+      ok: false,
+      error: { code: 'RATE_LIMITED' },
+    });
+    expect(presence.onlineAudience).toHaveBeenCalledTimes(PRESENCE_SYNC_LIMIT);
+
+    // another socket of the same user has its own budget
+    expect(await gateway.handlePresenceSync(socket(me))).toMatchObject({
+      ok: true,
+    });
+
+    // rejected calls do not extend the window
+    jest.advanceTimersByTime(PRESENCE_SYNC_WINDOW_MS - 1);
+    expect(await gateway.handlePresenceSync(client)).toMatchObject({
+      ok: false,
+    });
+    jest.advanceTimersByTime(1);
+    expect(await gateway.handlePresenceSync(client)).toMatchObject({
+      ok: true,
+    });
+  });
+
+  it('concurrent presence:sync calls cannot exceed the limit', async () => {
+    const client = socket(me);
+    const acks = await Promise.all(
+      Array.from({ length: PRESENCE_SYNC_LIMIT + 5 }, () =>
+        gateway.handlePresenceSync(client),
+      ),
+    );
+    expect(acks.filter((ack) => ack.ok)).toHaveLength(PRESENCE_SYNC_LIMIT);
+    expect(presence.onlineAudience).toHaveBeenCalledTimes(PRESENCE_SYNC_LIMIT);
   });
 
   it('typing:start is relayed to the other members with the socket user id', async () => {

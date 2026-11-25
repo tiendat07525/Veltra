@@ -462,6 +462,42 @@ describe('RealtimeGateway - Socket.IO Redis Adapter (Unit Tests)', () => {
       expect(next.mock.calls[0][0].message).toBe('Không có quyền truy cập');
     });
 
+    it('should ignore a token sent in the query string', async () => {
+      const mockSocket: any = {
+        handshake: {
+          auth: {},
+          headers: {},
+          query: { token: 'valid-jwt-token' },
+        },
+        data: {},
+      };
+
+      const next = jest.fn();
+      await authMiddleware(mockSocket, next);
+
+      expect(jwtService.verifyAsync).not.toHaveBeenCalled();
+      expect(next.mock.calls[0][0].message).toBe('Không có quyền truy cập');
+    });
+
+    it('should still accept a token in the Authorization header', async () => {
+      const mockSocket: any = {
+        handshake: {
+          auth: {},
+          headers: { authorization: 'Bearer header-jwt-token' },
+        },
+        data: {},
+      };
+      (jwtService.verifyAsync as jest.Mock).mockRejectedValue(
+        new Error('stop after verify'),
+      );
+
+      await authMiddleware(mockSocket, jest.fn());
+
+      expect(jwtService.verifyAsync).toHaveBeenCalledWith('header-jwt-token', {
+        secret: 'test-secret',
+      });
+    });
+
     it('should reject socket connection if JWT verification fails', async () => {
       const mockSocket: any = {
         handshake: {

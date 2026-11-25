@@ -21,6 +21,9 @@ export interface GatewaySocketData {
   // Last accepted typing:start / typing:stop (ms), for the per-socket rate limit
   lastTypingStartAt?: number;
   lastTypingStopAt?: number;
+  // presence:sync calls accepted in the current window (per-socket rate limit)
+  presenceSyncWindowStart?: number;
+  presenceSyncCount?: number;
 }
 
 export type GatewaySocket = Socket<
@@ -68,8 +71,7 @@ export const createSocketAuthMiddleware =
 
       const token: unknown =
         socket.handshake.auth?.token ||
-        socket.handshake.headers?.authorization?.replace(/^Bearer\s+/i, '') ||
-        socket.handshake.query?.token;
+        socket.handshake.headers?.authorization?.replace(/^Bearer\s+/i, '');
 
       if (!token || typeof token !== 'string') {
         return next(new Error('Không có quyền truy cập'));
