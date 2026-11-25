@@ -1,4 +1,5 @@
 import React from 'react';
+import type { Viewport } from 'next';
 import { headers } from 'next/headers';
 import './globals.css';
 // Self-hosted (bundled into /_next/static/media): builds no longer download from Google Fonts
@@ -11,6 +12,16 @@ export const dynamic = 'force-dynamic';
 export const metadata = {
   title: 'Veltra – Ứng dụng chat realtime',
   description: 'Nhắn tin, gửi file và trò chuyện nhóm theo thời gian thực.',
+};
+
+// The only viewport tag: a hand-written <meta> in <head> was followed by Next's default one, which won.
+// viewportFit 'cover' turns on the env(safe-area-inset-*) paddings; 'resizes-content' shrinks h-dvh
+// when the Android keyboard opens so the composer stays visible.
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  interactiveWidget: 'resizes-content',
 };
 
 // Runs before the first paint so the saved theme shows without a light/dark flash.
@@ -29,11 +40,10 @@ export default async function RootLayout({
     <html lang="vi" suppressHydrationWarning>
       <head>
         <meta charSet="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
         {/* Browsers hide the nonce attribute after load, so the client sees nonce="" */}
         <script nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
-      <body className="h-dvh w-screen overflow-hidden bg-app text-fg font-sans antialiased">
+      <body className="h-dvh w-full overflow-hidden bg-app text-fg font-sans antialiased">
         <NavigationProvider>
           {children}
         </NavigationProvider>
