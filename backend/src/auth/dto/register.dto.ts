@@ -1,17 +1,14 @@
-import { IsString, Length, IsEmail, IsNotEmpty } from 'class-validator';
+import { IsEmail, IsNotEmpty } from 'class-validator';
+import { IsNewPassword, IsNewUsername } from './credential-rules';
 
 export class RegisterDto {
-  @IsString()
-  @IsNotEmpty()
-  @Length(3, 30)
+  @IsNewUsername()
   username: string;
 
   @IsEmail()
   @IsNotEmpty()
   email: string;
 
-  @IsString()
-  @IsNotEmpty()
-  @Length(6, 100)
+  @IsNewPassword()
   password: string;
 }
