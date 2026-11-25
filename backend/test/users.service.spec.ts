@@ -19,7 +19,6 @@ describe('UsersService (Security & Password Hashing)', () => {
     findById: jest.fn(),
     findOne: jest.fn(),
     findByIdAndUpdate: jest.fn(),
-    findByIdAndDelete: jest.fn(),
     countDocuments: jest.fn(),
   };
 
@@ -176,12 +175,6 @@ describe('UsersService (Security & Password Hashing)', () => {
       await expect(
         service.update('targetId', { bio: 'hacked' }, 'attackerId'),
       ).rejects.toThrow(ForbiddenException);
-    });
-
-    it('should throw ForbiddenException if user tries to delete another user account', async () => {
-      await expect(service.remove('targetId', 'attackerId')).rejects.toThrow(
-        ForbiddenException,
-      );
     });
   });
 

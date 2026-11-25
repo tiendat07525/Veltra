@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   Param,
   Patch,
@@ -50,10 +49,5 @@ export class UsersController {
     @Req() req: AuthenticatedRequest,
   ) {
     return this.userService.update(id, dto, req.user.id);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    return this.userService.remove(id, req.user.id);
   }
 }

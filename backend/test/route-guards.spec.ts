@@ -90,6 +90,13 @@ describe('Route guards (every route requires JwtAuthGuard unless allowlisted)', 
     );
   });
 
+  it('should not expose an account deletion route', () => {
+    // It only removed the user document: sessions, sockets, group ownership and
+    // the freed username were left behind (security.md §1)
+    const found = routes.map((r) => r.route);
+    expect(found.filter((r) => /^(DELETE|ALL) \/users/.test(r))).toEqual([]);
+  });
+
   it('should protect every non-public route with JwtAuthGuard', () => {
     const unguarded = routes
       .filter((r) => !r.guarded && !PUBLIC_ROUTES.includes(r.route))

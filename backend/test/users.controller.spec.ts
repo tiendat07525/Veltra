@@ -19,7 +19,6 @@ describe('UsersController (Security & Functionality)', () => {
     update: jest.fn(),
     findAll: jest.fn(),
     findPublicProfile: jest.fn(),
-    remove: jest.fn(),
     create: jest.fn(),
   };
 
@@ -132,16 +131,6 @@ describe('UsersController (Security & Functionality)', () => {
         updateDto,
         'user1',
       );
-    });
-
-    it('should delete user via remove with currentUserId', async () => {
-      mockUsersService.remove.mockResolvedValue({
-        message: 'Xóa user thành công',
-      });
-
-      const result = await controller.remove('user1', asReq({ id: 'user1' }));
-      expect(result).toEqual({ message: 'Xóa user thành công' });
-      expect(mockUsersService.remove).toHaveBeenCalledWith('user1', 'user1');
     });
   });
 });
