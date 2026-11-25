@@ -38,6 +38,11 @@ describe('Refresh Token Rotation Concurrency (Real Redis E2E)', () => {
     } catch {
       isRedisAvailable = false;
     }
+
+    // Skipped when Redis is missing on a developer machine, never on CI
+    if (!isRedisAvailable && process.env.CI) {
+      throw new Error(`Redis is not available at ${REDIS_URL}`);
+    }
   }, 10000);
 
   beforeEach(async () => {
