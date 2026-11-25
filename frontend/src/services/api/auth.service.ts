@@ -1,4 +1,5 @@
 import { api, setToken, refreshToken } from './api';
+import { isSessionRejected } from '@/lib/token-refresh';
 import { CurrentUserProfile } from '@/types/user';
 import { CurrentSession } from '@/types/settings';
 import { BackupCodes, LoginResult, TwoFactorSetup, TwoFactorStatus } from '@/types/auth';
@@ -91,11 +92,13 @@ export const authService = {
     return res.data;
   },
 
-  async refreshSilent(): Promise<void> {
+  // 'unavailable': could not reach the server, the session may still be valid
+  async refreshSilent(): Promise<'ok' | 'rejected' | 'unavailable'> {
     try {
       await refreshToken();
-    } catch {
-      setToken(null);
+      return 'ok';
+    } catch (err) {
+      return isSessionRejected(err) ? 'rejected' : 'unavailable';
     }
   }
 };

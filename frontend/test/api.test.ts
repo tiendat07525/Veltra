@@ -132,8 +132,7 @@ describe('api', () => {
     expect(mod.getToken()).toBe('new');
   });
 
-  // Known bugs: `it.fails` turns red once they are fixed (item 2.3), then drop `.fails`
-  it.fails('a request that fails while another refresh runs is answered', async () => {
+  it('a request that fails while another refresh runs is answered', async () => {
     const gate = deferred<Reply>();
     const { apiAdapter } = use(protectedApi('new'), () => gate.promise);
     mod.setToken('old');
@@ -147,7 +146,7 @@ describe('api', () => {
     expect(await Promise.race([request, hung])).not.toBe('hung');
   });
 
-  it.fails.each<Reply>([{ status: 503 }, { status: 429 }, 'network'])('a temporary refresh failure keeps the session: %j', async (reply) => {
+  it.each<Reply>([{ status: 503 }, { status: 429 }, 'network'])('a temporary refresh failure keeps the session: %j', async (reply) => {
     use(() => ({ status: 401 }), () => reply);
     mod.setToken('old');
     await expect(mod.api.get('/x')).rejects.toThrow();

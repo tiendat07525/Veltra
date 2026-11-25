@@ -179,6 +179,9 @@ export class AuthService {
       );
     }
 
+    // Read before rotating: a database error then leaves the cookie valid for a retry
+    const user = await this.findSessionUser(userId);
+
     // Grace-period requests only get a new access token: the browser cookie
     // already holds the token rotated by the concurrent request, so it must
     // not be rotated (or overwritten) again. null => keep the current cookie.
@@ -210,13 +213,6 @@ export class AuthService {
       if (rotation === 'rotated') {
         newRefreshTokenString = `${userId}.${sessionId}.${newRawToken}`;
       }
-    }
-
-    let user: SessionUser;
-    try {
-      user = await this.usersService.findOne(userId);
-    } catch {
-      throw new UnauthorizedException('Người dùng không tồn tại');
     }
 
     const payload = {
@@ -349,6 +345,19 @@ export class AuthService {
     }
 
     return crypto.timingSafeEqual(computedBuffer, storedBuffer);
+  }
+
+  // findOne throws 404 for a missing user; the client only signs out on 401.
+  // Database errors keep their own status so an outage does not sign users out.
+  private async findSessionUser(userId: string): Promise<SessionUser> {
+    try {
+      return await this.usersService.findOne(userId);
+    } catch (err: unknown) {
+      if (err instanceof NotFoundException) {
+        throw new UnauthorizedException('Người dùng không tồn tại');
+      }
+      throw err;
+    }
   }
 
   private async createSessionAndTokens(
