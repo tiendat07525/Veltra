@@ -44,7 +44,6 @@ describe('ConversationService participant user fields', () => {
 
   const expectedSelects = [
     { path: 'participants.userId', select: 'username displayName avatarUrl' },
-    { path: 'seenBy', select: 'username displayName avatarUrl' },
     {
       path: 'lastMessage.senderId',
       select: 'username displayName avatarUrl',

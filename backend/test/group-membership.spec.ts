@@ -145,7 +145,7 @@ describe('ConversationGroupService group membership (leave / remove / transfer)'
         'group.createdBy': { $ne: memberId },
       });
       expect(update).toEqual({
-        $pull: { participants: { userId: memberId }, seenBy: memberId },
+        $pull: { participants: { userId: memberId } },
         $inc: { lastSeq: 1 },
       });
       expect(systemMessage()).toMatchObject({
@@ -241,7 +241,6 @@ describe('ConversationGroupService group membership (leave / remove / transfer)'
       });
       expect(update.$pull).toEqual({
         participants: { userId: memberId },
-        seenBy: memberId,
       });
       expect(systemMessage()).toMatchObject({
         senderId: ownerId,

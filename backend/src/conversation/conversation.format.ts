@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 import {
   ConversationDocument,
+  computeSeenBy,
   computeUnreadCounts,
 } from './schemas/conversation.schema';
 
@@ -9,7 +10,6 @@ export const CONVERSATION_USER_FIELDS = 'username displayName avatarUrl';
 
 export const conversationUserPopulate = () => [
   { path: 'participants.userId', select: CONVERSATION_USER_FIELDS },
-  { path: 'seenBy', select: CONVERSATION_USER_FIELDS },
   { path: 'lastMessage.senderId', select: CONVERSATION_USER_FIELDS },
 ];
 
@@ -32,7 +32,7 @@ const formatParticipant = (participant: PopulatedParticipant) => ({
   joinedAt: participant.joinedAt,
 });
 
-// A populated conversation document as returned by the API (unread counts computed)
+// A populated conversation document as returned by the API (unread counts and seenBy computed)
 export const formatConversation = (conversation: ConversationDocument) => {
   const object = conversation.toObject();
 
@@ -43,6 +43,8 @@ export const formatConversation = (conversation: ConversationDocument) => {
   return {
     ...object,
     participants,
+    // toObject(): seenBy holds plain user objects, like the rest of the response
+    seenBy: computeSeenBy(object),
     unreadCounts: computeUnreadCounts(conversation),
   };
 };
@@ -52,6 +54,7 @@ export const formatLeanConversation = <
   T extends {
     participants?: unknown[];
     unreadCounts?: unknown;
+    seenBy?: unknown;
     lastSeq?: number;
   },
 >(
@@ -64,6 +67,7 @@ export const formatLeanConversation = <
   return {
     ...conversation,
     participants,
+    seenBy: computeSeenBy(conversation as Parameters<typeof computeSeenBy>[0]),
     unreadCounts: computeUnreadCounts(
       conversation as Parameters<typeof computeUnreadCounts>[0],
     ),

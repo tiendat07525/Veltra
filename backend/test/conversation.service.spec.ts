@@ -5,9 +5,14 @@ import { Types } from 'mongoose';
 import { ConversationService } from '../src/conversation/conversation.service';
 import {
   Conversation,
+  computeSeenBy,
   computeUnreadCounts,
 } from '../src/conversation/schemas/conversation.schema';
 import { Message } from '../src/messages/schemas/message.schema';
+import {
+  formatConversation,
+  formatLeanConversation,
+} from '../src/conversation/conversation.format';
 import { groupLookupProviders } from './helpers/group-lookup-mocks';
 
 describe('ConversationService.getMessages (seq pagination)', () => {
@@ -211,7 +216,8 @@ describe('ConversationService.markAsSeen (lastReadSeq)', () => {
       conv.participants[0].lastReadSeq,
       readTo,
     );
-    return { ...conv, seenBy: [me] };
+    // A seenBy stored by an older build is never returned
+    return { ...conv, seenBy: [me, other] };
   };
 
   beforeEach(async () => {
@@ -252,10 +258,7 @@ describe('ConversationService.markAsSeen (lastReadSeq)', () => {
 
     expect(mockConversationModel.findOneAndUpdate).toHaveBeenCalledWith(
       { _id: conversationId, 'participants.userId': me },
-      expect.objectContaining({
-        $max: { 'participants.$.lastReadSeq': 7 },
-        $addToSet: { seenBy: me },
-      }),
+      { $max: { 'participants.$.lastReadSeq': 7 } },
       { new: true },
     );
     expect(result).toEqual(
@@ -263,8 +266,38 @@ describe('ConversationService.markAsSeen (lastReadSeq)', () => {
         myUnreadCount: 3,
         lastSeq: 10,
         lastReadSeq: 7,
+        // Has not read up to the newest message
+        seenBy: [],
       }),
     );
+  });
+
+  it('should list the caller in seenBy once they read the newest message', async () => {
+    mockConversationModel.findOneAndUpdate.mockResolvedValue(applyUpdate(10));
+
+    const result = await service.markAsSeen(
+      conversationId.toString(),
+      me.toString(),
+      10,
+    );
+
+    // not the sender of that message
+    expect(result.seenBy).toEqual([me]);
+  });
+
+  it('should not list the caller when a newer message arrived meanwhile', async () => {
+    mockConversationModel.findOneAndUpdate.mockResolvedValue({
+      ...applyUpdate(10),
+      lastSeq: 11,
+    });
+
+    const result = await service.markAsSeen(
+      conversationId.toString(),
+      me.toString(),
+      10,
+    );
+
+    expect(result).toMatchObject({ seenBy: [], myUnreadCount: 1 });
   });
 
   it('should clamp upToSeq to lastSeq', async () => {
@@ -367,5 +400,82 @@ describe('computeUnreadCounts', () => {
         ],
       }),
     ).toEqual({ [a.toString()]: 3 });
+  });
+});
+
+describe('computeSeenBy', () => {
+  const a = new Types.ObjectId();
+  const b = new Types.ObjectId();
+  const sender = new Types.ObjectId();
+  const conversation = (reads: [Types.ObjectId, number?][]) => ({
+    lastSeq: 5,
+    lastMessage: { senderId: sender },
+    participants: reads.map(([userId, lastReadSeq]) => ({
+      userId,
+      lastReadSeq,
+    })),
+  });
+
+  it('should list the members who read up to the newest message', () => {
+    expect(
+      computeSeenBy(
+        conversation([
+          [sender, 5],
+          [a, 5],
+          [b, 4],
+        ]),
+      ),
+    ).toEqual([a]);
+    expect(computeSeenBy(conversation([[sender, 5], [a]]))).toEqual([]);
+  });
+
+  it('should be empty without a message', () => {
+    const participants = [{ userId: a, lastReadSeq: 0 }];
+    expect(computeSeenBy({ lastSeq: 0, participants })).toEqual([]);
+    expect(
+      computeSeenBy({ lastSeq: 5, lastMessage: null, participants }),
+    ).toEqual([]);
+    expect(
+      computeSeenBy({ lastMessage: { senderId: sender }, participants }),
+    ).toEqual([]);
+  });
+
+  it('should return populated users as they are and skip deleted ones', () => {
+    const user = { _id: a, username: 'an' };
+    expect(
+      computeSeenBy({
+        lastSeq: 5,
+        lastMessage: { senderId: { _id: sender } },
+        participants: [
+          { userId: user, lastReadSeq: 5 },
+          { userId: { _id: sender, username: 's' }, lastReadSeq: 5 },
+          { userId: null, lastReadSeq: 5 },
+        ],
+      }),
+    ).toEqual([user]);
+  });
+});
+
+describe('conversation responses: seenBy', () => {
+  const user = { _id: new Types.ObjectId(), username: 'an' };
+  const stale = { _id: new Types.ObjectId(), username: 'left' };
+  const stored = {
+    lastSeq: 5,
+    lastMessage: { senderId: { _id: new Types.ObjectId() } },
+    participants: [{ userId: user, lastReadSeq: 5 }],
+    seenBy: [stale],
+  };
+
+  it('should be computed, not the stored value (list)', () => {
+    expect(formatLeanConversation(stored).seenBy).toEqual([user]);
+  });
+
+  it('should be computed, not the stored value (single)', () => {
+    const doc = { ...stored, toObject: () => stored };
+    expect(
+      formatConversation(
+        doc as unknown as Parameters<typeof formatConversation>[0],
+      ).seenBy,
+    ).toEqual([user]);
   });
 });

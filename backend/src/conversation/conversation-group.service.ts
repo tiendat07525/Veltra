@@ -255,7 +255,7 @@ export class ConversationGroupService {
         // Became owner in the meantime: must transfer first
         'group.createdBy': { $ne: actorId },
       },
-      update: { $pull: { participants: { userId: actorId }, seenBy: actorId } },
+      update: { $pull: { participants: { userId: actorId } } },
       action: 'member_left',
       targetIds: [],
       content: `${nameOf(actorId)} đã rời nhóm`,
@@ -302,9 +302,7 @@ export class ConversationGroupService {
     return this.applyGroupChange(conversation._id, {
       actorId,
       filter: { 'group.createdBy': actorId, 'participants.userId': targetId },
-      update: {
-        $pull: { participants: { userId: targetId }, seenBy: targetId },
-      },
+      update: { $pull: { participants: { userId: targetId } } },
       action: 'member_removed',
       targetIds: [targetId],
       content: `${nameOf(actorId)} đã xóa ${nameOf(targetId)} khỏi nhóm`,
@@ -458,7 +456,6 @@ export class ConversationGroupService {
           { _id: conversationId },
           {
             $set: {
-              seenBy: [],
               lastMessageAt: created.createdAt,
               lastMessage: {
                 _id: created._id,
