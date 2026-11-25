@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { FriendService } from 'src/friend/friend.service';
-import { getModelToken } from '@nestjs/mongoose';
+import { getConnectionToken, getModelToken } from '@nestjs/mongoose';
 import { Friend } from 'src/friend/schema/friend.schema';
 import { FriendRequest } from 'src/friend/schema/friend-request.schema';
 import { User } from 'src/users/schemas/user.schema';
@@ -27,7 +27,7 @@ describe('FriendService (FULLAUDIT-007: Recipient Existence & Authorization)', (
     create: jest.fn(),
     find: jest.fn(),
     findById: jest.fn(),
-    findByIdAndDelete: jest.fn(),
+    findOneAndDelete: jest.fn(),
   };
 
   const mockUserModel = {
@@ -37,6 +37,14 @@ describe('FriendService (FULLAUDIT-007: Recipient Existence & Authorization)', (
   const mockNotificationService = {
     notify: jest.fn(),
     removeFriendRequestNotifications: jest.fn(),
+  };
+
+  // Runs the callback directly; a thrown error stands for an aborted transaction
+  const session = { id: 'test-session' };
+  const mockConnection = {
+    transaction: jest.fn((fn: (s: typeof session) => Promise<unknown>) =>
+      fn(session),
+    ),
   };
 
   beforeEach(async () => {
@@ -56,6 +64,7 @@ describe('FriendService (FULLAUDIT-007: Recipient Existence & Authorization)', (
           useValue: mockUserModel,
         },
         { provide: NotificationService, useValue: mockNotificationService },
+        { provide: getConnectionToken(), useValue: mockConnection },
       ],
     }).compile();
 
@@ -175,6 +184,42 @@ describe('FriendService (FULLAUDIT-007: Recipient Existence & Authorization)', (
     });
   });
 
+  describe('sendFriendRequest: two requests at the same time', () => {
+    const senderId = new Types.ObjectId().toString();
+    const recipientId = new Types.ObjectId().toString();
+
+    beforeEach(() => {
+      mockUserModel.findById.mockResolvedValue({
+        _id: new Types.ObjectId(recipientId),
+      });
+      mockFriendModel.findOne.mockResolvedValue(null);
+      mockFriendRequestModel.findOne.mockResolvedValue(null);
+    });
+
+    it('should answer 400 when the unique index refuses the second one', async () => {
+      mockFriendRequestModel.create.mockRejectedValueOnce(
+        Object.assign(new Error('E11000 duplicate key error'), { code: 11000 }),
+      );
+
+      await expect(
+        service.sendFriendRequest({ to: recipientId }, senderId),
+      ).rejects.toThrow(
+        new BadRequestException(
+          'Bạn đã gửi hoặc nhận lời mời kết bạn với người này',
+        ),
+      );
+      expect(mockNotificationService.notify).not.toHaveBeenCalled();
+    });
+
+    it('should pass on any other error', async () => {
+      mockFriendRequestModel.create.mockRejectedValueOnce(new Error('db down'));
+
+      await expect(
+        service.sendFriendRequest({ to: recipientId }, senderId),
+      ).rejects.toThrow('db down');
+    });
+  });
+
   describe('acceptFriendRequest', () => {
     const userId = new Types.ObjectId().toString();
     const requestId = new Types.ObjectId().toString();
@@ -188,14 +233,26 @@ describe('FriendService (FULLAUDIT-007: Recipient Existence & Authorization)', (
       });
       mockFriendModel.findOne.mockResolvedValue(null);
       mockFriendModel.create.mockResolvedValue({});
-      mockFriendRequestModel.findByIdAndDelete.mockResolvedValue({});
+      mockFriendRequestModel.findOneAndDelete.mockResolvedValue({});
 
       const result = await service.acceptFriendRequest(requestId, userId);
       expect(result.status).toBe(true);
       expect(result.message).toBe('Chấp nhận lời mời kết bạn thành công');
-      expect(mockFriendModel.create).toHaveBeenCalled();
-      expect(mockFriendRequestModel.findByIdAndDelete).toHaveBeenCalledWith(
-        requestId,
+      // Both writes are in the one transaction
+      expect(mockConnection.transaction).toHaveBeenCalledTimes(1);
+      const [userA, userB] = [senderId, userId]
+        .sort()
+        .map((id) => new Types.ObjectId(id));
+      expect(mockFriendModel.create).toHaveBeenCalledWith(
+        [{ user: userA, friend: userB }],
+        { session },
+      );
+      expect(mockFriendRequestModel.findOneAndDelete).toHaveBeenCalledWith(
+        {
+          _id: new Types.ObjectId(requestId),
+          to: new Types.ObjectId(userId),
+        },
+        { session },
       );
       // The sender is told; the accepter's friend_request notification is removed
       expect(mockNotificationService.notify).toHaveBeenCalledWith(
@@ -208,6 +265,62 @@ describe('FriendService (FULLAUDIT-007: Recipient Existence & Authorization)', (
         new Types.ObjectId(userId),
         new Types.ObjectId(senderId),
       );
+    });
+
+    it('should answer 404 and notify nobody when the request was handled meanwhile', async () => {
+      mockFriendRequestModel.findById.mockResolvedValue({
+        _id: new Types.ObjectId(requestId),
+        from: new Types.ObjectId(senderId),
+        to: new Types.ObjectId(userId),
+      });
+      mockFriendRequestModel.findOneAndDelete.mockResolvedValue(null);
+
+      await expect(
+        service.acceptFriendRequest(requestId, userId),
+      ).rejects.toThrow(
+        new NotFoundException('Không tìm thấy lời mời kết bạn'),
+      );
+      expect(mockFriendModel.create).not.toHaveBeenCalled();
+      expect(mockNotificationService.notify).not.toHaveBeenCalled();
+      expect(
+        mockNotificationService.removeFriendRequestNotifications,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('should clear a request left between friends without telling the sender again', async () => {
+      mockFriendRequestModel.findById.mockResolvedValue({
+        _id: new Types.ObjectId(requestId),
+        from: new Types.ObjectId(senderId),
+        to: new Types.ObjectId(userId),
+      });
+      mockFriendRequestModel.findOneAndDelete.mockResolvedValue({});
+      mockFriendModel.findOne.mockResolvedValue({ _id: new Types.ObjectId() });
+
+      const result = await service.acceptFriendRequest(requestId, userId);
+
+      expect(result.status).toBe(true);
+      expect(mockFriendModel.create).not.toHaveBeenCalled();
+      expect(mockNotificationService.notify).not.toHaveBeenCalled();
+      expect(
+        mockNotificationService.removeFriendRequestNotifications,
+      ).toHaveBeenCalledTimes(1);
+    });
+
+    it('should notify nobody when the transaction fails', async () => {
+      mockFriendRequestModel.findById.mockResolvedValue({
+        _id: new Types.ObjectId(requestId),
+        from: new Types.ObjectId(senderId),
+        to: new Types.ObjectId(userId),
+      });
+      mockConnection.transaction.mockRejectedValueOnce(new Error('db down'));
+
+      await expect(
+        service.acceptFriendRequest(requestId, userId),
+      ).rejects.toThrow('db down');
+      expect(mockNotificationService.notify).not.toHaveBeenCalled();
+      expect(
+        mockNotificationService.removeFriendRequestNotifications,
+      ).not.toHaveBeenCalled();
     });
 
     it('should throw ForbiddenException if accepting a request not addressed to caller', async () => {
@@ -250,14 +363,15 @@ describe('FriendService (FULLAUDIT-007: Recipient Existence & Authorization)', (
         from: new Types.ObjectId(senderId),
         to: new Types.ObjectId(userId),
       });
-      mockFriendRequestModel.findByIdAndDelete.mockResolvedValue({});
+      mockFriendRequestModel.findOneAndDelete.mockResolvedValue({});
 
       const result = await service.declineFriendRequest(requestId, userId);
       expect(result.status).toBe(true);
       expect(result.message).toBe('Từ chối lời mời kết bạn thành công');
-      expect(mockFriendRequestModel.findByIdAndDelete).toHaveBeenCalledWith(
-        requestId,
-      );
+      expect(mockFriendRequestModel.findOneAndDelete).toHaveBeenCalledWith({
+        _id: new Types.ObjectId(requestId),
+        to: new Types.ObjectId(userId),
+      });
       // No notification to the sender; the decliner's notification is removed
       expect(mockNotificationService.notify).not.toHaveBeenCalled();
       expect(
@@ -266,6 +380,24 @@ describe('FriendService (FULLAUDIT-007: Recipient Existence & Authorization)', (
         new Types.ObjectId(userId),
         new Types.ObjectId(senderId),
       );
+    });
+
+    it('should answer 404 when the request was handled meanwhile', async () => {
+      mockFriendRequestModel.findById.mockResolvedValue({
+        _id: new Types.ObjectId(requestId),
+        from: new Types.ObjectId(senderId),
+        to: new Types.ObjectId(userId),
+      });
+      mockFriendRequestModel.findOneAndDelete.mockResolvedValue(null);
+
+      await expect(
+        service.declineFriendRequest(requestId, userId),
+      ).rejects.toThrow(
+        new NotFoundException('Không tìm thấy lời mời kết bạn'),
+      );
+      expect(
+        mockNotificationService.removeFriendRequestNotifications,
+      ).not.toHaveBeenCalled();
     });
 
     it('should not touch notifications when declining a request addressed to someone else', async () => {
@@ -278,7 +410,7 @@ describe('FriendService (FULLAUDIT-007: Recipient Existence & Authorization)', (
       await expect(
         service.declineFriendRequest(requestId, userId),
       ).rejects.toThrow(ForbiddenException);
-      expect(mockFriendRequestModel.findByIdAndDelete).not.toHaveBeenCalled();
+      expect(mockFriendRequestModel.findOneAndDelete).not.toHaveBeenCalled();
       expect(
         mockNotificationService.removeFriendRequestNotifications,
       ).not.toHaveBeenCalled();

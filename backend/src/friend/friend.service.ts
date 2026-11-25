@@ -4,15 +4,16 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import {
   FriendRequest,
   FriendRequestDocument,
 } from './schema/friend-request.schema';
-import { Model, Types } from 'mongoose';
+import { Connection, Model, Types } from 'mongoose';
 import { Friend, FriendDocument } from './schema/friend.schema';
 import { User, UserDocument } from 'src/users/schemas/user.schema';
 import { NotificationService } from 'src/notification/notification.service';
+import { isDuplicateKeyError } from '../common/mongo-errors';
 
 import { SendFriendRequestDto } from './dto/send-friend-request.dto';
 
@@ -26,6 +27,8 @@ export class FriendService {
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
     private readonly notificationService: NotificationService,
+    @InjectConnection()
+    private readonly connection: Connection,
   ) {}
 
   async sendFriendRequest(dto: SendFriendRequestDto, userId: string) {
@@ -81,11 +84,22 @@ export class FriendService {
       );
     }
 
-    const request = await this.friendRequestModel.create({
-      from: currentUserId,
-      to: receiverId,
-      message,
-    });
+    let request: FriendRequestDocument;
+    try {
+      request = await this.friendRequestModel.create({
+        from: currentUserId,
+        to: receiverId,
+        message,
+      });
+    } catch (err: unknown) {
+      // Both users (or two tabs) sent at the same time; the pairKey index let one in
+      if (isDuplicateKeyError(err)) {
+        throw new BadRequestException(
+          'Bạn đã gửi hoặc nhận lời mời kết bạn với người này',
+        );
+      }
+      throw err;
+    }
 
     await this.notificationService.notify([receiverId], {
       type: 'friend_request',
@@ -120,24 +134,35 @@ export class FriendService {
 
     const [userA, userB] = this.normalizeUsers(request.from, request.to);
 
-    const existingFriend = await this.friendModel.findOne({
-      user: userA,
-      friend: userB,
+    // Deleting the request decides who wins: a concurrent accept / decline finds nothing
+    const becameFriends = await this.connection.transaction(async (session) => {
+      const deleted = await this.friendRequestModel.findOneAndDelete(
+        { _id: request._id, to: currentUserId },
+        { session },
+      );
+      if (!deleted) {
+        throw new NotFoundException('Không tìm thấy lời mời kết bạn');
+      }
+      // Left by an accept that stopped half way: only the request had to go
+      const existing = await this.friendModel.findOne(
+        { user: userA, friend: userB },
+        null,
+        { session },
+      );
+      if (existing) return false;
+      await this.friendModel.create([{ user: userA, friend: userB }], {
+        session,
+      });
+      return true;
     });
 
-    if (existingFriend) {
-      throw new BadRequestException('Hai người đã là bạn bè');
-    }
-
-    await this.friendModel.create({ user: userA, friend: userB });
-
-    await this.friendRequestModel.findByIdAndDelete(requestId);
-
     await Promise.all([
-      this.notificationService.notify([request.from], {
-        type: 'friend_accepted',
-        actorId: currentUserId,
-      }),
+      becameFriends
+        ? this.notificationService.notify([request.from], {
+            type: 'friend_accepted',
+            actorId: currentUserId,
+          })
+        : undefined,
       // The request is handled: its notification is no longer useful
       this.notificationService.removeFriendRequestNotifications(
         currentUserId,
@@ -170,7 +195,13 @@ export class FriendService {
       throw new ForbiddenException('Bạn không có quyền từ chối lời mời này');
     }
 
-    await this.friendRequestModel.findByIdAndDelete(requestId);
+    const deleted = await this.friendRequestModel.findOneAndDelete({
+      _id: request._id,
+      to: currentUserId,
+    });
+    if (!deleted) {
+      throw new NotFoundException('Không tìm thấy lời mời kết bạn');
+    }
 
     await this.notificationService.removeFriendRequestNotifications(
       currentUserId,
