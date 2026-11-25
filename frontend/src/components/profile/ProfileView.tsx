@@ -1,80 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import { Camera, Check, Loader2, User, Mail, Phone } from 'lucide-react';
+import React from 'react';
+import { Check, Loader2, User, Mail, Phone } from 'lucide-react';
+import { CurrentUserProfile } from '@/types/user';
 import { UserAvatar } from '@/components/ui/UserAvatar';
-import { authService } from '@/services/api/auth.service';
-import { userService } from '@/services/api/user.service';
 import { InlineError } from '@/components/ui/InlineError';
 import { useCopyFeedback } from '@/hooks/use-copy-feedback';
+import { useProfileForm } from '@/hooks/use-profile-form';
 
-export const ProfileView: React.FC = () => {
-  const [displayName, setDisplayName] = useState('');
-  const [username, setUsername] = useState('');
-  const [bio, setBio] = useState('');
-  const [email, setEmail] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [avatar, setAvatar] = useState('');
-  const [phoneError, setPhoneError] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+interface ProfileViewProps {
+  currentUser: CurrentUserProfile | null;
+  // The profile read when the view opens, and after each save
+  onProfile: (profile: CurrentUserProfile) => void;
+}
+
+export const ProfileView: React.FC<ProfileViewProps> = ({ currentUser, onProfile }) => {
+  const form = useProfileForm(currentUser, onProfile);
   // "Đã lưu" on the save button for 2 s
   const saved = useCopyFeedback();
 
-  useEffect(() => {
-    authService.getCurrentUser().then((u) => {
-      if (u) {
-        setDisplayName(u.displayName || '');
-        setUsername(u.username || '');
-        setBio(u.bio || '');
-        setEmail(u.email || '');
-        setPhoneNumber(u.phone || '');
-        setAvatar(u.avatarUrl || '');
-      }
-    });
-  }, []);
-
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    // Normalize phone number: remove all non-digit characters
-    const normalizedPhone = phoneNumber.replace(/\D/g, '');
-
-    setPhoneError(null);
-    setSaveError(null);
-    if (normalizedPhone && normalizedPhone.length > 11) {
-      setPhoneError('Số điện thoại không hợp lệ (tối đa 11 số)');
-      return;
-    }
-
-    setSaving(true);
-    try {
-      await userService.updateProfile({
-        displayName,
-        bio,
-        phone: normalizedPhone,
-        avatarUrl: avatar,
-      });
-      saved.flash();
-    } catch (err: unknown) {
-      const apiErr = err as { response?: { data?: { message?: string | string[] } } };
-      const errorMsg = apiErr?.response?.data?.message;
-      let uiMessage = 'Lưu cài đặt hồ sơ thất bại. Vui lòng kiểm tra lại thông tin.';
-
-      if (Array.isArray(errorMsg) && errorMsg.length > 0) {
-        uiMessage = errorMsg[0];
-      } else if (typeof errorMsg === 'string') {
-        uiMessage = errorMsg;
-      }
-
-      setSaveError(uiMessage);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleRandomAvatar = () => {
-    const randomSeed = Math.floor(Math.random() * 1000);
-    const newAvatar = `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80&sig=${randomSeed}`;
-    setAvatar(newAvatar);
+    if (await form.save()) saved.flash();
   };
 
   return (
@@ -87,36 +32,29 @@ export const ProfileView: React.FC = () => {
         <div className="max-w-2xl mx-auto bg-surface border border-line rounded-3xl p-4 sm:p-8">
           {/* Avatar Section */}
           <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 pb-6 border-b border-line">
-            <div className="relative group">
-              <UserAvatar
-                src={avatar}
-                name={displayName}
-                size="xl"
-                className="w-24 h-24 rounded-2xl ring-4 ring-primary/25"
-              />
-              <button
-                type="button"
-                onClick={handleRandomAvatar}
-                className="absolute inset-0 bg-black/40 rounded-2xl flex items-center justify-center text-white opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
-                title="Thay đổi ảnh đại diện"
-                aria-label="Thay đổi ảnh đại diện"
-              >
-                <Camera className="w-6 h-6" aria-hidden="true" />
-              </button>
-            </div>
+            <UserAvatar
+              src={form.avatarUrl}
+              name={form.displayName}
+              size="xl"
+              className="w-24 h-24 rounded-2xl ring-4 ring-primary/25"
+            />
 
             <div className="text-center sm:text-left min-w-0">
-              <h2 className="text-lg font-bold text-fg break-words">{displayName}</h2>
-              <p className="text-xs text-accent font-medium">@{username}</p>
-              <button
-                type="button"
-                onClick={handleRandomAvatar}
-                className="mt-2.5 min-h-9 px-3 rounded-xl border border-line text-xs font-semibold text-fg hover:bg-surface-2 transition-colors"
-              >
-                Thay đổi ảnh đại diện
-              </button>
+              <h2 className="text-lg font-bold text-fg break-words">{form.displayName}</h2>
+              <p className="text-xs text-accent font-medium">@{currentUser?.username ?? ''}</p>
+              {form.avatarUrl && (
+                <button
+                  type="button"
+                  onClick={() => form.setField('avatarUrl', '')}
+                  className="mt-2.5 min-h-9 px-3 rounded-xl border border-line text-xs font-semibold text-fg hover:bg-surface-2 transition-colors"
+                >
+                  Xoá ảnh
+                </button>
+              )}
             </div>
           </div>
+
+          <InlineError message={form.loadError} onDismiss={form.clearLoadError} className="mt-4" />
 
           {/* Form */}
           <form onSubmit={handleSave} className="mt-6 space-y-4">
@@ -130,8 +68,8 @@ export const ProfileView: React.FC = () => {
                   <input
                     id="profile-display-name"
                     type="text"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
+                    value={form.displayName}
+                    onChange={(e) => form.setField('displayName', e.target.value)}
                     className="w-full min-h-10 pl-9 pr-3 py-2 bg-surface rounded-xl text-xs text-fg border border-line focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary aria-[invalid=true]:border-danger"
                     required
                   />
@@ -147,7 +85,7 @@ export const ProfileView: React.FC = () => {
                   <input
                     id="profile-username"
                     type="text"
-                    value={username}
+                    value={currentUser?.username ?? ''}
                     readOnly
                     aria-describedby="username-locked"
                     className="w-full pl-8 pr-3 py-2 min-h-10 bg-surface-2 rounded-xl text-xs text-fg-muted border border-line cursor-not-allowed focus:outline-hidden"
@@ -166,8 +104,8 @@ export const ProfileView: React.FC = () => {
               <textarea
                 id="profile-bio"
                 rows={3}
-                value={bio}
-                onChange={(e) => setBio(e.target.value)}
+                value={form.bio}
+                onChange={(e) => form.setField('bio', e.target.value)}
                 className="w-full p-3 bg-surface rounded-xl text-xs text-fg border border-line focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none leading-relaxed"
               />
             </div>
@@ -182,7 +120,7 @@ export const ProfileView: React.FC = () => {
                   <input
                     id="profile-email"
                     type="email"
-                    value={email}
+                    value={currentUser?.email ?? ''}
                     readOnly
                     aria-describedby="email-locked"
                     className="w-full pl-9 pr-3 py-2 min-h-10 bg-surface-2 rounded-xl text-xs text-fg-muted border border-line cursor-not-allowed focus:outline-hidden"
@@ -204,25 +142,25 @@ export const ProfileView: React.FC = () => {
                     type="tel"
                     inputMode="tel"
                     autoComplete="tel"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    value={form.phone}
+                    onChange={(e) => form.setField('phone', e.target.value)}
                     className="w-full min-h-10 pl-9 pr-3 py-2 bg-surface rounded-xl text-xs text-fg border border-line focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary aria-[invalid=true]:border-danger"
-                    aria-invalid={!!phoneError}
+                    aria-invalid={!!form.phoneError}
                   />
                 </div>
-                <InlineError message={phoneError} onDismiss={() => setPhoneError(null)} className="mt-1.5" />
+                <InlineError message={form.phoneError} onDismiss={form.clearPhoneError} className="mt-1.5" />
               </div>
             </div>
 
-            <InlineError message={saveError} onDismiss={() => setSaveError(null)} />
+            <InlineError message={form.saveError} onDismiss={form.clearSaveError} />
 
             <div className="pt-2 sm:pt-4 flex justify-end">
               <button
                 type="submit"
-                disabled={saving}
+                disabled={form.saving || !currentUser}
                 className="w-full sm:w-auto flex items-center justify-center gap-2 min-h-10 px-6 rounded-xl bg-primary hover:bg-primary-hover disabled:opacity-60 text-on-primary text-xs font-semibold transition-colors"
               >
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Check className="w-4 h-4" aria-hidden="true" />}
+                {form.saving ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Check className="w-4 h-4" aria-hidden="true" />}
                 <span>{saved.isFlashed() ? 'Đã lưu' : 'Lưu hồ sơ'}</span>
               </button>
             </div>

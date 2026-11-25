@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergeConversationList } from '@/lib/conversation-list';
+import { mergeConversationList, updateParticipant } from '@/lib/conversation-list';
 import type { Conversation } from '@/types/conversation';
 
 const conv = (id: string, lastSeq = 1, unread = 0, name = id): Conversation => ({
@@ -42,5 +42,22 @@ describe('mergeConversationList', () => {
     expect(merge(before, [conv('a', 5, 0)], [conv('a', 5, 3)])[0].unreadCounts).toEqual({ me: 0, other: 9 });
     expect(merge(before, [conv('a', 5, 0)], [conv('a', 6, 1)])[0].unreadCounts?.me).toBe(1);
     expect(merge(before, [conv('a', 5, 3)], [conv('a', 5, 0)])[0].unreadCounts?.me).toBe(0);
+  });
+});
+
+describe('updateParticipant', () => {
+  it('replaces the name and avatar of that user only, and keeps the rest of the entry', () => {
+    const other = { _id: 'other', username: 'other' };
+    const a: Conversation = {
+      ...conv('a', 4, 2),
+      participants: [other, { _id: 'me', username: 'me', displayName: 'Cũ', avatarUrl: 'https://x/a.png', joinedAt: 'j' }],
+    };
+    const b: Conversation = { ...conv('b'), participants: [other] };
+    const next = updateParticipant([a, b], { _id: 'me', username: 'me', displayName: 'Mới', avatarUrl: '' });
+    expect(next[0]).toEqual({
+      ...a,
+      participants: [other, { _id: 'me', username: 'me', displayName: 'Mới', avatarUrl: '', joinedAt: 'j' }],
+    });
+    expect(next[1]).toBe(b);
   });
 });

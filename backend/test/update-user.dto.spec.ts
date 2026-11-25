@@ -13,7 +13,7 @@ describe('UpdateUserDto.avatarUrl (https only)', () => {
     return errors.find((e) => e.property === 'avatarUrl')?.constraints;
   };
 
-  it('should accept the https URL produced by the random avatar button', async () => {
+  it('should accept an https URL', async () => {
     expect(
       await constraintsFor(
         'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80&sig=42',
@@ -41,6 +41,31 @@ describe('UpdateUserDto.avatarUrl (https only)', () => {
   it('should reject URLs longer than 2048 characters', async () => {
     const longUrl = `https://example.com/${'a'.repeat(2100)}`;
     expect(await constraintsFor(longUrl)).toHaveProperty('maxLength');
+  });
+});
+
+describe('UpdateUserDto.phone (digits only)', () => {
+  const constraintsFor = async (body: Record<string, unknown>) => {
+    const errors = await validate(plainToInstance(UpdateUserDto, body));
+    return errors.find((e) => e.property === 'phone')?.constraints;
+  };
+
+  it.each([
+    ['digits', { phone: '0123456789' }],
+    ['an empty string (clears the number)', { phone: '' }],
+    ['a payload without phone', {}],
+  ])('should accept %s', async (_label, body) => {
+    expect(await constraintsFor(body)).toBeUndefined();
+  });
+
+  it.each([
+    ['letters', '09abc', 'matches'],
+    ['only spaces', '   ', 'matches'],
+    ['more than 11 digits', '012345678901', 'maxLength'],
+    ['a number', 912345678, 'isString'],
+    ['an object', { $ne: null }, 'isString'],
+  ])('should reject %s', async (_label, phone, constraint) => {
+    expect(await constraintsFor({ phone })).toHaveProperty(constraint);
   });
 });
 

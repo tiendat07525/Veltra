@@ -19,6 +19,8 @@ export class UpdateUserDto {
   bio?: string;
 
   @IsOptional()
+  // '' clears the phone number
+  @ValidateIf((_, value) => value !== '')
   @IsString()
   @MaxLength(11)
   @Matches(/^[0-9]+$/)

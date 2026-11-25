@@ -22,7 +22,8 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
   className = '',
   id,
 }) => {
-  const [imgError, setImgError] = useState(false);
+  // The src that failed to load: a new one is tried again
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
 
   const sizeClasses = {
     xs: 'w-7 h-7 text-xs',
@@ -50,13 +51,13 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
 
   return (
     <div id={id} className={`relative shrink-0 select-none ${sizeClasses[size]} ${className}`}>
-      {src && !imgError ? (
+      {src && src !== failedSrc ? (
         <Image
           src={src}
           alt={name}
           fill
           unoptimized
-          onError={() => setImgError(true)}
+          onError={() => setFailedSrc(src)}
           className="rounded-2xl object-cover ring-1 ring-slate-200/50 dark:ring-slate-800/80 shadow-xs"
         />
       ) : (
