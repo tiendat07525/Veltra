@@ -1,5 +1,6 @@
 import { Conversation } from '@/types/conversation';
 import { UserBasicInfo } from '@/types/user';
+import { withUser } from './user-info';
 
 // Insert or replace a conversation from the server (conversation:updated or a group-change response).
 // If the list already holds a newer message (higher lastSeq), keep its message fields and take
@@ -61,15 +62,9 @@ export function mergeConversationList(
 
 // Show a user's new name / avatar in every member list; entries without them stay the same objects
 export function updateParticipant(list: Conversation[], user: UserBasicInfo): Conversation[] {
-  const { _id, username, displayName, avatarUrl } = user;
   return list.map((c) =>
-    c.participants.some((p) => p._id === _id)
-      ? {
-          ...c,
-          participants: c.participants.map((p) =>
-            p._id === _id ? { ...p, username, displayName, avatarUrl } : p
-          ),
-        }
+    c.participants.some((p) => p._id === user._id)
+      ? { ...c, participants: c.participants.map((p) => withUser(p, user)) }
       : c
   );
 }

@@ -12,6 +12,9 @@ import { User, UserDocument } from 'src/users/schemas/user.schema';
 import { UpdateUserDto } from 'src/users/dto/update-user.dto';
 import { UsersService } from 'src/users/users.service';
 import { CloudinaryService } from 'src/storage/cloudinary.service';
+import { PresenceService } from 'src/realtime/presence.service';
+import { RealtimeService } from 'src/realtime/realtime.service';
+import { errorMessage } from 'src/common/error-message';
 import { MB, extensionOf } from 'src/messages/attachment.rules';
 import {
   AVATAR_FOLDER,
@@ -23,9 +26,13 @@ import {
 } from './avatar.rules';
 import type { SetAvatarDto, SignAvatarDto } from './dto/avatar.dto';
 
+// What other users are shown
+type ShownFields = Partial<Pick<User, 'displayName' | 'avatarUrl'>>;
+
 /**
  * Changes a user makes to their own profile: text fields and avatar. The avatar is uploaded by the
  * browser straight to Cloudinary with a server signature; the stored asset is checked before it is used.
+ * Every stored change is pushed with user:updated.
  */
 @Injectable()
 export class ProfileService {
@@ -36,6 +43,8 @@ export class ProfileService {
     private readonly userModel: Model<UserDocument>,
     private readonly usersService: UsersService,
     private readonly cloudinaryService: CloudinaryService,
+    private readonly presenceService: PresenceService,
+    private readonly realtimeService: RealtimeService,
   ) {}
 
   async update(id: string, dto: UpdateUserDto, currentUserId?: string) {
@@ -62,7 +71,7 @@ export class ProfileService {
       throw new NotFoundException(`User không tồn tại`);
     }
     if (removesAvatar) this.destroyAvatar(previous.avatarPublicId);
-    return this.usersService.findOne(id);
+    return this.announce(id, previous, dto);
   }
 
   signAvatar(userId: string, dto: SignAvatarDto) {
@@ -121,7 +130,48 @@ export class ProfileService {
     if (previous.avatarPublicId !== publicId) {
       this.destroyAvatar(previous.avatarPublicId);
     }
-    return this.usersService.findOne(userId);
+    return this.announce(userId, previous, { avatarUrl });
+  }
+
+  /**
+   * After the write: user:updated to the own tabs, and to the presence audience (friends + co-members)
+   * when the name or avatar changed. Returns the own profile. A failed push never fails the request.
+   */
+  private async announce(
+    userId: string,
+    previous: ShownFields,
+    { displayName, avatarUrl }: ShownFields,
+  ) {
+    // Never set and '' are shown the same
+    const changed = (next?: string, before?: string) =>
+      next !== undefined && next !== (before ?? '');
+    const shownChanged =
+      changed(displayName, previous.displayName) ||
+      changed(avatarUrl, previous.avatarUrl);
+
+    let audience: string[] = [];
+    try {
+      if (shownChanged) {
+        audience = await this.presenceService.audienceOf(userId);
+      }
+    } catch (err: unknown) {
+      this.logger.warn(
+        `[Profile] Không thể báo user:updated: ${errorMessage(err)}`,
+      );
+    }
+
+    // Read last, right before emitting: what is sent is the newest stored profile
+    const profile = await this.usersService.findOne(userId);
+    const user = {
+      _id: userId,
+      username: profile.username,
+      displayName: profile.displayName,
+      avatarUrl: profile.avatarUrl,
+    };
+    for (const recipient of [userId, ...audience]) {
+      this.realtimeService.emitToUser(recipient, 'user:updated', { user });
+    }
+    return profile;
   }
 
   private destroyAvatar(publicId?: string) {

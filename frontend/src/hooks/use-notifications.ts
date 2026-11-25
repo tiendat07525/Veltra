@@ -9,6 +9,8 @@ import {
   NotificationReadEvent,
   NotificationRemovedEvent,
 } from '@/types/notification';
+import { UserUpdatedEvent } from '@/types/user';
+import { withUser } from '@/lib/user-info';
 
 /**
  * Stored notifications. Instantiated once (VeltraClientApp): the unread count feeds the
@@ -118,6 +120,10 @@ export function useNotifications(enabled: boolean) {
       const removed = new Set(event.notificationIds);
       setItems((prev) => prev.filter((item) => !removed.has(item._id)));
     };
+    const handleUserUpdated = ({ user }: UserUpdatedEvent) =>
+      setItems((prev) =>
+        prev.map((item) => (item.actor?._id === user._id ? { ...item, actor: withUser(item.actor, user) } : item))
+      );
     // Events missed while disconnected: re-read the count, and the first page if shown
     const handleConnect = () => {
       void refreshUnreadCount();
@@ -127,6 +133,7 @@ export function useNotifications(enabled: boolean) {
     socketService.on('notification:new', handleNew);
     socketService.on('notification:read', handleRead);
     socketService.on('notification:removed', handleRemoved);
+    socketService.on('user:updated', handleUserUpdated);
     socketService.on('connect', handleConnect);
     void Promise.resolve().then(refreshUnreadCount);
 
@@ -134,6 +141,7 @@ export function useNotifications(enabled: boolean) {
       socketService.off('notification:new', handleNew);
       socketService.off('notification:read', handleRead);
       socketService.off('notification:removed', handleRemoved);
+      socketService.off('user:updated', handleUserUpdated);
       socketService.off('connect', handleConnect);
     };
   }, [enabled, refreshUnreadCount, loadFirstPage]);

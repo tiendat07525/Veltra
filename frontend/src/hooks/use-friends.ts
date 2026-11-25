@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { friendService } from '@/services/api/friend.service';
 import { FriendRequest, FriendshipStatus } from '@/types/friend';
-import { UserBasicInfo } from '@/types/user';
+import { UserBasicInfo, UserUpdatedEvent } from '@/types/user';
 import { NotificationNewEvent } from '@/types/notification';
+import { withUser } from '@/lib/user-info';
 import { socketService } from '@/services/socket/socket.service';
 
 function getErrorMessage(err: unknown, fallback: string): string {
@@ -64,13 +65,26 @@ export function useFriends() {
         void Promise.all([fetchFriends(), fetchFriendRequests()]);
       }
     };
+    // A friend (or a requester I share a conversation with) changed name or avatar
+    const handleUserUpdated = ({ user }: UserUpdatedEvent) => {
+      const updateRequest = (r: FriendRequest): FriendRequest => ({
+        ...r,
+        from: withUser(r.from, user),
+        to: withUser(r.to, user),
+      });
+      setFriends((prev) => prev.map((friend) => withUser(friend, user)));
+      setSentRequests((prev) => prev.map(updateRequest));
+      setReceivedRequests((prev) => prev.map(updateRequest));
+    };
     // Notifications missed while disconnected
     const handleConnect = () => void Promise.all([fetchFriends(), fetchFriendRequests()]);
 
     socketService.on('notification:new', handleNotification);
+    socketService.on('user:updated', handleUserUpdated);
     socketService.on('connect', handleConnect);
     return () => {
       socketService.off('notification:new', handleNotification);
+      socketService.off('user:updated', handleUserUpdated);
       socketService.off('connect', handleConnect);
     };
   }, [fetchFriends, fetchFriendRequests]);

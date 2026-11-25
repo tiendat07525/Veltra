@@ -29,6 +29,7 @@ import {
     ThrottlerStorageRedisService,
     PresenceService,
   ],
-  exports: [RealtimeService],
+  // PresenceService: audienceOf (user:updated goes to the presence audience)
+  exports: [RealtimeService, PresenceService],
 })
 export class RealtimeModule {}

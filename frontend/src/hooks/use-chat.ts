@@ -1,10 +1,10 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useConversations } from './use-conversations';
+import { useCurrentUser } from './use-current-user';
 import { useMessages } from './use-messages';
 import { usePresence } from './use-presence';
 import { CurrentUserProfile } from '@/types/user';
 import { ConversationParticipant } from '@/types/conversation';
-import { authService } from '@/services/api/auth.service';
 import { updateParticipant } from '@/lib/conversation-list';
 
 // mutedConversationIds (settings) are left out of totalUnreadCount (sidebar badge, tab title)
@@ -13,37 +13,21 @@ export function useChat(
   initialConversationId?: string,
   mutedConversationIds?: Set<string>
 ) {
-  const [currentUser, setCurrentUser] = useState<CurrentUserProfile | null>(null);
-  const [currentUserLoading, setCurrentUserLoading] = useState<boolean>(true);
+  const { currentUser, currentUserLoading, updateCurrentUser: showProfile } = useCurrentUser(enabled);
 
   const conversationsHook = useConversations(enabled, currentUser?._id ?? null);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
     initialConversationId || null
   );
 
-  useEffect(() => {
-    if (!enabled) return;
-    async function loadCurrentUser() {
-      try {
-        const me = await authService.getCurrentUser();
-        setCurrentUser(me);
-      } catch (err) {
-        console.error('Lỗi khi lấy thông tin user hiện tại:', err);
-      } finally {
-        setCurrentUserLoading(false);
-      }
-    }
-    loadCurrentUser();
-  }, [enabled]);
-
   // My profile from the server (re-read or saved): also my name / avatar in the member lists
   const { setConversations } = conversationsHook;
   const updateCurrentUser = useCallback(
     (profile: CurrentUserProfile) => {
-      setCurrentUser(profile);
+      showProfile(profile);
       setConversations((prev) => updateParticipant(prev, profile));
     },
-    [setConversations]
+    [setConversations, showProfile]
   );
 
   // Re-sync presence when conversations / members change (new co-members may be online)

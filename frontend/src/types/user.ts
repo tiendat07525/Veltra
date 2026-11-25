@@ -23,6 +23,11 @@ export interface User {
 export interface CurrentUserProfile extends User {
   email: string;
 }
+// Socket payload (realtime.md): my own profile, or the name / avatar of a friend or co-member
+export interface UserUpdatedEvent {
+  user: UserBasicInfo;
+}
+
 export interface UserBasicInfo {
   _id: string;
   username?: string;
