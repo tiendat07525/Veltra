@@ -27,6 +27,10 @@ import type { RedisClient } from './socket-redis-adapter';
 // typing:start / typing:stop: at most one of each per socket per second
 export const TYPING_MIN_INTERVAL_MS = 1_000;
 
+// presence:sync (2 reads + fetchSockets each): at most this many per socket per window
+export const PRESENCE_SYNC_LIMIT = 10;
+export const PRESENCE_SYNC_WINDOW_MS = 10_000;
+
 type SocketAck<T = undefined> =
   | (T extends undefined ? { ok: true } : { ok: true; data: T })
   | { ok: false; error: { code: string; message: string } };
@@ -193,6 +197,22 @@ export class RealtimeGateway
   ): Promise<SocketAck<{ online: string[] }>> {
     const userId = client.data?.user?._id;
     if (!userId) return ackError('UNAUTHORIZED', 'Chưa xác thực');
+
+    const now = Date.now();
+    const windowStart = client.data.presenceSyncWindowStart;
+    if (
+      windowStart === undefined ||
+      now - windowStart >= PRESENCE_SYNC_WINDOW_MS
+    ) {
+      client.data.presenceSyncWindowStart = now;
+      client.data.presenceSyncCount = 0;
+    }
+    const count = client.data.presenceSyncCount ?? 0;
+    if (count >= PRESENCE_SYNC_LIMIT) {
+      return ackError('RATE_LIMITED', 'Gửi quá nhanh');
+    }
+    client.data.presenceSyncCount = count + 1;
+
     try {
       const online = await this.presenceService.onlineAudience(userId);
       return { ok: true, data: { online } };
