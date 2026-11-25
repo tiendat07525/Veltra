@@ -1,4 +1,9 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy, ExtractJwt } from 'passport-jwt';
@@ -65,10 +70,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Không thể xác thực phiên đăng nhập');
     }
 
-    const user = await this.usersService.findOne(payload.id);
-    if (!user) {
-      throw new UnauthorizedException('Người dùng không tồn tại');
-    }
+    const user = await this.findUser(payload.id);
     return {
       id: user._id.toString(),
       _id: user._id.toString(),
@@ -77,5 +79,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       phone: user.phone,
       sessionId: payload.sessionId,
     };
+  }
+
+  // findOne throws 404 for a missing user; the client only signs out on 401.
+  // Database errors keep their own status so an outage does not sign users out.
+  private async findUser(id: string) {
+    try {
+      return await this.usersService.findOne(id);
+    } catch (error: unknown) {
+      if (error instanceof NotFoundException) {
+        throw new UnauthorizedException('Người dùng không tồn tại');
+      }
+      throw error;
+    }
   }
 }

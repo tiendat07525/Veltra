@@ -180,18 +180,4 @@ export class UsersService {
     }
     return user;
   }
-
-  async remove(id: string, currentUserId?: string) {
-    if (currentUserId && id !== currentUserId) {
-      throw new ForbiddenException('Bạn không có quyền xóa tài khoản này');
-    }
-
-    const user = await this.userModel.findByIdAndDelete(id);
-    if (!user) {
-      throw new NotFoundException('User không tồn tại');
-    }
-    return {
-      message: 'Xóa user thành công',
-    };
-  }
 }
