@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ServiceUnavailableException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Types } from 'mongoose';
@@ -23,6 +24,7 @@ import {
   TwoFactorPasswordCodeDto,
 } from '../src/auth/two-factor/dto/two-factor.dto';
 import { FakeUserModel } from './helpers/fake-user-model';
+import { fakeAttemptLimit } from './helpers/attempt-limit';
 
 const KEY = crypto.randomBytes(32).toString('hex');
 const PASSWORD = 'pass-1234';
@@ -128,6 +130,7 @@ describe('TwoFactorService', () => {
       model as unknown as Model<UserDocument>,
       cryptoService,
       sessionService as unknown as SessionService,
+      fakeAttemptLimit(),
     );
   });
 
@@ -179,6 +182,7 @@ describe('TwoFactorService', () => {
         model as unknown as Model<UserDocument>,
         cryptoWith(undefined),
         sessionService as unknown as SessionService,
+        fakeAttemptLimit(),
       );
       await expect(service.setup(id, PASSWORD)).rejects.toThrow(
         ServiceUnavailableException,
@@ -369,6 +373,38 @@ describe('TwoFactorService', () => {
     });
   });
 
+  describe('wrong attempts in the settings', () => {
+    it('5 wrong current passwords → 429 for setup, disable and backup codes', async () => {
+      const { secret } = await enableTwoFactor();
+      for (let i = 0; i < 5; i++) {
+        await expect(
+          service.disable(id, 'wrong-password', nextCode(secret)),
+        ).rejects.toThrow('Mật khẩu hiện tại không đúng');
+      }
+      for (const call of [
+        () => service.setup(id, PASSWORD),
+        () => service.disable(id, PASSWORD, nextCode(secret)),
+        () => service.regenerateBackupCodes(id, PASSWORD, nextCode(secret)),
+      ]) {
+        await expect(call()).rejects.toThrow('Bạn đã nhập sai quá nhiều lần');
+      }
+      await expect(service.isEnabled(id)).resolves.toBe(true);
+    });
+
+    it('5 wrong codes → 429 for enable, and 2FA stays off', async () => {
+      const { secret } = await service.setup(id, PASSWORD);
+      for (let i = 0; i < 5; i++) {
+        await expect(service.enable(id, 'abcdef')).rejects.toThrow(
+          'Mã xác thực không đúng',
+        );
+      }
+      await expect(service.enable(id, totp(secret))).rejects.toThrow(
+        'Bạn đã nhập sai quá nhiều lần',
+      );
+      await expect(service.isEnabled(id)).resolves.toBe(false);
+    });
+  });
+
   describe('login challenge', () => {
     it('stores only a hash of the token, for 5 minutes', async () => {
       await enableTwoFactor();
@@ -420,6 +456,39 @@ describe('TwoFactorService', () => {
       await expect(
         service.completeLoginChallenge(token, nextCode(secret)),
       ).rejects.toThrow('Phiên xác thực đã hết hạn, hãy đăng nhập lại');
+    });
+
+    it('5 wrong codes → 429 on a new challenge too, until the wrong ones expire', async () => {
+      const { secret } = await enableTwoFactor();
+      const first = await service.createLoginChallenge(id);
+      for (let i = 0; i < 5; i++) {
+        await expect(
+          service.completeLoginChallenge(first, 'aaaaa-aaaaa'),
+        ).rejects.toThrow(UnauthorizedException);
+      }
+      const second = await service.createLoginChallenge(id);
+      await expect(
+        service.completeLoginChallenge(second, nextCode(secret)),
+      ).rejects.toThrow(
+        'Bạn đã nhập sai quá nhiều lần, hãy thử lại sau 15 phút',
+      );
+      // The refused try neither used the code nor the challenge
+      expect([...challenges.values()].map((c) => c.attempts)).toEqual([0]);
+    });
+
+    it('a right code resets the wrong ones', async () => {
+      const { secret, backupCodes } = await enableTwoFactor();
+      for (const code of [nextCode(secret), backupCodes[0]]) {
+        const token = await service.createLoginChallenge(id);
+        for (let i = 0; i < 4; i++) {
+          await expect(
+            service.completeLoginChallenge(token, 'aaaaa-aaaaa'),
+          ).rejects.toThrow('Mã xác thực không đúng');
+        }
+        await expect(service.completeLoginChallenge(token, code)).resolves.toBe(
+          id,
+        );
+      }
     });
 
     it.each(['', 'x', 'g'.repeat(64)])(

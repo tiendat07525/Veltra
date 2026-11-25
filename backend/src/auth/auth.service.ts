@@ -18,6 +18,7 @@ import { forwardRef, Inject } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { isDuplicateKeyError } from '../common/mongo-errors';
 import { TwoFactorService } from './two-factor/two-factor.service';
+import { AttemptLimitService } from './attempt-limit.service';
 
 // Same message for every conflict so the response does not reveal which field is taken
 const REGISTER_CONFLICT_MESSAGE = 'Email hoặc username đã được sử dụng';
@@ -39,6 +40,7 @@ export class AuthService {
     @Inject(forwardRef(() => RealtimeService))
     private readonly realtimeService: RealtimeService,
     private readonly twoFactorService: TwoFactorService,
+    private readonly attemptLimit: AttemptLimitService,
   ) {}
 
   async register(registerDto: RegisterDto) {
@@ -70,12 +72,15 @@ export class AuthService {
     const user = await this.usersService.findByUsernameWithPassword(
       loginDto.username,
     );
-    if (!user) {
-      throw new UnauthorizedException('Username hoặc mật khẩu không chính xác');
-    }
+    const fromIp = this.attemptLimit.loginFromIp(loginDto.username, ipAddress);
 
-    const isMatch = await bcrypt.compare(loginDto.password, user.password);
-    if (!isMatch) {
+    // Unknown usernames are counted like existing ones: a 429 reveals nothing
+    const isMatch = await this.attemptLimit.check(
+      [fromIp, this.attemptLimit.login(loginDto.username)],
+      async () =>
+        !!user && (await bcrypt.compare(loginDto.password, user.password)),
+    );
+    if (!user || !isMatch) {
       throw new UnauthorizedException('Username hoặc mật khẩu không chính xác');
     }
 
@@ -91,6 +96,7 @@ export class AuthService {
       };
     }
 
+    await this.attemptLimit.clear(fromIp);
     return this.createSessionAndTokens(user, userAgent, ipAddress);
   }
 
@@ -109,6 +115,9 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('Người dùng không tồn tại');
     }
+    await this.attemptLimit.clear(
+      this.attemptLimit.loginFromIp(user.username, ipAddress),
+    );
     return this.createSessionAndTokens(user, userAgent, ipAddress);
   }
 
@@ -241,7 +250,10 @@ export class AuthService {
       throw new UnauthorizedException('Người dùng không tồn tại');
     }
 
-    const isMatch = await bcrypt.compare(dto.currentPassword, user.password);
+    const isMatch = await this.attemptLimit.check(
+      [this.attemptLimit.currentPassword(userId)],
+      () => bcrypt.compare(dto.currentPassword, user.password),
+    );
     if (!isMatch) {
       throw new BadRequestException('Mật khẩu hiện tại không đúng');
     }
@@ -250,10 +262,15 @@ export class AuthService {
     }
     // 2FA on: a TOTP or backup code too (checked last, so a wrong password does not use it up)
     if (await this.twoFactorService.isEnabled(user._id)) {
-      if (!dto.code) {
+      const code = dto.code;
+      if (!code) {
         throw new BadRequestException('Cần mã xác thực 2 bước');
       }
-      if (!(await this.twoFactorService.verifyCode(userId, dto.code))) {
+      const isCodeValid = await this.attemptLimit.check(
+        [this.attemptLimit.settingsCode(userId)],
+        () => this.twoFactorService.verifyCode(userId, code),
+      );
+      if (!isCodeValid) {
         throw new BadRequestException('Mã xác thực không đúng');
       }
     }

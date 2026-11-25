@@ -12,6 +12,7 @@ import * as crypto from 'crypto';
 import { generateSecret, generateURI, verifySync } from 'otplib';
 import { TwoFactor, User, UserDocument } from 'src/users/schemas/user.schema';
 import { SessionService } from '../session.service';
+import { AttemptLimitService } from '../attempt-limit.service';
 import { TwoFactorCryptoService } from './two-factor-crypto.service';
 
 export const TOTP_ISSUER = 'Veltra';
@@ -49,6 +50,7 @@ export class TwoFactorService {
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     private readonly cryptoService: TwoFactorCryptoService,
     private readonly sessionService: SessionService,
+    private readonly attemptLimit: AttemptLimitService,
   ) {}
 
   private async load(userId: string) {
@@ -68,9 +70,27 @@ export class TwoFactorService {
     return user;
   }
 
-  private async assertPassword(hash: string, password: string) {
-    if (!(await bcrypt.compare(password, hash))) {
+  private async assertPassword(userId: string, hash: string, password: string) {
+    const isMatch = await this.attemptLimit.check(
+      [this.attemptLimit.currentPassword(userId)],
+      () => bcrypt.compare(password, hash),
+    );
+    if (!isMatch) {
       throw new BadRequestException('Mật khẩu hiện tại không đúng');
+    }
+  }
+
+  // Code typed by a signed-in user (enable, disable, new backup codes)
+  private async assertSettingsCode(
+    userId: string,
+    verify: () => Promise<boolean>,
+  ) {
+    const isValid = await this.attemptLimit.check(
+      [this.attemptLimit.settingsCode(userId)],
+      verify,
+    );
+    if (!isValid) {
+      throw new BadRequestException('Mã xác thực không đúng');
     }
   }
 
@@ -94,7 +114,7 @@ export class TwoFactorService {
   // Step 1: a new secret, not active until a code from it is confirmed (enable)
   async setup(userId: string, currentPassword: string) {
     const user = await this.load(userId);
-    await this.assertPassword(user.password, currentPassword);
+    await this.assertPassword(userId, user.password, currentPassword);
     if (user.twoFactor?.enabled) {
       throw new BadRequestException('Xác thực 2 bước đang bật');
     }
@@ -138,9 +158,7 @@ export class TwoFactorService {
     }
     const secret = this.cryptoService.decrypt(twoFactor.pendingSecret, userId);
     const step = this.checkTotp(secret, code);
-    if (step === null) {
-      throw new BadRequestException('Mã xác thực không đúng');
-    }
+    await this.assertSettingsCode(userId, () => Promise.resolve(step !== null));
 
     const backupCodes = this.generateBackupCodes();
     const { modifiedCount } = await this.userModel.updateOne(
@@ -156,7 +174,8 @@ export class TwoFactorService {
             enabledAt: new Date(),
             secret: this.cryptoService.encrypt(secret, userId),
             backupCodes: backupCodes.map((c) => sha256(normalizeCode(c))),
-            lastUsedStep: step,
+            // Never null here: assertSettingsCode has thrown
+            lastUsedStep: step as number,
           },
         },
       },
@@ -171,13 +190,13 @@ export class TwoFactorService {
 
   async disable(userId: string, currentPassword: string, code: string) {
     const user = await this.load(userId);
-    await this.assertPassword(user.password, currentPassword);
+    await this.assertPassword(userId, user.password, currentPassword);
     if (!user.twoFactor?.enabled) {
       throw new BadRequestException('Xác thực 2 bước chưa bật');
     }
-    if (!(await this.verifyCode(userId, code, ['totp', 'backup']))) {
-      throw new BadRequestException('Mã xác thực không đúng');
-    }
+    await this.assertSettingsCode(userId, () =>
+      this.verifyCode(userId, code, ['totp', 'backup']),
+    );
     await this.userModel.updateOne(
       { _id: user._id },
       { $unset: { twoFactor: '' } },
@@ -192,13 +211,13 @@ export class TwoFactorService {
     code: string,
   ) {
     const user = await this.load(userId);
-    await this.assertPassword(user.password, currentPassword);
+    await this.assertPassword(userId, user.password, currentPassword);
     if (!user.twoFactor?.enabled) {
       throw new BadRequestException('Xác thực 2 bước chưa bật');
     }
-    if (!(await this.verifyCode(userId, code, ['totp']))) {
-      throw new BadRequestException('Mã xác thực không đúng');
-    }
+    await this.assertSettingsCode(userId, () =>
+      this.verifyCode(userId, code, ['totp']),
+    );
     const backupCodes = this.generateBackupCodes();
     await this.userModel.updateOne(
       { _id: user._id, 'twoFactor.enabled': true },
@@ -290,7 +309,12 @@ export class TwoFactorService {
       await this.sessionService.getTwoFactorChallengeUserId(tokenHash);
     if (!userId) throw expired;
 
-    if (!(await this.verifyCode(userId, code))) {
+    // Per account: a new challenge from another login does not reset it
+    const isValid = await this.attemptLimit.check(
+      [this.attemptLimit.loginCode(userId)],
+      () => this.verifyCode(userId, code),
+    );
+    if (!isValid) {
       const attempts =
         await this.sessionService.recordTwoFactorChallengeFailure(tokenHash);
       if (attempts === 0 || attempts >= LOGIN_CHALLENGE_MAX_ATTEMPTS) {
@@ -304,6 +328,7 @@ export class TwoFactorService {
     if (!(await this.sessionService.deleteTwoFactorChallenge(tokenHash))) {
       throw expired;
     }
+    await this.attemptLimit.clear(this.attemptLimit.loginCode(userId));
     return userId;
   }
 

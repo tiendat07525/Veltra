@@ -4,6 +4,7 @@ import { createClient } from 'redis';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from '../src/auth/auth.service';
 import { SessionService } from '../src/auth/session.service';
+import { AttemptLimitService } from '../src/auth/attempt-limit.service';
 
 /**
  * A2: Refresh Token Rotation race against a real Redis instance.
@@ -82,6 +83,7 @@ describe('Refresh Token Rotation Concurrency (Real Redis E2E)', () => {
       mockRealtimeService as any,
       // 2FA off: login opens the session directly
       { isEnabled: () => Promise.resolve(false) } as any,
+      new AttemptLimitService(sessionService),
     );
   });
 
@@ -214,5 +216,99 @@ describe('Refresh Token Rotation Concurrency (Real Redis E2E)', () => {
     ).rejects.toThrow('Phiên đăng nhập đã hết hạn');
     expect(await sessionService.getSession(userId, sessionId)).toBeNull();
     expect(mockRealtimeService.disconnectUser).not.toHaveBeenCalled();
+  });
+
+  describe('wrong attempt counters (Lua)', () => {
+    const limitFor = (max: number, windowSeconds: number) => ({
+      key: `attempts:e2e:${crypto.randomUUID()}`,
+      max,
+      windowSeconds,
+    });
+
+    it('should refuse after max, report the wait and not count refused attempts', async () => {
+      if (!isRedisAvailable) {
+        return;
+      }
+      const low = limitFor(2, 30);
+      const high = limitFor(10, 60);
+      const take = () => sessionService.takeAttempt([low, high]);
+      const probe = createClient({ url: REDIS_URL });
+      await probe.connect();
+      try {
+        expect(await take()).toBe(0);
+        expect(await take()).toBe(0);
+        const wait = await take();
+        expect(wait).toBeGreaterThan(25_000);
+        expect(wait).toBeLessThanOrEqual(30_000);
+        // Refused: neither counter moved, and each kept its own window
+        expect(await probe.get(low.key)).toBe('2');
+        expect(await probe.get(high.key)).toBe('2');
+        expect(await probe.ttl(low.key)).toBeLessThanOrEqual(30);
+        expect(await probe.ttl(high.key)).toBeGreaterThan(30);
+
+        await sessionService.giveBackAttempt([low, high]);
+        expect(await take()).toBe(0);
+
+        await sessionService.clearAttempts(low.key);
+        expect(await probe.exists(low.key)).toBe(0);
+
+        // Giving back never creates a counter or goes below 0
+        await sessionService.giveBackAttempt([low]);
+        expect(await probe.exists(low.key)).toBe(0);
+      } finally {
+        await probe.del([low.key, high.key]);
+        await probe.quit();
+      }
+    });
+
+    it('should let exactly max concurrent attempts through', async () => {
+      if (!isRedisAvailable) {
+        return;
+      }
+      const limit = limitFor(5, 30);
+      const waits = await Promise.all(
+        Array.from({ length: 30 }, () => sessionService.takeAttempt([limit])),
+      );
+      expect(waits.filter((w) => w === 0)).toHaveLength(5);
+      await sessionService.clearAttempts(limit.key);
+    });
+
+    it('should reopen when the window ends', async () => {
+      if (!isRedisAvailable) {
+        return;
+      }
+      const limit = limitFor(1, 1);
+      expect(await sessionService.takeAttempt([limit])).toBe(0);
+      expect(await sessionService.takeAttempt([limit])).toBeGreaterThan(0);
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+      expect(await sessionService.takeAttempt([limit])).toBe(0);
+      await sessionService.clearAttempts(limit.key);
+    });
+
+    it('should refuse the 6th login after 5 wrong passwords from one address', async () => {
+      if (!isRedisAvailable) {
+        return;
+      }
+      const username = `e2e_${crypto.randomUUID().slice(0, 8)}`;
+      const tryLogin = (password: string, ip: string) =>
+        authService.login({ username, password }, 'agent', ip);
+      try {
+        for (let i = 0; i < 5; i++) {
+          await expect(tryLogin('wrong-pass', '203.0.113.5')).rejects.toThrow(
+            'Username hoặc mật khẩu không chính xác',
+          );
+        }
+        await expect(tryLogin('password123', '203.0.113.5')).rejects.toThrow(
+          'hãy thử lại sau 15 phút',
+        );
+        await expect(
+          tryLogin('password123', '198.51.100.5'),
+        ).resolves.toMatchObject({ message: 'Đăng nhập thành công' });
+      } finally {
+        const limits = new AttemptLimitService(sessionService);
+        await limits.clear(limits.login(username));
+        await limits.clear(limits.loginFromIp(username, '203.0.113.5'));
+      }
+    });
   });
 });
