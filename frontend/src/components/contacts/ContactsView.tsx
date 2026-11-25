@@ -1,10 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { CurrentUserProfile, UserBasicInfo } from '@/types/user';
+import React, { useState, useCallback } from 'react';
+import { UserBasicInfo } from '@/types/user';
 import { useFriends } from '@/hooks/use-friends';
 import { useUserSearch } from '@/hooks/use-user-search';
-import { authService } from '@/services/api/auth.service';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { FriendsTab } from './FriendsTab';
 import { FriendRequestsTab } from './FriendRequestsTab';
@@ -13,6 +12,7 @@ import { UserSearchTab } from './UserSearchTab';
 export type ContactsTab = 'friends' | 'requests' | 'search';
 
 interface ContactsViewProps {
+  currentUserId: string | undefined;
   // Tab shown when the view opens (e.g. /contacts?tab=requests from a notification)
   initialTab?: ContactsTab;
   // Rejects with an Error whose message is shown under the friend's row
@@ -24,22 +24,18 @@ interface ContactsViewProps {
 }
 
 export const ContactsView: React.FC<ContactsViewProps> = ({
+  currentUserId,
   initialTab,
   onStartChat,
   onlineIds,
 }) => {
   const [activeTab, setActiveTab] = useState<ContactsTab>(initialTab ?? 'friends');
-  const [currentUser, setCurrentUser] = useState<CurrentUserProfile | null>(null);
   const [removingFriendId, setRemovingFriendId] = useState<string | null>(null);
 
   const friendsHook = useFriends();
 
-  useEffect(() => {
-    authService.getCurrentUser().then(setCurrentUser).catch(console.error);
-  }, []);
-
   // Kept here so the query and results survive tab switches
-  const search = useUserSearch(currentUser?._id);
+  const search = useUserSearch(currentUserId);
 
   // Action errors shown under the row they belong to, keyed by the id the action used
   // (user id, friend id or request id). Success needs no message: the list updates.
@@ -133,7 +129,7 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
         {activeTab === 'search' && (
           <UserSearchTab
             search={search}
-            currentUserId={currentUser?._id}
+            currentUserId={currentUserId}
             getFriendshipStatus={friendsHook.getFriendshipStatus}
             actionLoading={!!friendsHook.actionLoading}
             onSendRequest={handleSendRequest}

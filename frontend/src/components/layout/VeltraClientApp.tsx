@@ -185,6 +185,7 @@ export function VeltraClientApp() {
     <div className="flex flex-col md:flex-row h-full w-full bg-app text-fg overflow-hidden select-none font-sans">
       {/* Navigation: left rail on desktop, bottom bar on mobile (hidden while a conversation is open) */}
       <MainSidebar
+        currentUser={chat.currentUser}
         unreadMessagesCount={chat.totalUnreadCount}
         unreadNotificationsCount={notifications.unreadCount}
         resolvedTheme={resolvedTheme}
@@ -213,6 +214,7 @@ export function VeltraClientApp() {
         {/* Contacts Tab */}
         {activeTab === 'contacts' && (
           <ContactsView
+            currentUserId={chat.currentUser?._id}
             initialTab={contactsTab}
             onStartChat={handleStartChatFromContact}
             onlineIds={chat.presence.onlineIds}
@@ -242,7 +244,9 @@ export function VeltraClientApp() {
         )}
 
         {/* Profile Tab */}
-        {activeTab === 'profile' && <ProfileView />}
+        {activeTab === 'profile' && (
+          <ProfileView currentUser={chat.currentUser} onProfile={chat.updateCurrentUser} />
+        )}
       </main>
     </div>
   );

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link, usePathname } from '@/lib/navigation';
 import {
   MessageSquare,
@@ -15,11 +15,11 @@ import {
 } from 'lucide-react';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { CurrentUserProfile } from '@/types/user';
-import { authService } from '@/services/api/auth.service';
 
 export type NavTab = 'chat' | 'contacts' | 'notifications' | 'settings' | 'profile';
 
 interface MainSidebarProps {
+  currentUser: CurrentUserProfile | null;
   unreadMessagesCount: number;
   unreadNotificationsCount: number;
   // Theme actually shown (system resolved to light / dark)
@@ -39,6 +39,7 @@ const badgeText = (n: number) => (n > 99 ? '99+' : String(n));
  * Mobile: bottom tab bar with the same 5 tabs; theme and sign-out live in Settings there.
  */
 export const MainSidebar: React.FC<MainSidebarProps> = ({
+  currentUser,
   unreadMessagesCount,
   unreadNotificationsCount,
   resolvedTheme,
@@ -47,15 +48,7 @@ export const MainSidebar: React.FC<MainSidebarProps> = ({
   hideMobileNav = false,
 }) => {
   const [showStatusMenu, setShowStatusMenu] = useState(false);
-  const [currentUser, setCurrentUser] = useState<CurrentUserProfile | null>(null);
   const pathname = usePathname();
-
-  useEffect(() => {
-    authService
-      .getCurrentUser()
-      .then((user) => setCurrentUser(user))
-      .catch((err) => console.error('Lỗi khi lấy thông tin user:', err));
-  }, []);
 
   const navItems: NavItem[] = [
     { id: 'chat', label: 'Tin nhắn', icon: MessageSquare, badge: unreadMessagesCount },

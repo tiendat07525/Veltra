@@ -1,10 +1,11 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useConversations } from './use-conversations';
 import { useMessages } from './use-messages';
 import { usePresence } from './use-presence';
 import { CurrentUserProfile } from '@/types/user';
 import { ConversationParticipant } from '@/types/conversation';
 import { authService } from '@/services/api/auth.service';
+import { updateParticipant } from '@/lib/conversation-list';
 
 // mutedConversationIds (settings) are left out of totalUnreadCount (sidebar badge, tab title)
 export function useChat(
@@ -34,6 +35,16 @@ export function useChat(
     }
     loadCurrentUser();
   }, [enabled]);
+
+  // My profile from the server (re-read or saved): also my name / avatar in the member lists
+  const { setConversations } = conversationsHook;
+  const updateCurrentUser = useCallback(
+    (profile: CurrentUserProfile) => {
+      setCurrentUser(profile);
+      setConversations((prev) => updateParticipant(prev, profile));
+    },
+    [setConversations]
+  );
 
   // Re-sync presence when conversations / members change (new co-members may be online)
   const presenceAudienceKey = useMemo(
@@ -109,6 +120,7 @@ export function useChat(
     activeConversationName,
     conversationPartner,
     currentUser,
+    updateCurrentUser,
     currentUserLoading,
     totalUnreadCount,
     messagesHook,
