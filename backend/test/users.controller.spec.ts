@@ -16,7 +16,6 @@ describe('UsersController (Security & Functionality)', () => {
 
   const mockUsersService = {
     findOne: jest.fn(),
-    update: jest.fn(),
     findAll: jest.fn(),
     findPublicProfile: jest.fn(),
     create: jest.fn(),
@@ -70,23 +69,6 @@ describe('UsersController (Security & Functionality)', () => {
       expect(mockUsersService.findOne).toHaveBeenCalledWith('user1');
     });
 
-    it('should update own profile via updateProfile', async () => {
-      const updateDto = { bio: 'New bio' };
-      const updatedUser = {
-        _id: 'user1',
-        username: 'testuser',
-        bio: 'New bio',
-      };
-      mockUsersService.update.mockResolvedValue(updatedUser);
-
-      const result = await controller.updateProfile(
-        asReq({ id: 'user1' }),
-        updateDto,
-      );
-      expect(result).toEqual(updatedUser);
-      expect(mockUsersService.update).toHaveBeenCalledWith('user1', updateDto);
-    });
-
     it('should find users via findAll with bounded pagination query', async () => {
       const paginatedResult = {
         data: [{ _id: 'user1', username: 'user1' }],
@@ -114,23 +96,6 @@ describe('UsersController (Security & Functionality)', () => {
       const result = await controller.findOne('user2');
       expect(result).toEqual(publicUser);
       expect(mockUsersService.findPublicProfile).toHaveBeenCalledWith('user2');
-    });
-
-    it('should update user via update with currentUserId', async () => {
-      const updateDto = { displayName: 'Updated' };
-      mockUsersService.update.mockResolvedValue({ _id: 'user1', ...updateDto });
-
-      const result = await controller.update(
-        'user1',
-        updateDto,
-        asReq({ id: 'user1' }),
-      );
-      expect(result).toEqual({ _id: 'user1', ...updateDto });
-      expect(mockUsersService.update).toHaveBeenCalledWith(
-        'user1',
-        updateDto,
-        'user1',
-      );
     });
   });
 });

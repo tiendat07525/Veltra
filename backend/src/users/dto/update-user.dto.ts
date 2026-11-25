@@ -1,7 +1,7 @@
 import {
+  IsIn,
   IsOptional,
   IsString,
-  IsUrl,
   MaxLength,
   Matches,
   ValidateIf,
@@ -27,10 +27,7 @@ export class UpdateUserDto {
   phone?: string;
 
   @IsOptional()
-  // '' clears the avatar; anything else must be an absolute https URL (blocks javascript:, data:, http:)
-  @ValidateIf((_, value) => value !== '')
-  @IsString()
-  @MaxLength(2048)
-  @IsUrl({ protocols: ['https'], require_protocol: true })
+  // Only '' (removes the avatar); a new one is uploaded through PUT /users/avatar
+  @IsIn([''])
   avatarUrl?: string;
 }

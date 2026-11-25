@@ -119,7 +119,11 @@ export class User {
     trim: true,
   })
   avatarUrl: string;
-  avatarId: string;
+
+  // Cloudinary id of the uploaded avatar (veltra/avatars/{userId}/{uuid}), server-only.
+  // Absent: no avatar, or an external URL stored before uploads existed. Written by ProfileService.
+  @Prop({ type: String, select: false })
+  avatarPublicId?: string;
 
   @Prop({
     trim: true,

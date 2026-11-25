@@ -1,6 +1,7 @@
 import type { Model } from 'mongoose';
 import type { MessageDocument } from 'src/messages/schemas/message.schema';
-import type { ResourceType } from 'src/messages/attachment.rules';
+import type { ResourceType } from 'src/storage/cloudinary.service';
+import type { UserDocument } from 'src/users/schemas/user.schema';
 import {
   CloudinaryAdmin,
   CloudinaryAsset,
@@ -35,12 +36,15 @@ describe('OrphanUploadsService', () => {
   let listResources: jest.MockedFunction<CloudinaryAdmin['listResources']>;
   let deleteResources: jest.MockedFunction<CloudinaryAdmin['deleteResources']>;
   let find: jest.Mock;
+  let avatarIds: string[];
+  let findUsers: jest.Mock;
   let service: OrphanUploadsService;
   const pageSize = 2;
 
   beforeEach(() => {
     stored = { image: [], video: [], raw: [] };
     referencedIds = [];
+    avatarIds = [];
     // Pages of `pageSize`, cursor = next index
     listResources = jest.fn(
       (resourceType: ResourceType, prefix: string, cursor?: string) => {
@@ -71,8 +75,17 @@ describe('OrphanUploadsService', () => {
             })),
         ),
     }));
+    findUsers = jest.fn((filter: { avatarPublicId: { $in: string[] } }) => ({
+      lean: () =>
+        Promise.resolve(
+          filter.avatarPublicId.$in
+            .filter((p) => avatarIds.includes(p))
+            .map((p) => ({ avatarPublicId: p })),
+        ),
+    }));
     service = new OrphanUploadsService(
       { find } as unknown as Model<MessageDocument>,
+      { find: findUsers } as unknown as Model<UserDocument>,
       { listResources, deleteResources },
     );
   });
@@ -123,6 +136,32 @@ describe('OrphanUploadsService', () => {
       [[id(1)], 'image'],
       [[id(4, '.pdf')], 'raw'],
     ]);
+  });
+
+  it('should keep avatars in use and delete the ones no user has', async () => {
+    const avatar = (n: number) => `veltra/avatars/${USER}/${uuid(n)}`;
+    stored.image = [
+      asset(avatar(1), 'image'), // in use
+      asset(avatar(2), 'image'), // uploaded, never set
+      asset(avatar(3), 'image', RECENT),
+      asset(`veltra/avatars/${USER}/not-a-uuid`, 'image'),
+      asset(id(4), 'image'), // attachment in use
+    ];
+    avatarIds = [avatar(1)];
+    referencedIds = [id(4)];
+
+    const report = await service.run({ apply: true, now: NOW });
+
+    expect(report).toMatchObject({ ignored: 1, recent: 1, referenced: 2 });
+    expect(deleteResources.mock.calls).toEqual([[[avatar(2)], 'image']]);
+    expect(findUsers).toHaveBeenCalledWith(
+      { avatarPublicId: { $in: [avatar(1), avatar(2)] } },
+      { avatarPublicId: 1 },
+    );
+    // Attachment ids only
+    expect(find.mock.calls[0][0]).toEqual({
+      'attachments.publicId': { $in: [id(4)] },
+    });
   });
 
   it('should treat an asset exactly at the age limit as orphaned and one second younger as recent', async () => {

@@ -1,9 +1,10 @@
-import React from 'react';
-import { Check, Loader2, User, Mail, Phone } from 'lucide-react';
+import React, { useRef } from 'react';
+import { Camera, Check, Loader2, User, Mail, Phone } from 'lucide-react';
 import { CurrentUserProfile } from '@/types/user';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { InlineError } from '@/components/ui/InlineError';
 import { useCopyFeedback } from '@/hooks/use-copy-feedback';
+import { AVATAR_ACCEPT } from '@/services/api/avatar.service';
 import { useProfileForm } from '@/hooks/use-profile-form';
 
 interface ProfileViewProps {
@@ -16,6 +17,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ currentUser, onProfile
   const form = useProfileForm(currentUser, onProfile);
   // "Đã lưu" on the save button for 2 s
   const saved = useCopyFeedback();
+
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const uploading = form.avatarProgress !== null;
+  const busy = form.saving || uploading || !currentUser;
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,15 +47,47 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ currentUser, onProfile
             <div className="text-center sm:text-left min-w-0">
               <h2 className="text-lg font-bold text-fg break-words">{form.displayName}</h2>
               <p className="text-xs text-accent font-medium">@{currentUser?.username ?? ''}</p>
-              {form.avatarUrl && (
+              <div className="mt-2.5 flex flex-wrap justify-center sm:justify-start gap-2">
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept={AVATAR_ACCEPT}
+                  className="hidden"
+                  aria-label="Chọn ảnh đại diện"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    // The same file can be picked again after an error
+                    e.target.value = '';
+                    if (file) void form.changeAvatar(file);
+                  }}
+                />
                 <button
                   type="button"
-                  onClick={() => form.setField('avatarUrl', '')}
-                  className="mt-2.5 min-h-9 px-3 rounded-xl border border-line text-xs font-semibold text-fg hover:bg-surface-2 transition-colors"
+                  disabled={busy}
+                  onClick={() => avatarInputRef.current?.click()}
+                  className="flex items-center gap-1.5 min-h-9 px-3 rounded-xl border border-line text-xs font-semibold text-fg hover:bg-surface-2 disabled:opacity-60 transition-colors"
                 >
-                  Xoá ảnh
+                  {uploading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Camera className="w-4 h-4" aria-hidden="true" />
+                  )}
+                  <span aria-live="polite">
+                    {uploading ? `Đang tải ${Math.round((form.avatarProgress ?? 0) * 100)}%` : 'Đổi ảnh'}
+                  </span>
                 </button>
-              )}
+                {form.avatarUrl && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => form.setField('avatarUrl', '')}
+                    className="min-h-9 px-3 rounded-xl border border-line text-xs font-semibold text-fg hover:bg-surface-2 disabled:opacity-60 transition-colors"
+                  >
+                    Xoá ảnh
+                  </button>
+                )}
+              </div>
+              <InlineError message={form.avatarError} onDismiss={form.clearAvatarError} className="mt-2" />
             </div>
           </div>
 
@@ -157,7 +194,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ currentUser, onProfile
             <div className="pt-2 sm:pt-4 flex justify-end">
               <button
                 type="submit"
-                disabled={form.saving || !currentUser}
+                disabled={busy}
                 className="w-full sm:w-auto flex items-center justify-center gap-2 min-h-10 px-6 rounded-xl bg-primary hover:bg-primary-hover disabled:opacity-60 text-on-primary text-xs font-semibold transition-colors"
               >
                 {form.saving ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Check className="w-4 h-4" aria-hidden="true" />}

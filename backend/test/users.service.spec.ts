@@ -3,7 +3,7 @@ import { getModelToken } from '@nestjs/mongoose';
 import { UsersService } from '../src/users/users.service';
 import { User, UserSchema } from '../src/users/schemas/user.schema';
 import * as bcrypt from 'bcrypt';
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import { model, Types } from 'mongoose';
 
 describe('UsersService (Security & Password Hashing)', () => {
@@ -18,7 +18,6 @@ describe('UsersService (Security & Password Hashing)', () => {
     find: jest.fn(),
     findById: jest.fn(),
     findOne: jest.fn(),
-    findByIdAndUpdate: jest.fn(),
     countDocuments: jest.fn(),
   };
 
@@ -167,14 +166,6 @@ describe('UsersService (Security & Password Hashing)', () => {
         service.findByUsernameWithPassword({ $ne: '' } as unknown as string),
       ).rejects.toThrow(BadRequestException);
       expect(mockUserModel.findOne).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('Authorization / BOLA Protection', () => {
-    it('should throw ForbiddenException if user tries to update another user account', async () => {
-      await expect(
-        service.update('targetId', { bio: 'hacked' }, 'attackerId'),
-      ).rejects.toThrow(ForbiddenException);
     });
   });
 

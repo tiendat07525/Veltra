@@ -8,6 +8,7 @@ import { Conversation } from 'src/conversation/schemas/conversation.schema';
 import { ConversationSchema } from 'src/conversation/schemas/conversation.schema';
 import { RealtimeModule } from 'src/realtime/realtime.module';
 import { AttachmentService } from './attachment.service';
+import { StorageModule } from 'src/storage/storage.module';
 import { ConversationModule } from 'src/conversation/conversation.module';
 
 @Module({
@@ -17,6 +18,7 @@ import { ConversationModule } from 'src/conversation/conversation.module';
       { name: Message.name, schema: MessageSchema },
     ]),
     RealtimeModule,
+    StorageModule,
     // findOrCreateDirect when sending to a receiverId
     ConversationModule,
   ],

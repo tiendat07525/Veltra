@@ -1,5 +1,5 @@
-import axios from 'axios';
 import api from './api';
+import { SignedUpload, uploadSigned } from './cloudinary-upload';
 import { AttachmentKind } from '@/types/message';
 
 // Mirrors the server rules (backend/src/messages/attachment.rules.ts, security.md §6).
@@ -69,18 +69,13 @@ export function classifyFile(file: File): ClassifiedFile {
   return { ok: true, kind: rule.kind };
 }
 
-interface SignedUpload {
+interface SignedAttachment extends SignedUpload {
   kind: AttachmentKind;
   maxBytes: number;
-  uploadUrl: string;
-  fields: Record<string, string | number>;
 }
 
-// Separate client: Cloudinary must never receive our Authorization header or cookies
-const uploadClient = axios.create({ withCredentials: false });
-
 export const attachmentService = {
-  async sign(conversationId: string, file: File): Promise<SignedUpload> {
+  async sign(conversationId: string, file: File): Promise<SignedAttachment> {
     const res = await api.post('/message/attachments/sign', {
       conversationId,
       fileName: file.name,
@@ -97,15 +92,6 @@ export const attachmentService = {
     onProgress?: (fraction: number) => void
   ): Promise<{ publicId: string; kind: AttachmentKind }> {
     const signed = await attachmentService.sign(conversationId, file);
-    const form = new FormData();
-    // Exactly the signed fields (any change invalidates the signature), then the file
-    Object.entries(signed.fields).forEach(([key, value]) => form.append(key, String(value)));
-    form.append('file', file);
-    await uploadClient.post(signed.uploadUrl, form, {
-      onUploadProgress: (event) => {
-        if (event.total) onProgress?.(Math.min(event.loaded / event.total, 1));
-      },
-    });
-    return { publicId: String(signed.fields.public_id), kind: signed.kind };
+    return { publicId: await uploadSigned(signed, file, onProgress), kind: signed.kind };
   },
 };
