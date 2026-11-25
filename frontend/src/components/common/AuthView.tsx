@@ -4,17 +4,27 @@ import React, { useState } from 'react';
 import { Radio, Mail, Lock, User, ArrowRight, ArrowLeft, ShieldCheck, KeyRound, Loader2, CheckCircle2 } from 'lucide-react';
 import { authService } from '@/services/api/auth.service';
 import { InlineError } from '@/components/ui/InlineError';
+import { PasswordInput } from '@/components/ui/PasswordInput';
 import { apiErrorText } from '@/lib/api-error';
+import { PASSWORD_HINT, USERNAME_HINT, passwordProblem, usernameProblem } from '@/lib/credential-rules';
 
 interface AuthViewProps {
   initialMode?: 'login' | 'register';
   onLoginSuccess: () => void;
 }
 
+const passwordIcon = (
+  <Lock className="w-4 h-4 text-fg-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
+);
+// No right padding: PasswordInput adds it for its button
+const passwordClass =
+  'w-full min-h-11 pl-9 py-2.5 bg-surface-2 border border-line rounded-xl text-sm text-fg placeholder:text-fg-muted focus:outline-hidden focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-60';
+
 export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLoginSuccess }) => {
   const [mode, setMode] = useState<'login' | 'register'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -22,6 +32,11 @@ export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLog
   // 2FA step: the challenge from POST /auth/login (5 minutes, 5 attempts)
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
   const [code, setCode] = useState('');
+
+  // Register only, shown in red below the fields once something is typed
+  const passwordError = mode === 'register' && password ? passwordProblem(password) : null;
+  const confirmError =
+    mode === 'register' && confirmPassword && confirmPassword !== password ? 'Mật khẩu nhập lại không khớp' : null;
 
   const backToPassword = (message: string | null = null) => {
     setChallengeToken(null);
@@ -83,10 +98,13 @@ export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLog
           setErrorMsg('Vui lòng điền đầy đủ thông tin');
           return;
         }
-        if (password.length < 6) {
-          setErrorMsg('Mật khẩu phải có ít nhất 6 ký tự');
+        const problem = usernameProblem(username.trim());
+        if (problem) {
+          setErrorMsg(problem);
           return;
         }
+        // Already in red below the fields (both are required, so something is typed)
+        if (passwordError || confirmError) return;
         await authService.register({
           username: username.trim(),
           email: email.trim(),
@@ -96,6 +114,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLog
         setSuccessMsg('Đăng ký thành công! Vui lòng đăng nhập.');
         setMode('login');
         setPassword('');
+        setConfirmPassword('');
       }
     } catch (err: unknown) {
       setErrorMsg(apiErrorText(err, 'Đã xảy ra lỗi. Vui lòng thử lại.'));
@@ -134,6 +153,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLog
               setMode('login');
               setErrorMsg(null);
               setSuccessMsg(null);
+              setConfirmPassword('');
             }}
             className={`min-h-9 rounded-lg transition-colors ${
               mode === 'login' ? 'bg-surface text-accent shadow-xs' : 'text-fg-muted hover:text-fg'
@@ -149,6 +169,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLog
               setMode('register');
               setErrorMsg(null);
               setSuccessMsg(null);
+              setConfirmPassword('');
             }}
             className={`min-h-9 rounded-lg transition-colors ${
               mode === 'register' ? 'bg-surface text-accent shadow-xs' : 'text-fg-muted hover:text-fg'
@@ -242,8 +263,12 @@ export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLog
                 autoComplete="username"
                 autoCapitalize="none"
                 spellCheck={false}
+                aria-describedby={mode === 'register' ? 'auth-username-hint' : undefined}
               />
             </div>
+            {mode === 'register' && (
+              <p id="auth-username-hint" className="mt-1.5 text-xs text-fg-muted">{USERNAME_HINT}</p>
+            )}
           </div>
 
           {mode === 'register' && (
@@ -272,23 +297,41 @@ export const AuthView: React.FC<AuthViewProps> = ({ initialMode = 'login', onLog
             <label htmlFor="auth-password" className="block text-xs font-semibold text-fg mb-1.5">
               Mật khẩu
             </label>
-            <div className="relative">
-              <Lock className="w-4 h-4 text-fg-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
-              <input
-                id="auth-password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full min-h-11 pl-9 pr-3 py-2.5 bg-surface-2 border border-line rounded-xl text-sm text-fg placeholder:text-fg-muted focus:outline-hidden focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
+            <PasswordInput
+              key={mode}
+              id="auth-password"
+              icon={passwordIcon}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className={passwordClass}
+              placeholder="••••••••"
+              required
+              disabled={loading}
+              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+              error={passwordError}
+              hint={mode === 'register' ? PASSWORD_HINT : undefined}
+            />
+          </div>
+
+          {mode === 'register' && (
+            <div>
+              <label htmlFor="auth-confirm-password" className="block text-xs font-semibold text-fg mb-1.5">
+                Xác nhận mật khẩu
+              </label>
+              <PasswordInput
+                id="auth-confirm-password"
+                icon={passwordIcon}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className={passwordClass}
                 placeholder="••••••••"
                 required
                 disabled={loading}
-                minLength={6}
-                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                autoComplete="new-password"
+                error={confirmError}
               />
             </div>
-            {mode === 'register' && <p className="mt-1.5 text-xs text-fg-muted">Ít nhất 6 ký tự.</p>}
-          </div>
+          )}
 
           <button
             type="submit"

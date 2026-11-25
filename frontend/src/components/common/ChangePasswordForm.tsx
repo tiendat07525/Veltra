@@ -3,7 +3,9 @@ import { Check, Loader2 } from 'lucide-react';
 import { authService } from '@/services/api/auth.service';
 import { useCopyFeedback } from '@/hooks/use-copy-feedback';
 import { InlineError } from '@/components/ui/InlineError';
+import { PasswordInput } from '@/components/ui/PasswordInput';
 import { apiErrorText } from '@/lib/api-error';
+import { PASSWORD_HINT, passwordProblem } from '@/lib/credential-rules';
 
 interface ChangePasswordFormProps {
   // Called after the password changed (the button shows "Đã đổi" for 2 s)
@@ -15,7 +17,10 @@ interface ChangePasswordFormProps {
 const inputClass =
   'w-full px-3 py-2 rounded-xl bg-surface border border-line text-sm text-fg placeholder:text-fg-muted focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20';
 
-// Same rule as the server (ChangePasswordDto): 6–100 characters, different from the current one
+// No right padding: PasswordInput adds it for its button
+const passwordClass = inputClass.replace('px-3', 'pl-3');
+
+// Same rules as the server (ChangePasswordDto): lib/credential-rules, different from the current one
 export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({ onSuccess, twoFactorEnabled }) => {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -25,10 +30,15 @@ export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({ onSucces
   const done = useCopyFeedback();
   const [submitting, setSubmitting] = useState(false);
 
+  // Shown in red below the fields once something is typed
+  const passwordError = newPassword ? passwordProblem(newPassword) : null;
+  const confirmError =
+    confirmPassword && confirmPassword !== newPassword ? 'Mật khẩu nhập lại không khớp' : null;
+
   const validate = (): string | null => {
     if (!currentPassword) return 'Nhập mật khẩu hiện tại';
-    if (newPassword.length < 6 || newPassword.length > 100) return 'Mật khẩu mới phải có 6–100 ký tự';
-    if (newPassword !== confirmPassword) return 'Mật khẩu nhập lại không khớp';
+    if (!newPassword) return 'Nhập mật khẩu mới';
+    if (!confirmPassword) return 'Nhập lại mật khẩu mới';
     if (newPassword === currentPassword) return 'Mật khẩu mới phải khác mật khẩu hiện tại';
     if (twoFactorEnabled && !code.trim()) return 'Nhập mã xác thực 2 bước';
     return null;
@@ -42,6 +52,7 @@ export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({ onSucces
       return;
     }
     setError(null);
+    if (passwordError || confirmError) return;
     setSubmitting(true);
     try {
       await authService.changePassword(
@@ -71,32 +82,32 @@ export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({ onSucces
         </p>
       </div>
 
-      <input
-        type="password"
+      <PasswordInput
         autoComplete="current-password"
         placeholder="Mật khẩu hiện tại"
         aria-label="Mật khẩu hiện tại"
         value={currentPassword}
         onChange={(e) => setCurrentPassword(e.target.value)}
-        className={inputClass}
+        className={passwordClass}
       />
-      <input
-        type="password"
+      <PasswordInput
         autoComplete="new-password"
-        placeholder="Mật khẩu mới (6–100 ký tự)"
+        placeholder="Mật khẩu mới"
         aria-label="Mật khẩu mới"
         value={newPassword}
         onChange={(e) => setNewPassword(e.target.value)}
-        className={inputClass}
+        className={passwordClass}
+        error={passwordError}
+        hint={PASSWORD_HINT}
       />
-      <input
-        type="password"
+      <PasswordInput
         autoComplete="new-password"
         placeholder="Nhập lại mật khẩu mới"
         aria-label="Nhập lại mật khẩu mới"
         value={confirmPassword}
         onChange={(e) => setConfirmPassword(e.target.value)}
-        className={inputClass}
+        className={passwordClass}
+        error={confirmError}
       />
       {twoFactorEnabled && (
         <input
