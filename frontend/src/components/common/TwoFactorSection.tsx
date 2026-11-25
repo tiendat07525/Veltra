@@ -3,6 +3,7 @@ import { Check, Copy, Download, Loader2, ShieldCheck, ShieldOff } from 'lucide-r
 import { authService } from '@/services/api/auth.service';
 import { TwoFactorSetup, TwoFactorStatus } from '@/types/auth';
 import { formatDate } from '@/lib/utils';
+import { apiErrorText } from '@/lib/api-error';
 import { useCopyFeedback } from '@/hooks/use-copy-feedback';
 import { InlineError } from '@/components/ui/InlineError';
 
@@ -27,13 +28,6 @@ const primaryButton =
   'flex items-center justify-center gap-2 min-h-10 px-4 rounded-xl bg-primary hover:bg-primary-hover disabled:opacity-50 text-on-primary text-xs font-semibold';
 const secondaryButton =
   'flex items-center justify-center gap-1.5 min-h-10 px-3 rounded-xl border border-line text-xs font-semibold text-fg hover:bg-surface-2 disabled:opacity-50';
-
-const errorText = (err: unknown, fallback: string) => {
-  const apiErr = err as { response?: { status?: number; data?: { message?: string | string[] } } };
-  if (apiErr.response?.status === 429) return 'Thử lại quá nhiều lần, vui lòng đợi một phút';
-  const message = apiErr.response?.data?.message;
-  return (Array.isArray(message) ? message[0] : message) || fallback;
-};
 
 // "ABCD EFGH IJKL ..." is easier to type into an app than one long string
 const groupSecret = (secret: string) => secret.match(/.{1,4}/g)?.join(' ') ?? secret;
@@ -60,7 +54,7 @@ export const TwoFactorSection: React.FC<TwoFactorSectionProps> = ({ status, load
     try {
       await action();
     } catch (err: unknown) {
-      setError(errorText(err, fallback));
+      setError(apiErrorText(err, fallback));
       setCode('');
     } finally {
       setSubmitting(false);
