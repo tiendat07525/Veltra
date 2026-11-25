@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ThrottlerGuard } from '@nestjs/throttler';
+import { normalizeIp, ThrottlerGuard } from '@nestjs/throttler';
 import * as crypto from 'crypto';
 import type { Request } from 'express';
 
@@ -9,7 +9,7 @@ const REFRESH_PATH = '/auth/refresh';
 export class AppThrottlerGuard extends ThrottlerGuard {
   /**
    * Generates a privacy-conscious, secret-free tracker for distributed rate limiting.
-   * - For general endpoints: client IP
+   * - For general endpoints: client IP (IPv6: its /64, one client usually owns all of it)
    * - For /auth/refresh: incorporates a truncated SHA-256 hash of the sessionId or malformed token
    *   Raw tokens, cookies, and authentication secrets are NEVER used as keys or logged.
    */
@@ -20,7 +20,9 @@ export class AppThrottlerGuard extends ThrottlerGuard {
       ? request.ips[0]
       : request.ip || '127.0.0.1';
     // Clean and normalize IP
-    const ip = typeof rawIp === 'string' ? rawIp.trim() : '127.0.0.1';
+    const ip = normalizeIp(
+      typeof rawIp === 'string' ? rawIp.trim() : '127.0.0.1',
+    );
 
     // Exact path, without the query string: the client controls the query, so
     // "/auth/login?x=/auth/refresh" must not get the cookie-based bucket
