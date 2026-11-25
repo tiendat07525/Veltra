@@ -9,6 +9,7 @@ const { getUsers } = vi.hoisted(() => ({
 vi.mock('@/services/api/user.service', () => ({ userService: { getUsers } }));
 
 import { useUserSearch } from '@/hooks/use-user-search';
+import { foldText } from '@/lib/fold-text';
 import { userNameMatches } from '@/lib/user-search';
 
 const user = (id: string): User => ({ _id: id, username: id });
@@ -106,7 +107,7 @@ describe('useUserSearch', () => {
 describe('userNameMatches', () => {
   it('matches the display name or the username, not across both', () => {
     const an = { displayName: 'Nguyễn An', username: 'an_99' };
-    expect(userNameMatches(an, 'nguyễn')).toBe(true);
+    expect(userNameMatches(an, foldText('nguyễn'))).toBe(true);
     expect(userNameMatches(an, '_99')).toBe(true);
     expect(userNameMatches(an, 'an an')).toBe(false);
     expect(userNameMatches({ username: 'binh' }, 'bi')).toBe(true);

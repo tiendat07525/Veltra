@@ -5,6 +5,7 @@ import { X, Search, MessageSquarePlus, Check, Loader2 } from 'lucide-react';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { UserBasicInfo } from '@/types/user';
 import { useUserSearch } from '@/hooks/use-user-search';
+import { foldText } from '@/lib/fold-text';
 import { userNameMatches } from '@/lib/user-search';
 import { friendService } from '@/services/api/friend.service';
 import { InlineError } from '@/components/ui/InlineError';
@@ -80,7 +81,7 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
   // Direct: server search, friends while the box is empty. Group: friends only (backend rule).
   const listedUsers: UserBasicInfo[] = searchingServer
     ? searchResults
-    : friends.filter((u) => userNameMatches(u, query.toLowerCase().trim()));
+    : friends.filter((u) => userNameMatches(u, foldText(query.trim())));
   const listLoading = searchingServer ? searchLoading : loading;
   const listError = searchingServer ? searchError : loadError;
 

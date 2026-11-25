@@ -5,6 +5,7 @@ import { UserBasicInfo, UserUpdatedEvent } from '@/types/user';
 import { conversationService } from '@/services/api/conversation.service';
 import { socketService } from '@/services/socket/socket.service';
 import { mergeConversationList, updateParticipant, upsertConversation } from '@/lib/conversation-list';
+import { foldText } from '@/lib/fold-text';
 import { userNameMatches } from '@/lib/user-search';
 
 export function useConversations(enabled: boolean = true, currentUserId: string | null = null) {
@@ -239,15 +240,15 @@ export function useConversations(enabled: boolean = true, currentUserId: string 
 
   const filteredConversations = useMemo(() => {
     return conversations.filter((conv) => {
-      const query = searchQuery.toLowerCase().trim();
+      const query = foldText(searchQuery.trim());
       if (query) {
         const name = conv.group?.name || '';
         const lastMsg = conv.lastMessage?.content || '';
         const matchesSearch =
-          name.toLowerCase().includes(query) ||
+          foldText(name).includes(query) ||
           // Not my own name: it would match every conversation
           conv.participants.some((p) => p._id !== currentUserId && userNameMatches(p, query)) ||
-          lastMsg.toLowerCase().includes(query);
+          foldText(lastMsg).includes(query);
         if (!matchesSearch) return false;
       }
 

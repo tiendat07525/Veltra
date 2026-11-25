@@ -8,6 +8,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { UserDocument, User } from './schemas/user.schema';
 import * as bcrypt from 'bcrypt';
+import { accentInsensitiveRegex } from 'src/common/accent-insensitive';
 
 @Injectable()
 export class UsersService {
@@ -50,10 +51,10 @@ export class UsersService {
 
     const filter: Record<string, any> = {};
     if (query?.search && typeof query.search === 'string') {
-      const trimmed = query.search.trim().slice(0, 100);
-      if (trimmed.length > 0) {
-        const safePattern = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const searchRegex = new RegExp(safePattern, 'i');
+      const searchRegex = accentInsensitiveRegex(
+        query.search.trim().slice(0, 100),
+      );
+      if (searchRegex) {
         // Never match email: result presence would reveal which addresses are registered
         filter.$or = [{ username: searchRegex }, { displayName: searchRegex }];
       }
