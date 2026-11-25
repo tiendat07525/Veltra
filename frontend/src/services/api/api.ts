@@ -1,5 +1,6 @@
 import axios from "axios";
 import { getApiBaseUrl } from "@/config/env";
+import { createTokenRefresher, isSessionRejected } from "@/lib/token-refresh";
 
 export const api = axios.create({
     baseURL: getApiBaseUrl(),
@@ -36,46 +37,12 @@ export const onTokenChange = (listener: TokenListener) => {
     };
 };
 
-interface FailedQueueItem {
-    resolve: (token: string | null) => void;
-    reject: (error: unknown) => void;
-}
-
-let refreshPromise: Promise<string> | null = null;
-let failedQueue: FailedQueueItem[] = [];
-
-const processQueue = (error: unknown, token: string | null = null) => {
-    failedQueue.forEach(prom => {
-        if (error) {
-            prom.reject(error);
-        } else {
-            prom.resolve(token);
-        }
-    });
-    failedQueue = [];
-};
-
-export const refreshToken = async (): Promise<string> => {
-    if (refreshPromise) {
-        return refreshPromise;
-    }
-
-    refreshPromise = (async () => {
-        try {
-            const { data } = await refreshClient.post('/auth/refresh');
-            const newAccessToken = data.accessToken;
-            setToken(newAccessToken);
-            return newAccessToken;
-        } catch (err) {
-            setToken(null);
-            throw err;
-        } finally {
-            refreshPromise = null;
-        }
-    })();
-
-    return refreshPromise;
-};
+// Shared by the 401 interceptor, app start and the socket
+export const refreshToken = createTokenRefresher({
+    requestRefresh: async () => (await refreshClient.post('/auth/refresh')).data.accessToken,
+    getToken,
+    setToken,
+});
 
 api.interceptors.request.use((config) => {
     if (inMemoryToken) {
@@ -94,33 +61,18 @@ api.interceptors.response.use(
                 return Promise.reject(error);
             }
 
-            if (refreshPromise) {
-                return new Promise(function(resolve, reject) {
-                    failedQueue.push({ resolve, reject });
-                }).then(token => {
-                    originalRequest.headers.Authorization = 'Bearer ' + token;
-                    return api(originalRequest);
-                }).catch(err => {
-                    return Promise.reject(err);
-                });
-            }
-
+            // Retried at most once
             originalRequest._retry = true;
-
             try {
-                const newAccessToken = await refreshToken();
-                processQueue(null, newAccessToken);
-                
-                originalRequest.headers.Authorization = 'Bearer ' + newAccessToken;
-                return api(originalRequest);
+                await refreshToken();
             } catch (err) {
-                processQueue(err, null);
-                
-                if (typeof window !== "undefined" && !window.location.pathname.includes('/auth/login')) {
+                if (isSessionRejected(err) && typeof window !== "undefined" && !window.location.pathname.includes('/auth/login')) {
                     window.location.replace("/auth/login");
                 }
                 return Promise.reject(err);
             }
+            // The request interceptor adds the new token
+            return api(originalRequest);
         }
 
         return Promise.reject(error);

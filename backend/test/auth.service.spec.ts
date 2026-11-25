@@ -4,7 +4,11 @@ import { UsersService } from 'src/users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import { SessionService } from '../src/auth/session.service';
 import { RealtimeService } from 'src/realtime/realtime.service';
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { TwoFactorService } from '../src/auth/two-factor/two-factor.service';
 import { AttemptLimitService } from '../src/auth/attempt-limit.service';
@@ -367,6 +371,40 @@ describe('AuthService (Security & Registration)', () => {
         'user1',
       );
       expect(mockRealtimeService.disconnectUser).toHaveBeenCalledWith('user1');
+    });
+
+    it('should keep the cookie valid when the database fails: no rotation, no 401', async () => {
+      const rawToken = 'dbDownTokenHexValue123';
+      mockSessionService.getSession.mockResolvedValue({
+        userId: 'user1',
+        sessionId: 'sess1',
+        refreshTokenHash: service.hashRefreshToken(rawToken),
+      });
+      const dbError = new Error('server selection timed out');
+      mockUsersService.findOne.mockRejectedValueOnce(dbError);
+
+      await expect(service.refresh(`user1.sess1.${rawToken}`)).rejects.toBe(
+        dbError,
+      );
+      expect(mockSessionService.rotateSessionToken).not.toHaveBeenCalled();
+      expect(mockSessionService.revokeAllUserSessions).not.toHaveBeenCalled();
+    });
+
+    it('should answer 401 when the user no longer exists', async () => {
+      const rawToken = 'goneUserTokenHexValue123';
+      mockSessionService.getSession.mockResolvedValue({
+        userId: 'user1',
+        sessionId: 'sess1',
+        refreshTokenHash: service.hashRefreshToken(rawToken),
+      });
+      mockUsersService.findOne.mockRejectedValueOnce(
+        new NotFoundException('User không tồn tại'),
+      );
+
+      await expect(service.refresh(`user1.sess1.${rawToken}`)).rejects.toThrow(
+        new UnauthorizedException('Người dùng không tồn tại'),
+      );
+      expect(mockSessionService.rotateSessionToken).not.toHaveBeenCalled();
     });
 
     it('should throw UnauthorizedException on rotation concurrency conflict', async () => {
