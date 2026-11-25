@@ -3,6 +3,8 @@ import { ThrottlerGuard } from '@nestjs/throttler';
 import * as crypto from 'crypto';
 import type { Request } from 'express';
 
+const REFRESH_PATH = '/auth/refresh';
+
 @Injectable()
 export class AppThrottlerGuard extends ThrottlerGuard {
   /**
@@ -20,8 +22,10 @@ export class AppThrottlerGuard extends ThrottlerGuard {
     // Clean and normalize IP
     const ip = typeof rawIp === 'string' ? rawIp.trim() : '127.0.0.1';
 
-    const url = request.originalUrl || request.url || '';
-    if (url.includes('/auth/refresh')) {
+    // Exact path, without the query string: the client controls the query, so
+    // "/auth/login?x=/auth/refresh" must not get the cookie-based bucket
+    const path = (request.originalUrl || request.url || '').split('?', 1)[0];
+    if (path === REFRESH_PATH) {
       const refreshToken: unknown = request.cookies?.refreshToken;
       if (typeof refreshToken === 'string' && refreshToken.length > 0) {
         const parts = refreshToken.split('.');
