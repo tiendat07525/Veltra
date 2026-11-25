@@ -21,15 +21,6 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
-      mongo:
-        image: mongo:7
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 })'"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     defaults:
       run:
         working-directory: backend
@@ -44,10 +35,17 @@ jobs:
       - run: npx tsc --noEmit -p tsconfig.json
       - run: npx eslint .
       - run: npx jest
-      - run: npx jest --config ./test/jest-e2e.json test/realtime-redis-adapter.e2e-spec.ts test/session-rotation.e2e-spec.ts test/direct-conversation.e2e-spec.ts
+      # Transactions need a replica set; `services:` cannot pass a command to the container
+      - name: Start MongoDB replica set
+        run: |
+          docker run -d --name veltra-mongo -p 27017:27017 mongo:7 --replSet rs0
+          timeout 60 bash -c "until docker exec veltra-mongo mongosh --quiet --eval 'db.adminCommand({ ping: 1 })' > /dev/null 2>&1; do sleep 1; done"
+          docker exec veltra-mongo mongosh --quiet --eval 'rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "127.0.0.1:27017" }] })'
+          timeout 60 bash -c "until docker exec veltra-mongo mongosh --quiet --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)'; do sleep 1; done"
+      - run: npx jest --config ./test/jest-e2e.json test/realtime-redis-adapter.e2e-spec.ts test/session-rotation.e2e-spec.ts test/direct-conversation.e2e-spec.ts test/message-transactions.e2e-spec.ts
         env:
           REDIS_URL: redis://127.0.0.1:6379
-          MONGODB_URL: mongodb://127.0.0.1:27017
+          MONGODB_URL: mongodb://127.0.0.1:27017/?directConnection=true
       - run: npm run build
 
   frontend:

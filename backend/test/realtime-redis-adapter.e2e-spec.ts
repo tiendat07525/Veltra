@@ -1,5 +1,6 @@
 import http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
+import { io } from 'socket.io-client';
 import { createClient } from 'redis';
 import { RealtimeGateway } from '../src/realtime/realtime.gateway';
 import { JwtService } from '@nestjs/jwt';
@@ -40,10 +41,8 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
   let realtimeService1: RealtimeService;
   let realtimeService2: RealtimeService;
 
-  let ioClientConstructor: any = null;
-
   beforeAll(async () => {
-    // 1. Check if Redis server is available
+    // Check if Redis server is available
     const probeClient = createClient({
       url: REDIS_URL,
       socket: { connectTimeout: 1000, reconnectStrategy: false },
@@ -61,13 +60,9 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
       isRedisAvailable = false;
     }
 
-    // 2. Load socket.io-client if present
-    try {
-      const clientPath = '../../frontend/node_modules/socket.io-client';
-      const clientPkg = (await import(clientPath)) as Record<string, any>;
-      ioClientConstructor = clientPkg.io || clientPkg.default || clientPkg;
-    } catch {
-      ioClientConstructor = null;
+    // Skipped when Redis is missing on a developer machine, never on CI
+    if (!isRedisAvailable && process.env.CI) {
+      throw new Error(`Redis is not available at ${REDIS_URL}`);
     }
   }, 10000);
 
@@ -188,7 +183,7 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
   });
 
   it('should deliver realtime events across backend instances via Redis pub/sub', async () => {
-    if (!isRedisAvailable || !ioClientConstructor) {
+    if (!isRedisAvailable) {
       return;
     }
 
@@ -269,7 +264,7 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
       });
     });
 
-    const clientOnNode2 = ioClientConstructor(`http://127.0.0.1:${port2}`, {
+    const clientOnNode2 = io(`http://127.0.0.1:${port2}`, {
       transports: ['websocket'],
       reconnection: false,
       auth: { token: 'mock-valid-jwt-token' },
@@ -304,7 +299,7 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
   }, 15000);
 
   it('should disconnect sockets across backend instances via Redis pub/sub request channels', async () => {
-    if (!isRedisAvailable || !ioClientConstructor) {
+    if (!isRedisAvailable) {
       return;
     }
 
@@ -385,7 +380,7 @@ describe('Realtime Redis Adapter Multi-Instance E2E Integration', () => {
       });
     });
 
-    const clientOnNode2 = ioClientConstructor(`http://127.0.0.1:${port2}`, {
+    const clientOnNode2 = io(`http://127.0.0.1:${port2}`, {
       transports: ['websocket'],
       reconnection: false,
       auth: { token: 'mock-valid-jwt-token' },

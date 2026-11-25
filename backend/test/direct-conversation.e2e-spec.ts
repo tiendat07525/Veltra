@@ -1,30 +1,17 @@
-import * as dotenv from 'dotenv';
-dotenv.config();
-import * as os from 'os';
-import mongoose, { Connection, Model, Types } from 'mongoose';
+import { Connection, Model, Types } from 'mongoose';
 import {
   Conversation,
   ConversationSchema,
   getDirectKey,
 } from '../src/conversation/schemas/conversation.schema';
+import { connectTestDatabase } from './helpers/mongo-e2e';
 
 describe('Direct Conversation Database Integration & Concurrency (Real MongoDB)', () => {
   let connection: Connection;
   let conversationModel: Model<Conversation>;
-  const baseUri = process.env.MONGODB_URL;
 
   beforeAll(async () => {
-    if (!baseUri) {
-      throw new Error('MONGODB_URL is not defined in environment');
-    }
-
-    // Connect strictly to an isolated temporary test database to preserve production data
-    const u = new URL(baseUri);
-    u.pathname = '/test_veltra_integration_p31';
-    // Driver >= 7.6 loads 'os' with import(), which Jest does not support without a flag
-    connection = await mongoose
-      .createConnection(u.toString(), { runtimeAdapters: { os } })
-      .asPromise();
+    connection = await connectTestDatabase('test_veltra_direct');
 
     conversationModel = connection.model<Conversation>(
       'Conversation',
