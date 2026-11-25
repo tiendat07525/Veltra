@@ -274,6 +274,72 @@ describe('Send and group-change transactions (Real MongoDB replica set)', () => 
       await expectContiguous(conversationId, 1);
     }, 60000);
 
+    it('should refuse a send whose sender is removed while its files are checked', async () => {
+      const [an, binh] = [await createUser('an'), await createUser('binh')];
+      const conversationId = await createGroup(an, binh);
+      attachments.resolve.mockImplementationOnce(async () => {
+        await groupService.removeParticipant(
+          conversationId.toString(),
+          binh.toString(),
+          an.toString(),
+        );
+        return [];
+      });
+
+      await expect(send(conversationId, binh, 'lọt')).rejects.toMatchObject({
+        status: 400,
+        message: 'Bạn không có quyền gửi tin nhắn',
+      });
+
+      // Only the system message of the removal
+      const { stored } = await expectContiguous(conversationId, 1);
+      expect(stored[0].system?.action).toBe('member_removed');
+      expect(emits('message:new').map((call) => String(call[0]))).toEqual([
+        String(an),
+      ]);
+    }, 60000);
+
+    it('should answer 404 when the conversation is deleted while files are checked', async () => {
+      const [an, binh] = [await createUser('an'), await createUser('binh')];
+      const conversationId = await createGroup(an, binh);
+      attachments.resolve.mockImplementationOnce(async () => {
+        await conversationModel.deleteOne({ _id: conversationId });
+        return [];
+      });
+
+      await expect(send(conversationId, an, 'mất')).rejects.toMatchObject({
+        status: 404,
+      });
+
+      expect(await messageModel.countDocuments({ conversationId })).toBe(0);
+    }, 60000);
+
+    it('should never store a message after its sender was removed', async () => {
+      const [an, binh] = [await createUser('an'), await createUser('binh')];
+      const rounds = 10;
+      for (let round = 0; round < rounds; round++) {
+        const conversationId = await createGroup(an, binh);
+
+        const results = await Promise.allSettled([
+          send(conversationId, binh, 'tin 1'),
+          groupService.removeParticipant(
+            conversationId.toString(),
+            binh.toString(),
+            an.toString(),
+          ),
+          send(conversationId, binh, 'tin 2'),
+        ]);
+
+        expect(results[1].status).toBe('fulfilled');
+        const sends = [results[0], results[2]].map(statusOf);
+        const accepted = sends.filter((s) => s === 'fulfilled').length;
+        expect(sends.filter((s) => s === 400)).toHaveLength(2 - accepted);
+        // Every accepted message is before the removal
+        const { stored } = await expectContiguous(conversationId, accepted + 1);
+        expect(stored[accepted].system?.action).toBe('member_removed');
+      }
+    }, 60000);
+
     it('should accept the same clientMsgId from two different senders', async () => {
       const [an, binh] = [await createUser('an'), await createUser('binh')];
       const conversationId = await createGroup(an, binh);

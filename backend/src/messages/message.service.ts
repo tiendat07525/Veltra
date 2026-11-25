@@ -182,12 +182,19 @@ export class MessageService {
 
     return this.connection.transaction(async (session) => {
       const counter = await this.conversationModel.findOneAndUpdate(
-        { _id: conversationId },
+        // Membership is part of the write: the sender may have been removed since
+        // resolveConversation (checking files takes seconds)
+        { _id: conversationId, 'participants.userId': senderId },
         { $inc: { lastSeq: 1 } },
         { new: true, session },
       );
       if (!counter) {
-        throw new NotFoundException('Không tìm thấy hội thoại');
+        const exists = await this.conversationModel
+          .exists({ _id: conversationId })
+          .session(session);
+        throw exists
+          ? new BadRequestException('Bạn không có quyền gửi tin nhắn')
+          : new NotFoundException('Không tìm thấy hội thoại');
       }
       const seq = counter.lastSeq;
 
