@@ -1,9 +1,32 @@
+import { Controller, HttpCode, INestApplication, Post } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import { APP_GUARD, Reflector } from '@nestjs/core';
+import { Throttle, ThrottlerModule } from '@nestjs/throttler';
+import cookieParser from 'cookie-parser';
+import request from 'supertest';
+import { App } from 'supertest/types';
 import { ThrottlerStorageRedisService } from '../src/auth/throttler-storage-redis.service';
 import { AppThrottlerGuard } from '../src/auth/app-throttler.guard';
-import { Reflector } from '@nestjs/core';
 import * as crypto from 'crypto';
+
+// Same limits as AuthController, without its services
+@Controller('auth')
+class LimitedAuthController {
+  @Post('login')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  login() {
+    return { ok: true };
+  }
+
+  @Post('refresh')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 15, ttl: 60000 } })
+  refresh() {
+    return { ok: true };
+  }
+}
 
 describe('Distributed Rate Limiting (FULLAUDIT-008)', () => {
   describe('ThrottlerStorageRedisService', () => {
@@ -231,6 +254,80 @@ describe('Distributed Rate Limiting (FULLAUDIT-008)', () => {
 
       const tracker = await (guard as any).getTracker(mockReq);
       expect(tracker).toBe('1.2.3.4');
+    });
+
+    it.each([
+      '/auth/login?x=/auth/refresh',
+      '/auth/login/2fa?/auth/refresh',
+      '/users?search=/auth/refresh',
+      '/auth/login#/auth/refresh',
+      '/auth/refresh/other',
+    ])(
+      'should ignore the refresh cookie when the path is not /auth/refresh: %s',
+      async (originalUrl) => {
+        const tracker = await (guard as any).getTracker({
+          originalUrl,
+          ip: '1.2.3.4',
+          cookies: { refreshToken: 'user.session.token' },
+        });
+        expect(tracker).toBe('1.2.3.4');
+      },
+    );
+
+    it('should keep the session tracker for /auth/refresh with a query string', async () => {
+      const tracker = await (guard as any).getTracker({
+        originalUrl: '/auth/refresh?x=1',
+        ip: '1.2.3.4',
+        cookies: { refreshToken: 'user.session.token' },
+      });
+      expect(tracker).toMatch(/^1\.2\.3\.4:sess_[0-9a-f]{16}$/);
+    });
+  });
+
+  describe('AppThrottlerGuard over HTTP', () => {
+    let app: INestApplication<App>;
+
+    beforeEach(async () => {
+      const module = await Test.createTestingModule({
+        // In-memory storage: no Redis needed
+        imports: [
+          ThrottlerModule.forRoot({
+            throttlers: [{ ttl: 60000, limit: 100 }],
+          }),
+        ],
+        controllers: [LimitedAuthController],
+        providers: [{ provide: APP_GUARD, useClass: AppThrottlerGuard }],
+      }).compile();
+      app = module.createNestApplication();
+      app.use(cookieParser());
+      await app.init();
+    });
+
+    afterEach(() => app.close());
+
+    const post = (path: string, cookie: string) =>
+      request(app.getHttpServer())
+        .post(path)
+        .set('Cookie', `refreshToken=${cookie}`);
+
+    it('should limit login by IP even with ?x=/auth/refresh and a new cookie each time', async () => {
+      const statuses: number[] = [];
+      for (let i = 0; i < 8; i++) {
+        const res = await post(
+          '/auth/login?x=/auth/refresh',
+          `user.session-${i}.token`,
+        );
+        statuses.push(res.status);
+      }
+      expect(statuses).toEqual([200, 200, 200, 200, 200, 429, 429, 429]);
+    });
+
+    it('should still limit /auth/refresh per session (15 / 60 s)', async () => {
+      for (let i = 0; i < 15; i++) {
+        expect((await post('/auth/refresh', 'user.s1.token')).status).toBe(200);
+      }
+      expect((await post('/auth/refresh', 'user.s1.token')).status).toBe(429);
+      expect((await post('/auth/refresh', 'user.s2.token')).status).toBe(200);
     });
   });
 });
