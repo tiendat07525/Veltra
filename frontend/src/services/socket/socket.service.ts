@@ -27,8 +27,10 @@ class SocketService {
       transports: ['websocket', 'polling'],
       autoConnect: true,
       reconnection: true,
-      reconnectionAttempts: 5,
+      // Never gives up: 1 s, then doubling to 30 s (jitter by socket.io)
+      reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
+      reconnectionDelayMax: 30_000,
     });
     this.handlers.forEach((eventHandlers, event) => {
       eventHandlers.forEach((handler) => socket.on(event, handler));
@@ -43,6 +45,18 @@ class SocketService {
       this.socket.disconnect();
       this.socket = null;
     }
+  }
+
+  // Skip the wait before socket.io's next attempt (back online, tab shown). No effect while connected.
+  retryNow(): void {
+    if (!this.socket || this.socket.connected || !getToken()) return;
+    // connect() alone does nothing while socket.io waits between attempts
+    this.socket.disconnect().connect();
+  }
+
+  // The server refused the handshake or closed the socket: socket.io does not retry by itself
+  isGivenUp(): boolean {
+    return !!this.socket && !this.socket.active;
   }
 
   isConnected(): boolean {

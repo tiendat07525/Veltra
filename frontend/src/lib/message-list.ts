@@ -62,3 +62,31 @@ export function withOutbox(stored: Message[], outbox: Message[], conversationId:
   const storedKeys = new Set(stored.map((m) => m.clientMsgId));
   return [...stored, ...unsent.filter((m) => !storedKeys.has(m.clientMsgId))];
 }
+
+// The seq up to which nothing is missing, counted from the oldest message held (seq has no gaps on the
+// server). undefined when nothing stored is held.
+export function contiguousTop(list: Message[]): number | undefined {
+  let top: number | undefined;
+  for (const { seq } of list) {
+    if (seq === undefined) break;
+    if (top !== undefined && seq > top + 1) break;
+    top = seq;
+  }
+  return top;
+}
+
+// A message between two held ones never arrived
+export function hasGap(list: Message[]): boolean {
+  let last: number | undefined;
+  for (const { seq } of list) {
+    if (seq !== undefined && (last === undefined || seq > last)) last = seq;
+  }
+  return last !== contiguousTop(list);
+}
+
+// Held messages and a freshly read stretch of history; the fresh copy of a message wins
+export function mergeBySeq(held: Message[], fresh: Message[]): Message[] {
+  const bySeq = new Map<number, Message>();
+  for (const m of [...held, ...fresh]) if (m.seq !== undefined) bySeq.set(m.seq, m);
+  return [...bySeq.entries()].sort(([a], [b]) => a - b).map(([, m]) => m);
+}

@@ -5,6 +5,9 @@ import { conversationService } from '@/services/api/conversation.service';
 import { socketService } from '@/services/socket/socket.service';
 import {
   applyRevokes,
+  contiguousTop,
+  hasGap,
+  mergeBySeq,
   mergeNewestPage,
   prependOlderPage,
   upsertMessage,
@@ -26,6 +29,13 @@ interface History {
 }
 
 const NO_MESSAGES: Message[] = [];
+const PAGE_SIZE = 50;
+// Resync reads at most this many pages back from the newest message
+const RESYNC_MAX_PAGES = 4;
+// A gap is filled only if it is still there after this long (events may arrive out of order)
+const GAP_WAIT_MS = 500;
+// A response that no longer belongs to the open conversation
+const STALE = new Error('stale');
 const REVOKED_TEXT = 'Tin nhắn đã thu hồi';
 
 export function useMessages(
@@ -79,6 +89,89 @@ export function useMessages(
     }
   }, []);
 
+  // Missed while disconnected ('reconnect') or on the way ('gap'): read history back from the newest
+  // message until it meets what is held; after a reconnect also until it covers it, for missed revokes.
+  // No loading state, and nothing is lost on failure. One run at a time; a call during one (or during
+  // the first load) runs it once more afterwards.
+  const resyncRef = useRef<{ running: boolean; again: 'reconnect' | 'gap' | null }>({ running: false, again: null });
+  // `conversation:seq` after which the server itself has nothing: do not ask again for every message
+  const knownGapRef = useRef('');
+  const resync = useCallback(
+    async (reason: 'reconnect' | 'gap') => {
+      const state = resyncRef.current;
+      let next: 'reconnect' | 'gap' | null = reason;
+      while (next) {
+        const history = historyRef.current;
+        if (!history) return;
+        if (state.running || history.loading) {
+          if (state.again !== 'reconnect') state.again = next;
+          return;
+        }
+        const convId = history.conversationId;
+        const held = history.messages;
+        const top = contiguousTop(held) ?? 0;
+        const oldest = held[0]?.seq ?? 1;
+        const lastHeld = held[held.length - 1]?.seq ?? 0;
+        const target = next === 'reconnect' ? oldest : top + 1;
+        const generation = generationRef.current;
+
+        state.running = true;
+        state.again = null;
+        try {
+          let fresh: Message[] = [];
+          let hasMore = true;
+          for (let pages = 0; pages < RESYNC_MAX_PAGES && hasMore; pages++) {
+            const data = await messageService.getMessages(convId, PAGE_SIZE, fresh[0]?.seq);
+            // Another conversation was opened, or this one reloaded: that load is enough
+            if (generation !== generationRef.current) throw STALE;
+            fresh = [...data.messages, ...fresh];
+            hasMore = data.hasMore;
+            if ((fresh[0]?.seq ?? 0) <= target) break;
+          }
+          settle(fresh);
+
+          const freshFrom = fresh[0]?.seq ?? 1;
+          if (freshFrom <= top + 1) {
+            updateHistory(convId, (h) => ({
+              messages: applyRevokes(mergeBySeq(h.messages, fresh), h.revoked),
+              ...(freshFrom <= oldest ? { hasMore } : {}),
+            }));
+          } else {
+            // Too far behind: keep only the newest pages, like opening the conversation again.
+            // Older messages still on the way no longer fit in front of them.
+            nextGeneration();
+            updateHistory(convId, (h) => ({
+              messages: applyRevokes(mergeNewestPage(h.messages, fresh), h.revoked),
+              hasMore,
+              loadingMore: false,
+            }));
+          }
+
+          const shown = historyRef.current?.messages ?? NO_MESSAGES;
+          if (hasGap(shown)) knownGapRef.current = `${convId}:${contiguousTop(shown)}`;
+          const newest = shown[shown.length - 1]?.seq ?? 0;
+          if (newest > lastHeld) markSeen(convId, newest);
+        } catch (err: unknown) {
+          // The next reconnect or message retries
+          if (err !== STALE) console.error('Lỗi khi đồng bộ tin nhắn:', err);
+        } finally {
+          state.running = false;
+        }
+        next = state.again;
+      }
+    },
+    [nextGeneration, updateHistory, settle, markSeen]
+  );
+
+  // A message never arrived (e.g. 7 after 5): ask for it, unless it comes by itself in a moment
+  useEffect(() => {
+    if (!history || history.loading || history.error || !hasGap(history.messages)) return;
+    const gap = `${history.conversationId}:${contiguousTop(history.messages)}`;
+    if (gap === knownGapRef.current) return;
+    const timer = setTimeout(() => void resync('gap'), GAP_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [history, resync]);
+
   const fetchMessages = useCallback(async () => {
     const generation = nextGeneration();
     if (!enabled || !conversationId) {
@@ -119,7 +212,10 @@ export function useMessages(
     // Read up to the newest message now on screen
     const shown = historyRef.current?.messages ?? NO_MESSAGES;
     markSeen(conversationId, shown[shown.length - 1]?.seq);
-  }, [conversationId, enabled, nextGeneration, replaceHistory, updateHistory, settle, markSeen]);
+
+    // Reconnected while this page was on the way: it may have been read before the socket was back
+    if (resyncRef.current.again) void resync(resyncRef.current.again);
+  }, [conversationId, enabled, nextGeneration, replaceHistory, updateHistory, settle, markSeen, resync]);
 
   useEffect(() => {
     let cancelled = false;
@@ -157,15 +253,22 @@ export function useMessages(
 
     const handleRemoved = (payload: { conversationId: string }) => dropConversation(String(payload.conversationId));
 
+    const handleConnect = () => {
+      if (historyRef.current?.error) void fetchMessages();
+      else void resync('reconnect');
+    };
+
+    socketService.on('connect', handleConnect);
     socketService.on('message:new', handleNewMessage);
     socketService.on('message:revoked', handleRevoked);
     socketService.on('conversation:removed', handleRemoved);
     return () => {
+      socketService.off('connect', handleConnect);
       socketService.off('message:new', handleNewMessage);
       socketService.off('message:revoked', handleRevoked);
       socketService.off('conversation:removed', handleRemoved);
     };
-  }, [addStored, updateHistory, settle, dropConversation, markSeen]);
+  }, [addStored, updateHistory, settle, dropConversation, markSeen, fetchMessages, resync]);
 
   const loadMore = useCallback(async () => {
     const held = historyRef.current;
@@ -177,7 +280,7 @@ export function useMessages(
     const generation = generationRef.current;
     updateHistory(conversationId, () => ({ loadingMore: true }));
     try {
-      const data = await messageService.getMessages(conversationId, 50, beforeSeq);
+      const data = await messageService.getMessages(conversationId, PAGE_SIZE, beforeSeq);
       if (generation !== generationRef.current) return;
       settle(data.messages);
       updateHistory(conversationId, (h) => ({

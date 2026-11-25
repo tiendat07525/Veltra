@@ -64,8 +64,15 @@ export function useFriends() {
         void Promise.all([fetchFriends(), fetchFriendRequests()]);
       }
     };
+    // Notifications missed while disconnected
+    const handleConnect = () => void Promise.all([fetchFriends(), fetchFriendRequests()]);
+
     socketService.on('notification:new', handleNotification);
-    return () => socketService.off('notification:new', handleNotification);
+    socketService.on('connect', handleConnect);
+    return () => {
+      socketService.off('notification:new', handleNotification);
+      socketService.off('connect', handleConnect);
+    };
   }, [fetchFriends, fetchFriendRequests]);
 
   const getFriendshipStatus = useCallback(

@@ -1,31 +1,9 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Conversation, ConversationFilter } from '@/types/conversation';
 import { Message } from '@/types/message';
 import { conversationService } from '@/services/api/conversation.service';
 import { socketService } from '@/services/socket/socket.service';
-
-// Insert or replace a conversation from the server (conversation:updated or a group-change response).
-// If the list already holds a newer message (higher lastSeq), keep its message fields and take
-// only the membership / group fields from the incoming copy.
-function upsertConversation(prev: Conversation[], incoming: Conversation): Conversation[] {
-  const index = prev.findIndex((c) => c._id === incoming._id);
-  if (index === -1) return [incoming, ...prev];
-
-  const current = prev[index];
-  const merged: Conversation =
-    (current.lastSeq ?? 0) > (incoming.lastSeq ?? 0)
-      ? {
-          ...incoming,
-          lastMessage: current.lastMessage,
-          lastMessageAt: current.lastMessageAt,
-          lastSeq: current.lastSeq,
-          unreadCounts: current.unreadCounts,
-        }
-      : incoming;
-  const next = [...prev];
-  next[index] = merged;
-  return next;
-}
+import { mergeConversationList, upsertConversation } from '@/lib/conversation-list';
 
 export function useConversations(enabled: boolean = true, currentUserId: string | null = null) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -34,23 +12,49 @@ export function useConversations(enabled: boolean = true, currentUserId: string 
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [filter, setFilter] = useState<ConversationFilter>('all');
 
+  // Latest list / user for the async reload
+  const conversationsRef = useRef(conversations);
+  const currentUserIdRef = useRef(currentUserId);
+  useEffect(() => {
+    conversationsRef.current = conversations;
+    currentUserIdRef.current = currentUserId;
+  }, [conversations, currentUserId]);
+
+  // Re-read the list without a loading state, keeping what changed here meanwhile.
+  // One request at a time; a call during one runs it once more afterwards.
+  const reloadRef = useRef({ running: false, again: false });
+  const reload = useCallback(async () => {
+    const state = reloadRef.current;
+    if (state.running) {
+      state.again = true;
+      return;
+    }
+    state.running = true;
+    do {
+      state.again = false;
+      const before = conversationsRef.current;
+      try {
+        const incoming = await conversationService.getConversations();
+        setConversations((current) =>
+          mergeConversationList(before, current, incoming, currentUserIdRef.current)
+        );
+        setError(null);
+      } catch (err: unknown) {
+        // The current list stays; the next reconnect retries
+        console.error('Lỗi khi lấy danh sách hội thoại:', err);
+        const apiErr = err as { response?: { data?: { message?: string } } };
+        setError(apiErr?.response?.data?.message || 'Không thể tải danh sách hội thoại');
+      }
+    } while (state.again);
+    state.running = false;
+  }, []);
+
   const fetchConversations = useCallback(async () => {
     setLoading(true);
     setError(null);
-    try {
-      const data = await conversationService.getConversations();
-      setConversations(data);
-    } catch (err: unknown) {
-      console.error('Lỗi khi lấy danh sách hội thoại:', err);
-      const errMsg =
-        err && typeof err === 'object' && 'response' in err
-          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
-          : undefined;
-      setError(errMsg || 'Không thể tải danh sách hội thoại');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    await reload();
+    setLoading(false);
+  }, [reload]);
 
   useEffect(() => {
     if (enabled) {
@@ -69,7 +73,7 @@ export function useConversations(enabled: boolean = true, currentUserId: string 
         const convIndex = prev.findIndex((c) => String(c._id) === String(newMsg.conversationId));
 
         if (convIndex === -1) {
-          fetchConversations();
+          void reload();
           return prev;
         }
 
@@ -127,17 +131,22 @@ export function useConversations(enabled: boolean = true, currentUserId: string 
       setConversations((prev) => prev.filter((c) => c._id !== removedId));
     };
 
+    // Events missed while disconnected
+    const handleConnect = () => void reload();
+
+    socketService.on('connect', handleConnect);
     socketService.on('message:new', handleNewMessage);
     socketService.on('message:revoked', handleRevokeMessageEvent);
     socketService.on('conversation:updated', handleConversationUpdated);
     socketService.on('conversation:removed', handleConversationRemoved);
     return () => {
+      socketService.off('connect', handleConnect);
       socketService.off('message:new', handleNewMessage);
       socketService.off('message:revoked', handleRevokeMessageEvent);
       socketService.off('conversation:updated', handleConversationUpdated);
       socketService.off('conversation:removed', handleConversationRemoved);
     };
-  }, [fetchConversations]);
+  }, [reload]);
 
   const handleMarkAsSeen = useCallback(async (conversationId: string, currentUserId?: string, upToSeq?: number) => {
     try {
