@@ -272,6 +272,20 @@ describe('UsersService (Security & Password Hashing)', () => {
       expect(fields).not.toContain('email');
       expect(findFilter.$or[0].username.test('ALICE_99')).toBe(true);
     });
+
+    it('should ignore accents in the query and in the names', async () => {
+      const qb = mockQueryBuilder([]);
+      mockUserModel.find.mockReturnValue(qb);
+      mockUserModel.countDocuments.mockResolvedValue(0);
+
+      await service.findAll({ search: ' đuc anh ' });
+
+      const findFilter = mockUserModel.find.mock.calls[0][0];
+      expect(findFilter.$or[1].displayName.test('Nguyễn Đức Ánh')).toBe(true);
+      expect(findFilter.$or[0].username.test('duc anh')).toBe(true);
+      // The count uses the same filter
+      expect(mockUserModel.countDocuments).toHaveBeenCalledWith(findFilter);
+    });
   });
 });
 

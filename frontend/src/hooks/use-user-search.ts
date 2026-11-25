@@ -7,7 +7,7 @@ const USER_SEARCH_LIMIT = 50;
 const DEBOUNCE_MS = 400;
 
 /**
- * Debounced user search (GET /users?search=: username / display name, case-insensitive, partial).
+ * Debounced user search (GET /users?search=: username / display name, partial, ignoring case and accents).
  * The current user is left out of the results. `handleSearchChange` is stable.
  */
 export function useUserSearch(currentUserId: string | undefined) {

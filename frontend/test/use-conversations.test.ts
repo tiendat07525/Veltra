@@ -150,6 +150,16 @@ describe('useConversations: search', () => {
     expect(await search('xin chào')).toEqual(['group']);
   });
 
+  it('ignores accents in the query and in the texts', async () => {
+    expect(await search('binh')).toEqual(['with-binh']);
+    cleanup();
+    expect(await search('lop hoc')).toEqual(['group']);
+    cleanup();
+    expect(await search('xin chao')).toEqual(['group']);
+    cleanup();
+    expect(await search('ẢN')).toEqual(['with-an']);
+  });
+
   it('my own name does not match every conversation', async () => {
     expect(await search('tôi đây')).toEqual([]);
     cleanup();
