@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction, useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { AttachmentKind, Message, MessageAttachment } from '@/types/message';
 import { attachmentService, classifyFile } from '@/services/api/attachment.service';
 
@@ -29,9 +29,9 @@ async function runLimited(tasks: (() => Promise<void>)[], limit: number) {
 /**
  * Files of optimistic messages, keyed by clientMsgId and kept until the message is stored:
  * local previews, signed uploads straight to Cloudinary (3 at a time) and upload progress
- * on the optimistic message in `setMessages`.
+ * on the optimistic message, through `updateOutbox` (must be stable).
  */
-export function useAttachmentUploads(setMessages: Dispatch<SetStateAction<Message[]>>) {
+export function useAttachmentUploads(updateOutbox: (change: (list: Message[]) => Message[]) => void) {
   // clientMsgId -> files of that optimistic message
   const uploadsRef = useRef(new Map<string, PendingUpload[]>());
 
@@ -62,7 +62,7 @@ export function useAttachmentUploads(setMessages: Dispatch<SetStateAction<Messag
 
   const setUploadProgress = useCallback(
     (clientMsgId: string, index: number, progress: number) => {
-      setMessages((prev) =>
+      updateOutbox((prev) =>
         prev.map((m) =>
           m.clientMsgId === clientMsgId && m.attachments
             ? { ...m, attachments: m.attachments.map((a, i) => (i === index ? { ...a, progress } : a)) }
@@ -70,7 +70,7 @@ export function useAttachmentUploads(setMessages: Dispatch<SetStateAction<Messag
         )
       );
     },
-    [setMessages]
+    [updateOutbox]
   );
 
   // Uploads the files of this message that are not uploaded yet (signed by the server,
@@ -102,7 +102,7 @@ export function useAttachmentUploads(setMessages: Dispatch<SetStateAction<Messag
     [setUploadProgress]
   );
 
-  // The message is stored: the local previews are no longer shown
+  // The message left the outbox (stored or dropped): the local previews are no longer shown
   const release = useCallback((clientMsgId: string) => {
     uploadsRef.current.get(clientMsgId)?.forEach((u) => u.previewUrl && URL.revokeObjectURL(u.previewUrl));
     uploadsRef.current.delete(clientMsgId);

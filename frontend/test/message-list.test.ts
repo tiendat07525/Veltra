@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { isRetryableSendError, upsertMessage } from '@/lib/message-list';
+import {
+  applyRevokes,
+  isRetryableSendError,
+  mergeNewestPage,
+  prependOlderPage,
+  upsertMessage,
+  withOutbox,
+} from '@/lib/message-list';
 import type { Message } from '@/types/message';
 
 const msg = (over: Partial<Message>): Message => ({
@@ -48,6 +55,67 @@ describe('upsertMessage', () => {
     const before = structuredClone(list);
     upsertMessage(list, msg({ seq: 2 }));
     expect(list).toEqual(before);
+  });
+});
+
+describe('mergeNewestPage', () => {
+  const page = [msg({ seq: 2 }), msg({ seq: 3 })];
+
+  it('keeps only held messages newer than the page', () => {
+    const held = [msg({ seq: 1 }), msg({ seq: 3 }), msg({ seq: 4 }), msg({ seq: 5 })];
+    expect(ids(mergeNewestPage(held, page))).toEqual(['id-2', 'id-3', 'id-4', 'id-5']);
+  });
+
+  it('takes the copy of the page for a message both have', () => {
+    const merged = mergeNewestPage([msg({ seq: 3, content: 'old' })], [msg({ seq: 3, content: 'new' })]);
+    expect(merged.map((m) => m.content)).toEqual(['new']);
+  });
+
+  it('keeps everything held when the page is empty', () => {
+    expect(ids(mergeNewestPage([msg({ seq: 1 })], []))).toEqual(['id-1']);
+  });
+});
+
+describe('prependOlderPage', () => {
+  it('puts the page in front without the messages already held', () => {
+    const merged = prependOlderPage([msg({ seq: 3 }), msg({ seq: 4 })], [msg({ seq: 2 }), msg({ seq: 3 })]);
+    expect(ids(merged)).toEqual(['id-2', 'id-3', 'id-4']);
+  });
+});
+
+describe('applyRevokes', () => {
+  const attachments = [{ kind: 'image' as const, url: 'u', name: 'n', bytes: 1 }];
+
+  it('empties the revoked message only', () => {
+    const list = [msg({ seq: 1, content: 'a', attachments }), msg({ seq: 2, content: 'b' })];
+    const next = applyRevokes(list, new Map([['id-1', 'gone']]));
+    expect(next[0]).toMatchObject({ isRevoked: true, content: 'gone' });
+    expect(next[0].attachments).toBeUndefined();
+    expect(next[1]).toBe(list[1]);
+    expect(list[0].content).toBe('a');
+  });
+
+  it('returns the same list when nothing was revoked', () => {
+    const list = [msg({ seq: 1 })];
+    expect(applyRevokes(list, new Map())).toBe(list);
+  });
+});
+
+describe('withOutbox', () => {
+  const unsent = msg({ _id: 'p', clientMsgId: 'x', status: 'failed' });
+
+  it('adds the unsent messages of this conversation at the end', () => {
+    const other = msg({ _id: 'q', clientMsgId: 'y', conversationId: 'c2' });
+    expect(ids(withOutbox([msg({ seq: 1 })], [other, unsent], 'c1'))).toEqual(['id-1', 'p']);
+  });
+
+  it('leaves out a message that is already stored', () => {
+    expect(ids(withOutbox([msg({ seq: 1, clientMsgId: 'x' })], [unsent], 'c1'))).toEqual(['id-1']);
+  });
+
+  it('returns the same list when nothing is unsent here', () => {
+    const stored = [msg({ seq: 1 })];
+    expect(withOutbox(stored, [unsent], 'c2')).toBe(stored);
   });
 });
 
