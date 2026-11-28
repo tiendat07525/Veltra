@@ -291,7 +291,16 @@ export class CallService implements OnModuleDestroy {
     if (result.previousSocket) {
       this.clearGrace(callId, result.previousSocket);
     }
-    if (result.peerSocket) {
+    // A heartbeat (same socket again) changes nothing for anyone
+    const newSocket = result.previousSocket !== socketId;
+    if (newSocket && result.previousSocket) {
+      // That tab (if it is still open) no longer carries the call
+      this.realtime.emitToSocket(result.previousSocket, 'call:moved', {
+        callId,
+      });
+    }
+    if (newSocket && result.peerSocket) {
+      // The other side negotiates (again) with this socket
       this.realtime.emitToSocket(result.peerSocket, 'call:peer-joined', {
         callId,
         role: result.role,

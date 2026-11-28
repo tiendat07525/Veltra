@@ -9,6 +9,7 @@ import { ChatHeader } from './ChatHeader';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
 import { InlineError } from '@/components/ui/InlineError';
+import type { CallMedia } from '@/types/call';
 
 interface ChatWindowProps {
   conversation: Conversation | null;
@@ -43,6 +44,9 @@ interface ChatWindowProps {
   // Failed mute / unmute of this conversation, shown under the header
   muteError?: string | null;
   onDismissMuteError?: () => void;
+  // Direct conversations: start a call (header button, "Gọi lại" on call records)
+  onStartCall?: (media: CallMedia) => void;
+  callBusy?: boolean;
 }
 
 // The open conversation: header, history, composer, and the image viewer they share
@@ -73,6 +77,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   onToggleMute,
   muteError,
   onDismissMuteError,
+  onStartCall,
+  callBusy = false,
 }) => {
   const [viewer, setViewer] = useState<{ url: string; name: string } | null>(null);
 
@@ -118,6 +124,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         onOpenGroupInfo={onOpenGroupInfo}
         isMuted={isMuted}
         onToggleMute={onToggleMute}
+        onStartCall={onStartCall}
+        callDisabled={callBusy}
       />
       <InlineError message={muteError} onDismiss={onDismissMuteError} className="mx-4 mt-2 shrink-0" />
 
@@ -135,6 +143,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         onReactMessage={onReactMessage}
         onRetryMessage={onRetryMessage}
         onOpenImage={(url, name) => setViewer({ url, name })}
+        onCallAgain={callBusy ? undefined : onStartCall}
       />
 
       <ChatInput

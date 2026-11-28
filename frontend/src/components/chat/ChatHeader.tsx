@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { ArrowLeft, Bell, BellOff, Info } from 'lucide-react';
+import { ArrowLeft, Bell, BellOff, Info, Phone } from 'lucide-react';
+import type { CallMedia } from '@/types/call';
 import { Conversation, ConversationParticipant } from '@/types/conversation';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 
@@ -17,6 +18,9 @@ interface ChatHeaderProps {
   // Per-conversation mute (settings)
   isMuted?: boolean;
   onToggleMute?: () => void;
+  // Direct conversations: start a call; disabled while a call of mine is on screen
+  onStartCall?: (media: CallMedia) => void;
+  callDisabled?: boolean;
 }
 
 // Name, avatar and online state of the open conversation
@@ -30,6 +34,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   onOpenGroupInfo,
   isMuted = false,
   onToggleMute,
+  onStartCall,
+  callDisabled = false,
 }) => {
   const otherOnlineCount = conversation.participants.filter(
     (p) => p._id !== currentUserId && onlineIds?.has(p._id)
@@ -67,6 +73,19 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
               : 'Ngoại tuyến'}
         </p>
       </div>
+
+      {conversation.type === 'direct' && onStartCall && (
+        <button
+          type="button"
+          onClick={() => onStartCall('audio')}
+          disabled={callDisabled}
+          className="p-2.5 rounded-xl text-fg-muted hover:text-accent hover:bg-accent-soft transition-colors disabled:opacity-40 disabled:pointer-events-none"
+          title="Gọi thoại"
+          aria-label="Gọi thoại"
+        >
+          <Phone className="w-5 h-5" />
+        </button>
+      )}
 
       {onToggleMute && (
         <button

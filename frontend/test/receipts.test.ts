@@ -80,6 +80,8 @@ describe('computeReceipts: direct', () => {
     expect(computeReceipts([msg(9, 'me'), msg(10, 'an')], seenUpTo(10), 'me').direct).toBeNull();
     expect(computeReceipts([msg(10, 'me'), msg(undefined, 'me', { status: 'sending' })], seenUpTo(10), 'me').direct).toBeNull();
     expect(computeReceipts([msg(10, 'me', { type: 'system' })], seenUpTo(10), 'me').direct).toBeNull();
+    // A call record of mine is not a message to mark "Đã gửi" / "Đã xem"
+    expect(computeReceipts([msg(10, 'me', { type: 'call' })], seenUpTo(10), 'me').direct).toBeNull();
     expect(computeReceipts([], seenUpTo(10), 'me').direct).toBeNull();
   });
 

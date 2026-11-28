@@ -22,6 +22,8 @@ import { useNotifications } from '@/hooks/use-notifications';
 import { useBrowserNotifications } from '@/hooks/use-browser-notifications';
 import { useSettings } from '@/hooks/use-settings';
 import { NotificationItem } from '@/types/notification';
+import { useCall } from '@/hooks/use-call';
+import { CallScreen } from '@/components/call/CallScreen';
 
 export function VeltraClientApp() {
   const router = useRouter();
@@ -58,6 +60,13 @@ export function VeltraClientApp() {
   const viewingChat = activeTab === 'chat' && pageVisible && (!isMobile || mobileViewChat);
   const chat = useChat(authReady, undefined, mutedConversationIds, viewingChat);
   const notifications = useNotifications(authReady);
+  // 1-1 calls: one at a time, shown over every tab
+  const call = useCall({
+    enabled: authReady,
+    currentUserId: chat.currentUser?._id ?? null,
+    settings: settingsHook.settings,
+    mutedConversationIds,
+  });
 
   // ChatTab shows a failure under the chat header
   const setConversationMuted = (conversationId: string, muted: boolean) =>
@@ -212,6 +221,8 @@ export function VeltraClientApp() {
             enterToSend={settingsHook.settings.chat.enterToSend}
             mutedConversationIds={mutedConversationIds}
             onSetMuted={setConversationMuted}
+            onStartCall={(conversationId, peer, media) => void call.startCall(conversationId, peer, media)}
+            callBusy={call.busy}
           />
         )}
 
@@ -252,6 +263,17 @@ export function VeltraClientApp() {
           <ProfileView currentUser={chat.currentUser} onProfile={chat.updateCurrentUser} />
         )}
       </main>
+
+      {call.view && (
+        <CallScreen
+          view={call.view}
+          onAccept={() => void call.accept()}
+          onDecline={call.decline}
+          onHangUp={call.hangUp}
+          onResume={() => void call.resume()}
+          onToggleMic={call.toggleMic}
+        />
+      )}
     </div>
   );
 }

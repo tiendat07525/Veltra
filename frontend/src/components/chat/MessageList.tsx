@@ -1,5 +1,6 @@
 'use client';
 
+import type { CallMedia } from '@/types/call';
 import React, { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { AlertCircle, Loader2, MessageSquare, RefreshCw } from 'lucide-react';
 import { Conversation } from '@/types/conversation';
@@ -23,6 +24,8 @@ interface MessageListProps {
   onReactMessage?: (id: string, emoji: ReactionEmoji | null) => Promise<void>;
   onRetryMessage?: (clientMsgId: string) => void;
   onOpenImage: (url: string, name: string) => void;
+  // Direct conversations: "Gọi lại" on call records
+  onCallAgain?: (media: CallMedia) => void;
 }
 
 /**
@@ -44,6 +47,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   onReactMessage,
   onRetryMessage,
   onOpenImage,
+  onCallAgain,
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -175,6 +179,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                     onReactMessage={onReactMessage}
                     onRetryMessage={onRetryMessage}
                     onOpenImage={onOpenImage}
+                    onCallAgain={conversation.type === 'direct' ? onCallAgain : undefined}
                   />
                   {receipts.direct?.messageId === msg._id && <DirectReceipt seen={receipts.direct.seen} />}
                   {receipts.readers[msg._id] && <GroupReaders readers={receipts.readers[msg._id]} />}

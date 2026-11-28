@@ -119,7 +119,8 @@ export function useBrowserNotifications({
         mutedConversationIds: muted,
         onOpenConversation: open,
       } = latest.current;
-      if (!message || message.type === 'system' || message.senderId === me) return;
+      // Call records: the call itself already rang / notified
+      if (!message || message.type === 'system' || message.type === 'call' || message.senderId === me) return;
       if (muted.has(message.conversationId)) return;
 
       const now = Date.now();

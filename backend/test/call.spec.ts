@@ -535,6 +535,36 @@ describe('CallService', () => {
         'call:peer-joined',
         { callId: CALL_ID, role: 'callee' },
       );
+
+      // A heartbeat from the same socket tells nobody
+      realtime.emitToSocket.mockClear();
+      callState.join.mockResolvedValueOnce({
+        ok: true,
+        role: 'callee',
+        state: 'active',
+        previousSocket: 'callee-socket',
+        peerSocket: 'caller-socket',
+      });
+      await service.join(callee, CALL_ID, 'callee-socket');
+      expect(realtime.emitToSocket).not.toHaveBeenCalled();
+
+      // Another tab takes over: the old socket is told, the peer negotiates again
+      callState.join.mockResolvedValueOnce({
+        ok: true,
+        role: 'callee',
+        state: 'active',
+        previousSocket: 'callee-socket',
+        peerSocket: 'caller-socket',
+      });
+      await service.join(callee, CALL_ID, 'callee-tab-2');
+      expect(realtime.emitToSocket.mock.calls).toEqual([
+        ['callee-socket', 'call:moved', { callId: CALL_ID }],
+        [
+          'caller-socket',
+          'call:peer-joined',
+          { callId: CALL_ID, role: 'callee' },
+        ],
+      ]);
     });
 
     it('a dropped socket ends the call after the grace window, unless it re-joined', async () => {

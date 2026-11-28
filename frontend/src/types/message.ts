@@ -1,3 +1,5 @@
+import type { CallRecord } from './call';
+
 export type MessageType = 'text' | 'image' | 'file' | 'audio' | 'video' | 'system' | 'call';
 // The fixed set the server accepts (lib/reactions.ts REACTION_EMOJIS)
 export type ReactionEmoji = '👍' | '❤️' | '😂' | '😮' | '😢';
@@ -58,13 +60,15 @@ export interface Message {
   fileName?: string;
   fileSize?: string;
   duration?: number;
-  // Absent = text. 'system' messages are rendered as a centered note from `content` (server-built text)
+  // Absent = text. 'system' messages are rendered as a centered note from `content` (server-built text),
+  // 'call' messages as a call card from `call`
   type?: MessageType;
   system?: { action: SystemAction; targetIds: string[] };
   // Absent = no files. Cleared when the message is revoked (the files are deleted)
   attachments?: MessageAttachment[];
   status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
-  callStatus?: 'missed' | 'completed' | 'declined';
+  // Only on type 'call': a finished call (content holds the server's text for old clients)
+  call?: CallRecord;
   replyTo?: {
     messageId?: string;
     senderName?: string;
