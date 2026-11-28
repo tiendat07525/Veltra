@@ -4,7 +4,7 @@ import React from 'react';
 import { Conversation } from '@/types/conversation';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { formatListTime } from '@/lib/utils';
-import { BellOff, Trash2 } from 'lucide-react';
+import { AlertCircle, BellOff, Trash2 } from 'lucide-react';
 import { useLongPress } from '@/hooks/use-long-press';
 
 interface ConversationItemProps {
@@ -18,6 +18,8 @@ interface ConversationItemProps {
   typingUserIds?: string[];
   // Muted in settings: grey unread count, not counted in the badges
   isMuted?: boolean;
+  // A message of mine here failed to send (outbox): "Gửi lỗi" replaces the last message until it is sent
+  hasFailedSend?: boolean;
 }
 
 export const ConversationItem: React.FC<ConversationItemProps> = ({
@@ -29,6 +31,7 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
   isOnline = false,
   typingUserIds,
   isMuted = false,
+  hasFailedSend = false,
 }) => {
   const isGroup = conversation.type === 'group';
   // Touch screens: long press asks to delete (the hover trash button is hidden there)
@@ -121,13 +124,21 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
         </div>
 
         <div className="flex items-center justify-between gap-2">
-          <p
-            className={`text-xs truncate ${
-              typingLabel ? 'italic text-accent' : hasUnread ? 'font-semibold text-fg' : 'text-fg-muted'
-            }`}
-          >
-            {typingLabel ?? lastContent}
-          </p>
+          {/* Typing first, then a failed send, then the last message */}
+          {!typingLabel && hasFailedSend ? (
+            <p className="flex items-center gap-1 min-w-0 text-xs font-semibold text-danger">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+              <span className="truncate">Gửi lỗi</span>
+            </p>
+          ) : (
+            <p
+              className={`text-xs truncate ${
+                typingLabel ? 'italic text-accent' : hasUnread ? 'font-semibold text-fg' : 'text-fg-muted'
+              }`}
+            >
+              {typingLabel ?? lastContent}
+            </p>
+          )}
 
           {hasUnread && (
             <span

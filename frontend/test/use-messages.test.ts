@@ -230,6 +230,58 @@ describe('useMessages: sending', () => {
   });
 });
 
+describe('useMessages: failed sends in the conversation list', () => {
+  const failed = (result: { current: { failedConversationIds: Set<string> } }) => [...result.current.failedConversationIds];
+
+  it('marks a conversation that failed while another one is open, until the retry is stored', async () => {
+    const { result, rerender } = await renderLoaded(page([msg({ seq: 1 })]));
+    const reply = deferred<SendResult>();
+    sendMessage.mockReturnValueOnce(reply.promise);
+    act(() => result.current.sendMessage('a'));
+    await waitFor(() => expect(sendMessage).toHaveBeenCalled());
+    // Still sending: no mark
+    expect(failed(result)).toEqual([]);
+
+    getMessages.mockResolvedValueOnce(page([msg({ seq: 7, conversationId: 'c2' })]));
+    rerender({ conv: 'c2' });
+    await waitFor(() => expect(ids(result.current.messages)).toEqual(['id-7']));
+    await act(async () => reply.reject(httpError(403)));
+    expect(failed(result)).toEqual(['c1']);
+
+    // Retry: sending again → no mark; stored → none either
+    const { clientMsgId } = sendMessage.mock.calls[0][0];
+    const retried = deferred<SendResult>();
+    sendMessage.mockReturnValueOnce(retried.promise);
+    act(() => result.current.retryMessage(clientMsgId));
+    expect(failed(result)).toEqual([]);
+    await act(async () => retried.resolve({ success: true, message: '', data: msg({ seq: 2, clientMsgId }) }));
+    expect(failed(result)).toEqual([]);
+  });
+
+  it('comes back when the retry fails too, and goes when the conversation is removed', async () => {
+    const { result } = await renderLoaded(page([msg({ seq: 1 })]));
+    sendMessage.mockRejectedValueOnce(httpError(403));
+    act(() => result.current.sendMessage('a'));
+    await waitFor(() => expect(failed(result)).toEqual(['c1']));
+
+    const { clientMsgId } = sendMessage.mock.calls[0][0];
+    sendMessage.mockRejectedValueOnce(httpError(403));
+    act(() => result.current.retryMessage(clientMsgId));
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(failed(result)).toEqual(['c1']));
+
+    emit('conversation:removed', { conversationId: 'c1' });
+    expect(failed(result)).toEqual([]);
+  });
+
+  it('keeps the same set between renders when nothing changed', async () => {
+    const { result, rerender } = await renderLoaded(page([msg({ seq: 1 })]));
+    const before = result.current.failedConversationIds;
+    rerender({ conv: 'c1' });
+    expect(result.current.failedConversationIds).toBe(before);
+  });
+});
+
 describe('useMessages: switching conversation', () => {
   it('ignores the history of the previous conversation when it arrives late', async () => {
     const slow = deferred<MessagesResponse>();
