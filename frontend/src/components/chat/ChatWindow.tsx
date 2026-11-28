@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, MessageSquare } from 'lucide-react';
 import { Conversation, ConversationParticipant } from '@/types/conversation';
-import { Message } from '@/types/message';
+import { Message, ReactionEmoji } from '@/types/message';
 import { ImageViewerModal } from './ImageViewerModal';
 import { ChatHeader } from './ChatHeader';
 import { MessageList } from './MessageList';
@@ -28,6 +28,8 @@ interface ChatWindowProps {
   onRefreshMessages: () => void;
   // Rejects with an Error shown under the message
   onRevokeMessage?: (id: string) => Promise<void>;
+  // Set (emoji) / remove (null) my reaction; rejects with an Error shown under the message
+  onReactMessage?: (id: string, emoji: ReactionEmoji | null) => Promise<void>;
   // Groups only: opens the group info panel
   onOpenGroupInfo?: () => void;
   // Presence / typing (usePresence)
@@ -60,6 +62,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   messagesError,
   onRefreshMessages,
   onRevokeMessage,
+  onReactMessage,
   onOpenGroupInfo,
   onlineIds,
   typingUserIds,
@@ -129,6 +132,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         loadingMore={loadingMore}
         onLoadMore={onLoadMore}
         onRevokeMessage={onRevokeMessage}
+        onReactMessage={onReactMessage}
         onRetryMessage={onRetryMessage}
         onOpenImage={(url, name) => setViewer({ url, name })}
       />

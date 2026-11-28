@@ -1,21 +1,23 @@
 // @vitest-environment happy-dom
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Message, MessagesResponse } from '@/types/message';
+import type { Message, MessagesResponse, ReactionUpdate } from '@/types/message';
 
 type SendResult = { success: boolean; message: string; data?: Message };
 
-const { getMessages, sendMessage, revokeMessage, markAsSeen, upload, classifyFile, handlers } = vi.hoisted(() => ({
+const { getMessages, sendMessage, revokeMessage, setReaction, removeReaction, markAsSeen, upload, classifyFile, handlers } = vi.hoisted(() => ({
   getMessages: vi.fn<(id: string, limit?: number, beforeSeq?: number) => Promise<MessagesResponse>>(),
   sendMessage: vi.fn<(p: { clientMsgId: string; content?: string; conversationId?: string }) => Promise<SendResult>>(),
   revokeMessage: vi.fn<(id: string) => Promise<unknown>>(),
+  setReaction: vi.fn<(id: string, emoji: string) => Promise<ReactionUpdate>>(),
+  removeReaction: vi.fn<(id: string) => Promise<ReactionUpdate>>(),
   markAsSeen: vi.fn<(id: string, upToSeq?: number) => Promise<unknown>>(),
   upload: vi.fn<() => Promise<{ publicId: string }>>(),
   classifyFile: vi.fn<() => { ok: boolean; kind?: string }>(() => ({ ok: false })),
   handlers: new Map<string, (payload: unknown) => void>(),
 }));
 vi.mock('@/services/api/message.service', () => ({
-  messageService: { getMessages, sendMessage, revokeMessage },
+  messageService: { getMessages, sendMessage, revokeMessage, setReaction, removeReaction },
 }));
 vi.mock('@/services/api/conversation.service', () => ({ conversationService: { markAsSeen } }));
 vi.mock('@/services/api/attachment.service', () => ({ attachmentService: { upload }, classifyFile }));
@@ -637,5 +639,105 @@ describe('useMessages: resync', () => {
       expect(getMessages).toHaveBeenCalledTimes(1);
       getMessages.mockReset();
     });
+  });
+});
+
+describe('useMessages: reactions', () => {
+  const update = (version: number, reactions: ReactionUpdate['reactions'], messageId = 'id-1'): ReactionUpdate => ({
+    messageId,
+    conversationId: 'c1',
+    reactions,
+    reactionsVersion: version,
+  });
+  const reactionsOf = (list: Message[], id = 'id-1') => list.find((m) => m._id === id)?.reactions;
+
+  it('shows the newest version and ignores an older event that arrives later', async () => {
+    const { result } = await renderLoaded(page([msg({ seq: 1 })]));
+    emit('message:reaction', update(2, [{ userId: 'a', emoji: '👍' }, { userId: 'b', emoji: '❤️' }]));
+    emit('message:reaction', update(1, [{ userId: 'a', emoji: '👍' }]));
+    expect(reactionsOf(result.current.messages)).toEqual([
+      { userId: 'a', emoji: '👍' },
+      { userId: 'b', emoji: '❤️' },
+    ]);
+    emit('message:reaction', update(3, []));
+    expect(reactionsOf(result.current.messages)).toBeUndefined();
+  });
+
+  it('a history page read before a newer reaction does not bring the old reactions back', async () => {
+    const { result } = await renderLoaded(page([msg({ seq: 1 })]));
+    emit('message:reaction', update(4, [{ userId: 'a', emoji: '😮' }]));
+    getMessages.mockResolvedValueOnce(
+      page([msg({ seq: 1, reactions: [{ userId: 'a', emoji: '👍' }], reactionsVersion: 3 })])
+    );
+    emit('connect', undefined);
+    await waitFor(() => expect(getMessages).toHaveBeenCalledTimes(2));
+    await act(async () => undefined);
+    expect(reactionsOf(result.current.messages)).toEqual([{ userId: 'a', emoji: '😮' }]);
+  });
+
+  it('a newer history page wins over an older event', async () => {
+    const { result } = await renderLoaded(page([msg({ seq: 1 })]));
+    emit('message:reaction', update(1, [{ userId: 'a', emoji: '😮' }]));
+    getMessages.mockResolvedValueOnce(page([msg({ seq: 1, reactionsVersion: 2 })]));
+    emit('connect', undefined);
+    await waitFor(() => expect(getMessages).toHaveBeenCalledTimes(2));
+    await act(async () => undefined);
+    expect(reactionsOf(result.current.messages)).toBeUndefined();
+  });
+
+  it('a reaction for a message not loaded yet is applied when its page arrives', async () => {
+    const first = deferred<MessagesResponse>();
+    getMessages.mockReturnValueOnce(first.promise);
+    const { result } = render();
+    await waitFor(() => expect(getMessages).toHaveBeenCalled());
+    emit('message:reaction', update(1, [{ userId: 'a', emoji: '😂' }]));
+    await act(async () => first.resolve(page([msg({ seq: 1 })])));
+    await waitFor(() => expect(result.current.messages).toHaveLength(1));
+    expect(reactionsOf(result.current.messages)).toEqual([{ userId: 'a', emoji: '😂' }]);
+  });
+
+  it('a revoke clears the reactions, and a late reaction event does not bring them back', async () => {
+    const { result } = await renderLoaded(page([msg({ seq: 1, reactions: [{ userId: 'a', emoji: '👍' }], reactionsVersion: 1 })]));
+    emit('message:revoked', { messageId: 'id-1', conversationId: 'c1', content: 'Tin nhắn đã thu hồi', isRevoked: true });
+    expect(reactionsOf(result.current.messages)).toBeUndefined();
+    emit('message:reaction', update(2, [{ userId: 'b', emoji: '❤️' }]));
+    expect(reactionsOf(result.current.messages)).toBeUndefined();
+    expect(result.current.messages[0].isRevoked).toBe(true);
+  });
+
+  it('reactToMessage: PUT / DELETE, shown from the response (not optimistic); errors are passed on', async () => {
+    const { result } = await renderLoaded(page([msg({ seq: 1 })]));
+    const put = deferred<ReactionUpdate>();
+    setReaction.mockReturnValueOnce(put.promise);
+    let done!: Promise<void>;
+    act(() => {
+      done = result.current.reactToMessage('id-1', '❤️');
+    });
+    expect(setReaction).toHaveBeenCalledWith('id-1', '❤️');
+    expect(reactionsOf(result.current.messages)).toBeUndefined();
+    await act(async () => {
+      put.resolve(update(1, [{ userId: 'me', emoji: '❤️' }]));
+      await done;
+    });
+    expect(reactionsOf(result.current.messages)).toEqual([{ userId: 'me', emoji: '❤️' }]);
+    // The event for the same change arrives too: nothing changes
+    emit('message:reaction', update(1, [{ userId: 'me', emoji: '❤️' }]));
+    expect(reactionsOf(result.current.messages)).toEqual([{ userId: 'me', emoji: '❤️' }]);
+
+    removeReaction.mockResolvedValueOnce(update(2, []));
+    await act(() => result.current.reactToMessage('id-1', null));
+    expect(removeReaction).toHaveBeenCalledWith('id-1');
+    expect(reactionsOf(result.current.messages)).toBeUndefined();
+
+    setReaction.mockRejectedValueOnce(httpError(400));
+    await expect(act(() => result.current.reactToMessage('id-1', '👍'))).rejects.toThrow('HTTP 400');
+    expect(reactionsOf(result.current.messages)).toBeUndefined();
+  });
+
+  it('listens for message:reaction and stops on unmount', async () => {
+    const { unmount } = await renderLoaded(page([msg({ seq: 1 })]));
+    expect(handlers.has('message:reaction')).toBe(true);
+    unmount();
+    expect(handlers.has('message:reaction')).toBe(false);
   });
 });

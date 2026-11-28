@@ -8,7 +8,9 @@ import {
   Attachment,
   Message,
   MessageDocument,
+  ReactionEmoji,
   toMessagePayload,
+  toReactionsPayload,
 } from './schemas/message.schema';
 import { Connection, Model, Types } from 'mongoose';
 import { CreateMessageDto } from './dto/create-message.dto';
@@ -326,6 +328,13 @@ export class MessageService {
     message.content = 'Tin nhắn đã thu hồi';
     message.attachments = undefined;
     await message.save();
+    // Reactions go with the revoke. Separate atomic unset: a reaction stored between the
+    // read above and save() is removed too, and none can be added after (setReaction
+    // only matches messages that are not revoked).
+    await this.messageModel.updateOne(
+      { _id: message._id },
+      { $unset: { reactions: 1 } },
+    );
     // Files are deleted only after the revoke is stored
     this.attachmentService.destroy(removedFiles);
 
@@ -352,5 +361,129 @@ export class MessageService {
     });
 
     return { success: true, message: 'Thu hồi thành công', data: payload };
+  }
+
+  /**
+   * Set (emoji) or remove (null) the caller's reaction. One atomic update that only matches
+   * a text message that is not revoked and would actually change, so concurrent reactions
+   * never lose each other and reactionsVersion goes up once per change. Members only
+   * (others get the same 404 as a missing message). Emits `message:reaction` to every
+   * member after the write; nothing is emitted when nothing changed.
+   */
+  async setReaction(
+    messageId: string,
+    userId: string,
+    emoji: ReactionEmoji | null,
+  ) {
+    if (!Types.ObjectId.isValid(messageId)) {
+      throw new BadRequestException('Message ID không hợp lệ');
+    }
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('User ID không hợp lệ');
+    }
+    const messageObjectId = new Types.ObjectId(messageId);
+    const me = new Types.ObjectId(userId);
+
+    const message = await this.messageModel
+      .findById(messageObjectId)
+      .select('conversationId')
+      .lean();
+    if (!message) {
+      throw new NotFoundException('Tin nhắn không tồn tại');
+    }
+    const conversation = await this.conversationModel
+      .findOne({ _id: message.conversationId, 'participants.userId': me })
+      .select('participants')
+      .lean();
+    if (!conversation) {
+      throw new NotFoundException('Tin nhắn không tồn tại');
+    }
+
+    // Everyone else's reactions, then mine (if any) at the end; [] is stored as absent
+    const others = {
+      $filter: {
+        input: { $ifNull: ['$reactions', []] },
+        cond: { $ne: ['$$this.userId', me] },
+      },
+    };
+    const next = emoji
+      ? { $concatArrays: [others, [{ $literal: { userId: me, emoji } }]] }
+      : others;
+    const updated = await this.messageModel
+      .findOneAndUpdate(
+        {
+          _id: messageObjectId,
+          isRevoked: { $ne: true },
+          type: { $ne: 'system' },
+          ...(emoji
+            ? { reactions: { $not: { $elemMatch: { userId: me, emoji } } } }
+            : { 'reactions.userId': me }),
+        },
+        [
+          {
+            $set: {
+              reactions: {
+                $let: {
+                  vars: { next },
+                  in: {
+                    $cond: [
+                      { $eq: [{ $size: '$$next' }, 0] },
+                      '$$REMOVE',
+                      '$$next',
+                    ],
+                  },
+                },
+              },
+              reactionsVersion: {
+                $add: [{ $ifNull: ['$reactionsVersion', 0] }, 1],
+              },
+            },
+          },
+        ],
+        { returnDocument: 'after', updatePipeline: true },
+      )
+      .select('conversationId reactions reactionsVersion')
+      .lean();
+
+    if (!updated) {
+      // Nothing changed: revoked / system message, or the reaction is already as asked
+      const current = await this.messageModel
+        .findById(messageObjectId)
+        .select('conversationId type isRevoked reactions reactionsVersion')
+        .lean();
+      if (!current) {
+        throw new NotFoundException('Tin nhắn không tồn tại');
+      }
+      if (current.type === 'system') {
+        throw new BadRequestException('Không thể thả cảm xúc cho tin hệ thống');
+      }
+      if (current.isRevoked) {
+        throw new BadRequestException('Tin nhắn này đã bị thu hồi');
+      }
+      return this.reactionsPayload(current);
+    }
+
+    const payload = this.reactionsPayload(updated);
+    conversation.participants?.forEach((p) => {
+      const memberId = p.userId?.toString();
+      if (memberId) {
+        this.realtimeService.emitToUser(memberId, 'message:reaction', payload);
+      }
+    });
+    return payload;
+  }
+
+  private reactionsPayload(message: {
+    _id: Types.ObjectId;
+    conversationId: Types.ObjectId;
+    reactions?: Message['reactions'];
+    reactionsVersion?: number;
+  }) {
+    return {
+      messageId: message._id.toString(),
+      conversationId: message.conversationId.toString(),
+      reactions: toReactionsPayload(message.reactions),
+      reactionsVersion: message.reactionsVersion ?? 0,
+    };
   }
 }

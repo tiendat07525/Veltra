@@ -3,7 +3,7 @@
 import React, { useEffect, useLayoutEffect, useRef } from 'react';
 import { AlertCircle, Loader2, MessageSquare, RefreshCw } from 'lucide-react';
 import { Conversation } from '@/types/conversation';
-import { Message } from '@/types/message';
+import { Message, ReactionEmoji } from '@/types/message';
 import { formatDate } from '@/lib/utils';
 import { MessageBubble } from './MessageBubble';
 
@@ -18,6 +18,7 @@ interface MessageListProps {
   loadingMore: boolean;
   onLoadMore?: () => void;
   onRevokeMessage?: (id: string) => Promise<void>;
+  onReactMessage?: (id: string, emoji: ReactionEmoji | null) => Promise<void>;
   onRetryMessage?: (clientMsgId: string) => void;
   onOpenImage: (url: string, name: string) => void;
 }
@@ -38,6 +39,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   loadingMore,
   onLoadMore,
   onRevokeMessage,
+  onReactMessage,
   onRetryMessage,
   onOpenImage,
 }) => {
@@ -154,6 +156,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                   conversation={conversation}
                   currentUserId={currentUserId}
                   onRevokeMessage={onRevokeMessage}
+                  onReactMessage={onReactMessage}
                   onRetryMessage={onRetryMessage}
                   onOpenImage={onOpenImage}
                 />
