@@ -5,6 +5,7 @@ import { useChat } from '@/hooks/use-chat';
 import { ConversationSidebar } from '@/components/conversation/ConversationSidebar';
 import { ChatWindow } from '@/components/chat/ChatWindow';
 import { GroupInfoPanel } from '@/components/conversation/GroupInfoPanel';
+import type { CallMedia, CallPeerInfo } from '@/types/call';
 
 interface ChatTabProps {
   chat: ReturnType<typeof useChat>;
@@ -16,6 +17,9 @@ interface ChatTabProps {
   mutedConversationIds: Set<string>;
   // Rejects with an Error shown under the chat header
   onSetMuted: (conversationId: string, muted: boolean) => Promise<void>;
+  // 1-1 calls (useCall)
+  onStartCall: (conversationId: string, peer: CallPeerInfo, media: CallMedia) => void;
+  callBusy: boolean;
 }
 
 // The chat tab: conversation list, the open conversation and its group info panel
@@ -27,6 +31,8 @@ export const ChatTab: React.FC<ChatTabProps> = ({
   enterToSend,
   mutedConversationIds,
   onSetMuted,
+  onStartCall,
+  callBusy,
 }) => {
   // Group info panel: open for one conversation id, so it hides by itself when that
   // conversation is no longer the open one (switched, left, removed, deleted)
@@ -34,6 +40,11 @@ export const ChatTab: React.FC<ChatTabProps> = ({
   const groupInfoConversation =
     chat.activeConversation?.type === 'group' && chat.activeConversation._id === groupInfoFor
       ? chat.activeConversation
+      : null;
+  // Calls: only in a direct conversation, with its other member
+  const callTarget =
+    chat.activeConversation?.type === 'direct' && chat.conversationPartner
+      ? { conversationId: chat.activeConversation._id, partner: chat.conversationPartner }
       : null;
   const [muteError, setMuteError] = useState<{ conversationId: string; message: string } | null>(null);
 
@@ -166,6 +177,22 @@ export const ChatTab: React.FC<ChatTabProps> = ({
           }}
           muteError={muteError?.conversationId === chat.activeConversationId ? muteError.message : null}
           onDismissMuteError={() => setMuteError(null)}
+          onStartCall={
+            callTarget
+              ? (media) =>
+                  onStartCall(
+                    callTarget.conversationId,
+                    {
+                      _id: callTarget.partner._id,
+                      username: callTarget.partner.username ?? '',
+                      displayName: callTarget.partner.displayName,
+                      avatarUrl: callTarget.partner.avatarUrl,
+                    },
+                    media
+                  )
+              : undefined
+          }
+          callBusy={callBusy}
         />
       </div>
 

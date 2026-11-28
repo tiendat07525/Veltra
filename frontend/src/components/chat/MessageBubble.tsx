@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertCircle, RotateCcw, SmilePlus } from 'lucide-react';
+import { AlertCircle, Phone, PhoneMissed, PhoneOff, RotateCcw, SmilePlus, Video } from 'lucide-react';
 import { Conversation } from '@/types/conversation';
 import { Message, ReactionEmoji } from '@/types/message';
 import { formatTime } from '@/lib/utils';
@@ -12,6 +12,8 @@ import { useLongPress } from '@/hooks/use-long-press';
 import { MessageActionOverlay } from './MessageActionOverlay';
 import { ReactionPicker } from './ReactionPicker';
 import { groupReactions, myReaction } from '@/lib/reactions';
+import { describeCallRecord } from '@/lib/call-format';
+import type { CallMedia } from '@/types/call';
 
 interface MessageBubbleProps {
   msg: Message;
@@ -23,6 +25,8 @@ interface MessageBubbleProps {
   onReactMessage?: (id: string, emoji: ReactionEmoji | null) => Promise<void>;
   onRetryMessage?: (clientMsgId: string) => void;
   onOpenImage: (url: string, name: string) => void;
+  // Call records in a direct conversation: "Gọi lại"
+  onCallAgain?: (media: CallMedia) => void;
 }
 
 // senderId as a string, also when the server sent a populated / serialized object
@@ -52,6 +56,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   onReactMessage,
   onRetryMessage,
   onOpenImage,
+  onCallAgain,
 }) => {
   const [revokeError, setRevokeError] = useState<string | null>(null);
   const [reactError, setReactError] = useState<string | null>(null);
@@ -68,11 +73,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const isOwn = msgSenderId.toLowerCase() === String(currentUserId).toLowerCase();
   // Optimistic copy not stored yet: no real _id, so it cannot be revoked
   const isPending = msg.status === 'sending' || msg.status === 'failed';
-  const canRevoke = msg.type !== 'system' && isOwn && !msg.isRevoked && !isPending && !!onRevokeMessage;
+  // Call records cannot be revoked (the server refuses too)
+  const canRevoke = msg.type !== 'system' && msg.type !== 'call' && isOwn && !msg.isRevoked && !isPending && !!onRevokeMessage;
   const canReact = msg.type !== 'system' && !msg.isRevoked && !isPending && !!onReactMessage;
   const hasMenu = canRevoke || canReact;
   const reactionGroups = groupReactions(msg.reactions, currentUserId);
   const mine = myReaction(msg.reactions, currentUserId);
+  const callRecord = msg.type === 'call' && msg.call && !msg.isRevoked ? msg.call : null;
+  const callText = callRecord ? describeCallRecord(callRecord, isOwn) : null;
 
   // Touch only: long press opens the menu (reactions, "Thu hồi" on own messages); desktop keeps the hover buttons
   const longPress = useLongPress(
@@ -170,7 +178,43 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           <MessageAttachments attachments={msg.attachments} isOwn={isOwn} onOpenImage={onOpenImage} />
         </div>
       ) : null}
-      {msg.content && (
+      {callRecord && callText ? (
+        <div className="min-w-44">
+          <div className="flex items-center gap-3">
+            <span
+              className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
+                isOwn ? 'bg-white/20' : callText.missed ? 'bg-danger-soft text-danger' : 'bg-surface text-accent'
+              }`}
+              aria-hidden="true"
+            >
+              {callRecord.status === 'missed' ? (
+                <PhoneMissed className="w-4 h-4" />
+              ) : callRecord.status === 'declined' ? (
+                <PhoneOff className="w-4 h-4" />
+              ) : callRecord.media === 'video' ? (
+                <Video className="w-4 h-4" />
+              ) : (
+                <Phone className="w-4 h-4" />
+              )}
+            </span>
+            <div className="min-w-0">
+              <p className={`text-[13px] font-semibold ${!isOwn && callText.missed ? 'text-danger' : ''}`}>{callText.title}</p>
+              <p className="text-[11px] opacity-80">{callText.detail}</p>
+            </div>
+          </div>
+          {onCallAgain && !inMenu && (
+            <button
+              type="button"
+              onClick={() => onCallAgain(callRecord.media)}
+              className={`mt-2 w-full rounded-lg py-1.5 text-xs font-semibold transition-colors ${
+                isOwn ? 'bg-white/15 hover:bg-white/25' : 'bg-surface hover:bg-surface-2 text-accent'
+              }`}
+            >
+              Gọi lại
+            </button>
+          )}
+        </div>
+      ) : msg.content && (
         <p
           className={`whitespace-pre-wrap break-words ${
             !msg.isRevoked && !msg.attachments?.length && isEmojiOnly(msg.content)

@@ -61,7 +61,9 @@ export function computeReceipts(messages: Message[], conversation: Conversation,
 
   if (conversation.type === 'direct') {
     const last = messages[messages.length - 1];
-    if (last.seq === undefined || last.type === 'system' || String(last.senderId) !== currentUserId) return NONE;
+    if (last.seq === undefined || last.type === 'system' || last.type === 'call' || String(last.senderId) !== currentUserId) {
+      return NONE;
+    }
     const partner = others[0];
     return { direct: { messageId: last._id, seen: (partner.lastReadSeq ?? 0) >= last.seq }, readers: {} };
   }
