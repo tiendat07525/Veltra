@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
-import { FileText, Paperclip, Send, X } from 'lucide-react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { FileText, Paperclip, Send, Smile, X } from 'lucide-react';
 import { Conversation } from '@/types/conversation';
 import { AttachmentKind } from '@/types/message';
 import {
@@ -10,6 +10,8 @@ import {
   classifyFile,
 } from '@/services/api/attachment.service';
 import { InlineError } from '@/components/ui/InlineError';
+import { insertAtSelection } from '@/lib/emoji';
+import { EmojiPicker } from './EmojiPicker';
 
 // A file picked in the composer, not sent yet
 interface SelectedFile {
@@ -33,7 +35,8 @@ interface ChatInputProps {
 
 /**
  * Composer: text (Enter or Ctrl/⌘+Enter sends, see enterToSend), files picked or pasted (checked with
- * classifyFile, at most MAX_ATTACHMENTS_PER_MESSAGE), typing signals and the "đang nhập…" line.
+ * classifyFile, at most MAX_ATTACHMENTS_PER_MESSAGE), emoji (EmojiPicker, inserted at the caret), typing signals
+ * and the "đang nhập…" line.
  */
 export const ChatInput: React.FC<ChatInputProps> = ({
   conversation,
@@ -56,6 +59,54 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const fileErrorMessage = fileError?.conversationId === conversation._id ? fileError.message : null;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // The picker belongs to one conversation: switching conversation closes it
+  const [pickerFor, setPickerFor] = useState<string | null>(null);
+  const pickerOpen = pickerFor === conversation._id;
+  const emojiButtonRef = useRef<HTMLButtonElement>(null);
+  // Caret to restore once the text with the picked emoji is rendered
+  const pendingCaret = useRef<number | null>(null);
+  // Last selection in the message box: the browser may reset it once the focus is in the picker
+  const lastSelection = useRef<{ start: number; end: number } | null>(null);
+
+  const resizeInput = () => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+  };
+
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el || pendingCaret.current === null) return;
+    el.setSelectionRange(pendingCaret.current, pendingCaret.current);
+    lastSelection.current = { start: pendingCaret.current, end: pendingCaret.current };
+    pendingCaret.current = null;
+    resizeInput();
+  }, [inputValue]);
+
+  // At the caret (or over the selected text): the live one while the box has focus, else the last one seen
+  const insertEmoji = (emoji: string) => {
+    const el = inputRef.current;
+    const focused = !!el && document.activeElement === el;
+    const selection = focused
+      ? { start: el.selectionStart, end: el.selectionEnd }
+      : (lastSelection.current ?? { start: inputValue.length, end: inputValue.length });
+    const { text, caret } = insertAtSelection(inputValue, selection.start, selection.end, emoji);
+    pendingCaret.current = caret;
+    setInputValue(text);
+    onTyping?.(conversation._id);
+  };
+
+  // Escape / the button: back to typing, except on touch screens (the keyboard would cover the composer)
+  const closePicker = useCallback((refocus: boolean) => {
+    setPickerFor(null);
+    const el = inputRef.current;
+    if (!el || !refocus || window.matchMedia?.('(pointer: coarse)').matches) return;
+    el.focus();
+    // Focus alone may put the caret at the start
+    const last = lastSelection.current;
+    if (last) el.setSelectionRange(last.start, last.end);
+  }, []);
 
   // Focus input when conversation changes
   useEffect(() => {
@@ -107,6 +158,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     setSelection({ conversationId: null, files: [] });
     setFileError(null);
     setInputValue('');
+    lastSelection.current = null;
+    setPickerFor(null);
     onStopTyping?.();
   };
 
@@ -160,7 +213,10 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           ))}
         </div>
       )}
-      <div className="flex items-end gap-2">
+      <div className="relative flex items-end gap-2">
+        {pickerOpen && (
+          <EmojiPicker onPick={insertEmoji} onClose={closePicker} anchorRef={emojiButtonRef} />
+        )}
         <input
           ref={fileInputRef}
           type="file"
@@ -182,6 +238,22 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         >
           <Paperclip className="w-5 h-5" aria-hidden="true" />
         </button>
+        <button
+          ref={emojiButtonRef}
+          type="button"
+          // A mouse click keeps the focus and the caret in the message box
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => (pickerOpen ? closePicker(true) : setPickerFor(conversation._id))}
+          className={`shrink-0 w-10 h-10 flex items-center justify-center rounded-xl transition-colors ${
+            pickerOpen ? 'text-accent bg-accent-soft' : 'text-fg-muted hover:text-accent hover:bg-accent-soft'
+          }`}
+          title="Biểu tượng cảm xúc"
+          aria-label="Biểu tượng cảm xúc"
+          aria-expanded={pickerOpen}
+          aria-haspopup="dialog"
+        >
+          <Smile className="w-5 h-5" aria-hidden="true" />
+        </button>
         <textarea
           ref={inputRef}
           value={inputValue}
@@ -189,9 +261,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             setInputValue(e.target.value);
             if (e.target.value.trim()) onTyping?.(conversation._id);
             else onStopTyping?.();
-            // Auto-resize textarea
-            e.target.style.height = 'auto';
-            e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+            resizeInput();
           }}
           onKeyDown={(e) => {
             if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
@@ -203,6 +273,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 inputRef.current.style.height = 'auto';
               }
             }
+          }}
+          onSelect={(e) => {
+            lastSelection.current = { start: e.currentTarget.selectionStart, end: e.currentTarget.selectionEnd };
           }}
           onBlur={() => onStopTyping?.()}
           onPaste={(e) => {
