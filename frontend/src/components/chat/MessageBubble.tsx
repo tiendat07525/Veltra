@@ -5,6 +5,7 @@ import { AlertCircle, RotateCcw } from 'lucide-react';
 import { Conversation } from '@/types/conversation';
 import { Message } from '@/types/message';
 import { formatTime } from '@/lib/utils';
+import { isEmojiOnly } from '@/lib/emoji';
 import { MessageAttachments } from './MessageAttachments';
 import { InlineError } from '@/components/ui/InlineError';
 import { useLongPress } from '@/hooks/use-long-press';
@@ -117,7 +118,17 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           <MessageAttachments attachments={msg.attachments} isOwn={isOwn} onOpenImage={onOpenImage} />
         </div>
       ) : null}
-      {msg.content && <p className="whitespace-pre-wrap break-words text-[13px]">{msg.content}</p>}
+      {msg.content && (
+        <p
+          className={`whitespace-pre-wrap break-words ${
+            !msg.isRevoked && !msg.attachments?.length && isEmojiOnly(msg.content)
+              ? 'text-3xl leading-tight'
+              : 'text-[13px]'
+          }`}
+        >
+          {msg.content}
+        </p>
+      )}
       {msg.status === 'sending' ? (
         <p className="text-[10px] mt-1 text-right select-none text-white/80">Đang gửi…</p>
       ) : msg.status === 'failed' ? (
