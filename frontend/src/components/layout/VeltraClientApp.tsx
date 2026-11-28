@@ -4,6 +4,7 @@ import React, { useMemo, useState } from 'react';
 import { useChat } from '@/hooks/use-chat';
 import { useTheme } from '@/hooks/use-theme';
 import { useMobile } from '@/hooks/use-mobile';
+import { usePageVisible } from '@/hooks/use-page-visible';
 import { useSocket } from '@/hooks/use-socket/use-socket';
 import { useRouter, usePathname, useSearchParams } from '@/lib/navigation';
 import { MainSidebar, NavTab } from '@/components/layout/MainSidebar';
@@ -52,7 +53,10 @@ export function VeltraClientApp() {
   const settingsHook = useSettings(authReady);
   const { mutedConversationIds: mutedList } = settingsHook.settings;
   const mutedConversationIds = useMemo(() => new Set(mutedList), [mutedList]);
-  const chat = useChat(authReady, undefined, mutedConversationIds);
+  // The open conversation is on screen: chat tab, page visible, and on phones the chat (not the list)
+  const pageVisible = usePageVisible();
+  const viewingChat = activeTab === 'chat' && pageVisible && (!isMobile || mobileViewChat);
+  const chat = useChat(authReady, undefined, mutedConversationIds, viewingChat);
   const notifications = useNotifications(authReady);
 
   // ChatTab shows a failure under the chat header

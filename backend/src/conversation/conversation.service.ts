@@ -366,22 +366,47 @@ export class ConversationService {
     const lastSeq = conversation.lastSeq ?? 0;
     const readTo = Math.min(upToSeq ?? lastSeq, lastSeq);
 
-    const updated = await this.conversationModel.findOneAndUpdate(
-      { _id: conversation._id, 'participants.userId': userObjectId },
+    // Matches only when it raises my lastReadSeq (missing counts as 0), so a stale or repeated
+    // request changes nothing and emits nothing. $max keeps it from ever going back.
+    const raised = await this.conversationModel.findOneAndUpdate(
       {
-        // $max: lastReadSeq never goes back (e.g. a stale request arriving late)
-        $max: {
-          'participants.$.lastReadSeq': readTo,
+        _id: conversation._id,
+        participants: {
+          $elemMatch: {
+            userId: userObjectId,
+            lastReadSeq: { $not: { $gte: readTo } },
+          },
         },
       },
-      {
-        new: true,
-      },
+      { $max: { 'participants.$.lastReadSeq': readTo } },
+      { returnDocument: 'after' },
     );
+    const updated =
+      raised ??
+      (await this.conversationModel
+        .findOne({ _id: conversation._id, 'participants.userId': userObjectId })
+        .lean());
 
     const me = updated?.participants.find(
       (p) => p.userId?.toString() === userId,
     );
+
+    // After the write, to the members of the stored conversation (my other tabs too)
+    if (raised && me) {
+      const receipt = {
+        conversationId: raised._id.toString(),
+        userId,
+        readSeq: me.lastReadSeq,
+      };
+      for (const participant of raised.participants) {
+        if (!participant.userId) continue;
+        this.realtimeService.emitToUser(
+          participant.userId.toString(),
+          'receipt:updated',
+          receipt,
+        );
+      }
+    }
 
     return {
       message: 'Đã đánh dấu là đã xem',

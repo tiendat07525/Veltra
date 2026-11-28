@@ -166,3 +166,59 @@ describe('useConversations: search', () => {
     expect(await search('myself')).toEqual([]);
   });
 });
+
+describe('useConversations: read receipts', () => {
+  const group = (anRead: number, meUnread = 4): Conversation => ({
+    ...conv('a', 10),
+    participants: [
+      { _id: 'me', username: 'me', lastReadSeq: 6 },
+      { _id: 'an', username: 'an', lastReadSeq: anRead },
+    ],
+    unreadCounts: { me: meUnread },
+  });
+  const readOf = (c: Conversation, id: string) => c.participants.find((p) => p._id === id)?.lastReadSeq;
+
+  it('receipt:updated raises a member position, never lowers it', async () => {
+    const { result } = await renderLoaded([group(5)]);
+    await emit('receipt:updated', { conversationId: 'a', userId: 'an', readSeq: 9 });
+    expect(readOf(result.current.allConversations[0], 'an')).toBe(9);
+    await emit('receipt:updated', { conversationId: 'a', userId: 'an', readSeq: 7 });
+    expect(readOf(result.current.allConversations[0], 'an')).toBe(9);
+  });
+
+  it('my own receipt from another tab lowers my unread count', async () => {
+    const { result } = await renderLoaded([group(5)]);
+    await emit('receipt:updated', { conversationId: 'a', userId: 'me', readSeq: 10 });
+    expect(result.current.allConversations[0].unreadCounts).toEqual({ me: 0 });
+  });
+
+  it('ignores a malformed receipt', async () => {
+    const { result } = await renderLoaded([group(5)]);
+    const before = result.current.allConversations;
+    await emit('receipt:updated', { conversationId: 'a', userId: 'an' });
+    await emit('receipt:updated', undefined);
+    expect(result.current.allConversations).toBe(before);
+  });
+
+  it('message:new: the sender has read up to their message', async () => {
+    const { result } = await renderLoaded([group(5)]);
+    await emit('message:new', {
+      message: { _id: 'm11', conversationId: 'a', senderId: 'an', content: 'x', seq: 11, createdAt: '2026-01-01T00:00:00.000Z' },
+      conversation: { lastSeq: 11, unreadCounts: { me: 5 } },
+    });
+    expect(readOf(result.current.allConversations[0], 'an')).toBe(11);
+  });
+
+  it('a list read before a receipt does not undo it; conversation:updated neither', async () => {
+    const { result } = await renderLoaded([group(5)]);
+    const answer = deferred<Conversation[]>();
+    getConversations.mockReturnValueOnce(answer.promise);
+    await emit('connect');
+    await emit('receipt:updated', { conversationId: 'a', userId: 'an', readSeq: 9 });
+    await act(async () => answer.resolve([group(5)]));
+    expect(readOf(result.current.allConversations[0], 'an')).toBe(9);
+
+    await emit('conversation:updated', { conversation: group(8) });
+    expect(readOf(result.current.allConversations[0], 'an')).toBe(9);
+  });
+});

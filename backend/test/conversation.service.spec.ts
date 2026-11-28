@@ -14,6 +14,7 @@ import {
   formatLeanConversation,
 } from '../src/conversation/conversation.format';
 import { groupLookupProviders } from './helpers/group-lookup-mocks';
+import { RealtimeService } from '../src/realtime/realtime.service';
 
 describe('ConversationService.getMessages (seq pagination)', () => {
   let service: ConversationService;
@@ -188,6 +189,7 @@ describe('ConversationService.getMessages (seq pagination)', () => {
 
 describe('ConversationService.markAsSeen (lastReadSeq)', () => {
   let service: ConversationService;
+  let emitToUser: jest.Mock;
 
   const me = new Types.ObjectId();
   const other = new Types.ObjectId();
@@ -234,7 +236,11 @@ describe('ConversationService.markAsSeen (lastReadSeq)', () => {
     }).compile();
 
     service = module.get<ConversationService>(ConversationService);
+    emitToUser = module.get<{ emitToUser: jest.Mock }>(
+      RealtimeService,
+    ).emitToUser;
     jest.clearAllMocks();
+    // The membership read, and the re-read when nothing was raised
     mockConversationModel.findOne.mockReturnValue({
       lean: () => Promise.resolve(leanConversation()),
     });
@@ -257,9 +263,14 @@ describe('ConversationService.markAsSeen (lastReadSeq)', () => {
     );
 
     expect(mockConversationModel.findOneAndUpdate).toHaveBeenCalledWith(
-      { _id: conversationId, 'participants.userId': me },
+      {
+        _id: conversationId,
+        participants: {
+          $elemMatch: { userId: me, lastReadSeq: { $not: { $gte: 7 } } },
+        },
+      },
       { $max: { 'participants.$.lastReadSeq': 7 } },
-      { new: true },
+      { returnDocument: 'after' },
     );
     expect(result).toEqual(
       expect.objectContaining({
@@ -322,7 +333,8 @@ describe('ConversationService.markAsSeen (lastReadSeq)', () => {
   });
 
   it('should keep lastReadSeq when upToSeq is older (stale request)', async () => {
-    mockConversationModel.findOneAndUpdate.mockResolvedValue(applyUpdate(2));
+    // The filter does not match: nothing raised, the current state is read back
+    mockConversationModel.findOneAndUpdate.mockResolvedValue(null);
 
     const result = await service.markAsSeen(
       conversationId.toString(),
@@ -353,6 +365,54 @@ describe('ConversationService.markAsSeen (lastReadSeq)', () => {
     await service.markAsSeen(conversationId.toString(), me.toString(), 10);
 
     expect(mockConversationModel.findOneAndUpdate).not.toHaveBeenCalled();
+    expect(emitToUser).not.toHaveBeenCalled();
+  });
+
+  it('should emit receipt:updated to every member once lastReadSeq was raised', async () => {
+    mockConversationModel.findOneAndUpdate.mockResolvedValue(applyUpdate(7));
+
+    await service.markAsSeen(conversationId.toString(), me.toString(), 7);
+
+    const receipt = {
+      conversationId: conversationId.toString(),
+      userId: me.toString(),
+      readSeq: 7,
+    };
+    expect(emitToUser.mock.calls).toEqual([
+      [me.toString(), 'receipt:updated', receipt],
+      [other.toString(), 'receipt:updated', receipt],
+    ]);
+  });
+
+  it('should emit nothing when nothing was raised (stale or repeated request)', async () => {
+    mockConversationModel.findOneAndUpdate.mockResolvedValue(null);
+
+    const result = await service.markAsSeen(
+      conversationId.toString(),
+      me.toString(),
+      4,
+    );
+
+    expect(emitToUser).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ lastReadSeq: 4, myUnreadCount: 6 });
+  });
+
+  it('should emit only after the write resolved', async () => {
+    let resolveWrite!: (value: unknown) => void;
+    mockConversationModel.findOneAndUpdate.mockReturnValue(
+      new Promise((resolve) => (resolveWrite = resolve)),
+    );
+
+    const pending = service.markAsSeen(
+      conversationId.toString(),
+      me.toString(),
+      7,
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(emitToUser).not.toHaveBeenCalled();
+    resolveWrite(applyUpdate(7));
+    await pending;
+    expect(emitToUser).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -477,5 +537,35 @@ describe('conversation responses: seenBy', () => {
         doc as unknown as Parameters<typeof formatConversation>[0],
       ).seenBy,
     ).toEqual([user]);
+  });
+});
+
+describe('conversation responses: participants[].lastReadSeq', () => {
+  const reader = { _id: new Types.ObjectId(), username: 'an' };
+  const fresh = { _id: new Types.ObjectId(), username: 'moi' };
+  const stored = {
+    lastSeq: 5,
+    participants: [
+      { userId: reader, lastReadSeq: 3, joinedAt: new Date(0) },
+      // Older documents may have no lastReadSeq: sent as 0
+      { userId: fresh, joinedAt: new Date(0) },
+    ],
+  };
+
+  it('should carry each member read position (list and single)', () => {
+    const doc = { ...stored, toObject: () => stored };
+    for (const formatted of [
+      formatLeanConversation(stored),
+      formatConversation(
+        doc as unknown as Parameters<typeof formatConversation>[0],
+      ),
+    ]) {
+      expect(formatted.participants.map((p) => [p._id, p.lastReadSeq])).toEqual(
+        [
+          [reader._id, 3],
+          [fresh._id, 0],
+        ],
+      );
+    }
   });
 });

@@ -6,6 +6,15 @@ export type ConversationFilter = 'all' | 'direct' | 'groups' | 'unread';
 
 export interface ConversationParticipant extends UserBasicInfo {
   joinedAt?: string;
+  // Highest seq this member has read (server, only goes up): "Đã xem"
+  lastReadSeq?: number;
+}
+
+// `receipt:updated`: a member's read position went up
+export interface ReceiptUpdate {
+  conversationId: string;
+  userId: string;
+  readSeq: number;
 }
 
 export interface ConversationLastMessage {

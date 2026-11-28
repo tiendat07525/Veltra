@@ -7,7 +7,7 @@ import { OnlineStatusDot } from './OnlineStatusDot';
 interface UserAvatarProps {
   src?: string;
   name: string;
-  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   status?: UserStatus;
   showStatus?: boolean;
   className?: string;
@@ -27,6 +27,8 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
 
   const sizeClasses = {
+    // Read receipts under a message
+    xxs: 'w-4 h-4 text-[7px]',
     xs: 'w-7 h-7 text-xs',
     sm: 'w-9 h-9 text-xs',
     md: 'w-11 h-11 text-sm',
@@ -35,6 +37,7 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
   };
 
   const dotSizes: Record<string, 'sm' | 'md' | 'lg'> = {
+    xxs: 'sm',
     xs: 'sm',
     sm: 'sm',
     md: 'md',

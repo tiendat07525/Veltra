@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Conversation, ConversationFilter } from '@/types/conversation';
+import { Conversation, ConversationFilter, ReceiptUpdate } from '@/types/conversation';
 import { Message } from '@/types/message';
 import { UserBasicInfo, UserUpdatedEvent } from '@/types/user';
 import { conversationService } from '@/services/api/conversation.service';
 import { socketService } from '@/services/socket/socket.service';
 import { mergeConversationList, updateParticipant, upsertConversation } from '@/lib/conversation-list';
 import { foldText } from '@/lib/fold-text';
+import { applyReceipt, withReadSeq } from '@/lib/receipts';
 import { userNameMatches } from '@/lib/user-search';
 
 export function useConversations(enabled: boolean = true, currentUserId: string | null = null) {
@@ -84,7 +85,11 @@ export function useConversations(enabled: boolean = true, currentUserId: string 
           return prev;
         }
 
-        const targetConv = prev[convIndex];
+        // The sender has read up to their own message (the server raised it in the send)
+        const targetConv =
+          newMsg.seq !== undefined
+            ? withReadSeq(prev[convIndex], String(newMsg.senderId), newMsg.seq)
+            : prev[convIndex];
         const updatedConv: Conversation = {
           ...targetConv,
           lastMessage: {
@@ -146,6 +151,12 @@ export function useConversations(enabled: boolean = true, currentUserId: string 
       setConversations((prev) => updateParticipant(prev, user));
     };
 
+    // A member read further (another tab of mine too: my unread count goes down)
+    const handleReceipt = (payload: ReceiptUpdate) => {
+      if (!payload?.conversationId || !payload.userId || typeof payload.readSeq !== 'number') return;
+      setConversations((prev) => applyReceipt(prev, payload, currentUserIdRef.current));
+    };
+
     // Events missed while disconnected
     const handleConnect = () => void reload();
 
@@ -155,6 +166,7 @@ export function useConversations(enabled: boolean = true, currentUserId: string 
     socketService.on('conversation:updated', handleConversationUpdated);
     socketService.on('conversation:removed', handleConversationRemoved);
     socketService.on('user:updated', handleUserUpdated);
+    socketService.on('receipt:updated', handleReceipt);
     return () => {
       socketService.off('connect', handleConnect);
       socketService.off('message:new', handleNewMessage);
@@ -162,6 +174,7 @@ export function useConversations(enabled: boolean = true, currentUserId: string 
       socketService.off('conversation:updated', handleConversationUpdated);
       socketService.off('conversation:removed', handleConversationRemoved);
       socketService.off('user:updated', handleUserUpdated);
+      socketService.off('receipt:updated', handleReceipt);
     };
   }, [reload]);
 

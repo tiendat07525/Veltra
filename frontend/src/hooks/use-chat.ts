@@ -7,11 +7,13 @@ import { CurrentUserProfile } from '@/types/user';
 import { ConversationParticipant } from '@/types/conversation';
 import { updateParticipant } from '@/lib/conversation-list';
 
-// mutedConversationIds (settings) are left out of totalUnreadCount (sidebar badge, tab title)
+// mutedConversationIds (settings) are left out of totalUnreadCount (sidebar badge, tab title).
+// viewing: the open conversation is on screen; new messages are marked seen only then.
 export function useChat(
   enabled: boolean = true,
   initialConversationId?: string,
-  mutedConversationIds?: Set<string>
+  mutedConversationIds?: Set<string>,
+  viewing: boolean = true
 ) {
   const { currentUser, currentUserLoading, updateCurrentUser: showProfile } = useCurrentUser(enabled);
 
@@ -51,7 +53,7 @@ export function useChat(
     if (currentUser?._id) {
       conversationsHook.markAsSeen(convId, currentUser._id, upToSeq);
     }
-  }, enabled, currentUser?._id ?? null);
+  }, enabled, currentUser?._id ?? null, viewing);
 
   const activeConversation = useMemo(() => {
     return (
