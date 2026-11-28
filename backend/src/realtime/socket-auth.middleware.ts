@@ -24,6 +24,14 @@ export interface GatewaySocketData {
   // presence:sync calls accepted in the current window (per-socket rate limit)
   presenceSyncWindowStart?: number;
   presenceSyncCount?: number;
+  // The call this socket joined (call:join) and its role there; signals are only relayed for it
+  callId?: string;
+  callRole?: 'caller' | 'callee';
+  // call:join / call:signal accepted in the current window (per-socket rate limits)
+  callJoinWindowStart?: number;
+  callJoinCount?: number;
+  callSignalWindowStart?: number;
+  callSignalCount?: number;
 }
 
 export type GatewaySocket = Socket<

@@ -24,6 +24,17 @@ export class RealtimeService {
     this.server.to(`user:${userId}`).emit(event, data);
   }
 
+  // One socket (any instance, through the Redis adapter): call signaling goes socket to socket
+  emitToSocket(socketId: string, event: string, data: unknown): void {
+    if (!this.server) {
+      this.logger.warn(
+        `Không thể phát sự kiện '${event}': WebSocket server chưa được khởi tạo`,
+      );
+      return;
+    }
+    this.server.to(socketId).emit(event, data);
+  }
+
   disconnectSession(sessionId: string): void {
     if (this.server) {
       this.server.in(`session:${sessionId}`).disconnectSockets(true);

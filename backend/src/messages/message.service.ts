@@ -6,6 +6,7 @@ import {
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import {
   Attachment,
+  CallRecord,
   Message,
   MessageDocument,
   ReactionEmoji,
@@ -31,6 +32,8 @@ interface NewMessage {
   content?: string;
   attachments: Attachment[];
   clientMsgId?: string;
+  // A finished call (recordCall)
+  call?: CallRecord;
 }
 
 @Injectable()
@@ -122,6 +125,36 @@ export class MessageService {
     }
   }
 
+  /**
+   * A finished call as a message of the caller, through the same seq transaction as a send
+   * (unread for the callee, newest message of the conversation), then message:new.
+   * clientMsgId = callId, so the same call is never stored twice. Returns null if it already was.
+   */
+  async recordCall(
+    conversationId: string,
+    callerId: string,
+    callId: string,
+    call: CallRecord,
+    content: string,
+  ): Promise<MessageDocument | null> {
+    const conversation = new Types.ObjectId(conversationId);
+    const senderId = new Types.ObjectId(callerId);
+    try {
+      const stored = await this.persistMessage(conversation, {
+        senderId,
+        content,
+        attachments: [],
+        clientMsgId: callId,
+        call,
+      });
+      this.emitNewMessage(stored.message, stored.conversation);
+      return stored.message;
+    } catch (err: unknown) {
+      if (isDuplicateKeyError(err)) return null;
+      throw err;
+    }
+  }
+
   // The conversation to send into: the given one (sender must be a member),
   // or the direct conversation with receiverId (created if missing)
   private async resolveConversation(
@@ -180,7 +213,7 @@ export class MessageService {
    * so lastMessage always ends up as the highest seq.
    */
   private persistMessage(conversationId: Types.ObjectId, input: NewMessage) {
-    const { senderId, content, attachments, clientMsgId } = input;
+    const { senderId, content, attachments, clientMsgId, call } = input;
 
     return this.connection.transaction(async (session) => {
       const counter = await this.conversationModel.findOneAndUpdate(
@@ -209,6 +242,7 @@ export class MessageService {
             ...(attachments.length ? { attachments } : {}),
             seq,
             ...(clientMsgId ? { clientMsgId } : {}),
+            ...(call ? { type: 'call', call } : {}),
           },
         ],
         { session },
@@ -307,6 +341,11 @@ export class MessageService {
 
     if (message.type === 'system') {
       throw new BadRequestException('Không thể thu hồi tin hệ thống');
+    }
+
+    // A call record is history of the call, not something the caller wrote
+    if (message.type === 'call') {
+      throw new BadRequestException('Không thể thu hồi tin cuộc gọi');
     }
 
     if (message.isRevoked) {
