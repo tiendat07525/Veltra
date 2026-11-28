@@ -22,6 +22,7 @@ interface PopulatedParticipant {
     avatarUrl?: string;
   } | null;
   joinedAt?: Date;
+  lastReadSeq?: number;
 }
 
 const formatParticipant = (participant: PopulatedParticipant) => ({
@@ -30,6 +31,8 @@ const formatParticipant = (participant: PopulatedParticipant) => ({
   displayName: participant.userId?.displayName,
   avatarUrl: participant.userId?.avatarUrl ?? null,
   joinedAt: participant.joinedAt,
+  // Highest seq this member has read: the other members show it as "Đã xem" (message_logic.md §5)
+  lastReadSeq: participant.lastReadSeq ?? 0,
 });
 
 // A populated conversation document as returned by the API (unread counts and seenBy computed)

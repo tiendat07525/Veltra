@@ -1,6 +1,7 @@
 import { Conversation } from '@/types/conversation';
 import { UserBasicInfo } from '@/types/user';
 import { withUser } from './user-info';
+import { keepReadPositions } from './receipts';
 
 // Insert or replace a conversation from the server (conversation:updated or a group-change response).
 // If the list already holds a newer message (higher lastSeq), keep its message fields and take
@@ -10,16 +11,18 @@ export function upsertConversation(prev: Conversation[], incoming: Conversation)
   if (index === -1) return [incoming, ...prev];
 
   const current = prev[index];
+  // Read positions only go up: a receipt may be newer than this copy
+  const fresh = keepReadPositions(current, incoming);
   const merged: Conversation =
-    (current.lastSeq ?? 0) > (incoming.lastSeq ?? 0)
+    (current.lastSeq ?? 0) > (fresh.lastSeq ?? 0)
       ? {
-          ...incoming,
+          ...fresh,
           lastMessage: current.lastMessage,
           lastMessageAt: current.lastMessageAt,
           lastSeq: current.lastSeq,
           unreadCounts: current.unreadCounts,
         }
-      : incoming;
+      : fresh;
   const next = [...prev];
   next[index] = merged;
   return next;
@@ -49,8 +52,10 @@ export function mergeConversationList(
   const rest = incoming
     // Left / removed / deleted while the request ran
     .filter((c) => !newerIds.has(c._id) && !(beforeIds.has(c._id) && !currentById.has(c._id)))
-    .map((c) => {
-      const held = currentById.get(c._id);
+    .map((server) => {
+      const held = currentById.get(server._id);
+      // Receipts that arrived while the request ran
+      const c = keepReadPositions(held, server);
       const heldUnread = currentUserId ? held?.unreadCounts?.[currentUserId] : undefined;
       const unread = currentUserId ? c.unreadCounts?.[currentUserId] : undefined;
       // Same newest message: my unread count only goes down, so the lower one is the later one

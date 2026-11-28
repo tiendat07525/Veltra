@@ -793,3 +793,47 @@ describe('useMessages: reactions', () => {
     expect(handlers.has('message:reaction')).toBe(false);
   });
 });
+
+describe('useMessages: marked seen only while viewing', () => {
+  const renderViewing = async (viewing: boolean, first: MessagesResponse) => {
+    getMessages.mockResolvedValueOnce(first);
+    const hook = renderHook(({ conv, view }) => useMessages(conv, onSeen, true, 'me', view), {
+      initialProps: { conv: 'c1' as string | null, view: viewing },
+    });
+    await waitFor(() => expect(hook.result.current.loading).toBe(false));
+    return hook;
+  };
+
+  it('a hidden tab marks nothing; back in view marks once, up to the newest message', async () => {
+    const { rerender } = await renderViewing(false, page([msg({ seq: 1 }), msg({ seq: 2 })]));
+    emit('message:new', { message: msg({ seq: 3 }) });
+    emit('message:new', { message: msg({ seq: 4 }) });
+    expect(onSeen).not.toHaveBeenCalled();
+
+    rerender({ conv: 'c1', view: true });
+    expect(onSeen.mock.calls).toEqual([['c1', 4]]);
+    // Nothing new: looking again sends nothing more
+    rerender({ conv: 'c1', view: false });
+    rerender({ conv: 'c1', view: true });
+    expect(onSeen).toHaveBeenCalledTimes(1);
+  });
+
+  it('while viewing, every new message is marked as before', async () => {
+    await renderViewing(true, page([msg({ seq: 1 })]));
+    expect(onSeen.mock.calls).toEqual([['c1', 1]]);
+    emit('message:new', { message: msg({ seq: 2 }) });
+    expect(onSeen.mock.calls).toEqual([
+      ['c1', 1],
+      ['c1', 2],
+    ]);
+  });
+
+  it('what was not seen in another conversation is not marked after switching', async () => {
+    const { result, rerender } = await renderViewing(false, page([msg({ seq: 1 })]));
+    emit('message:new', { message: msg({ seq: 2 }) });
+    getMessages.mockResolvedValueOnce(page([msg({ seq: 7, conversationId: 'c2' })]));
+    rerender({ conv: 'c2', view: true });
+    await waitFor(() => expect(ids(result.current.messages)).toEqual(['id-7']));
+    expect(onSeen.mock.calls).toEqual([['c2', 7]]);
+  });
+});

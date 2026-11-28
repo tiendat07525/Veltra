@@ -49,7 +49,9 @@ export function useMessages(
   conversationId: string | null,
   onMarkAsSeen?: (convId: string, upToSeq?: number) => void,
   enabled: boolean = true,
-  currentUserId: string | null = null
+  currentUserId: string | null = null,
+  // The user can see the open conversation (chat tab shown, page visible): only then is it marked seen
+  viewing: boolean = true
 ) {
   const [history, setHistory] = useState<History | null>(null);
   // Same value, readable by async steps and socket handlers between renders
@@ -98,13 +100,34 @@ export function useMessages(
   // Optimistic messages of every conversation
   const { outbox, send, retry, settle, dropConversation } = useOutbox(addStored);
 
+  const viewingRef = useRef(viewing);
+  // Not seen yet because nobody was looking: the highest seq to mark once the user looks again
+  const unseenRef = useRef<{ convId: string; upToSeq?: number } | null>(null);
+
   const markSeen = useCallback((convId: string, upToSeq?: number) => {
+    if (!viewingRef.current) {
+      const held = unseenRef.current?.convId === convId ? unseenRef.current.upToSeq : undefined;
+      unseenRef.current = {
+        convId,
+        upToSeq: held === undefined || upToSeq === undefined ? (upToSeq ?? held) : Math.max(held, upToSeq),
+      };
+      return;
+    }
     if (onMarkAsSeenRef.current) {
       onMarkAsSeenRef.current(convId, upToSeq);
     } else {
       void conversationService.markAsSeen(convId, upToSeq).catch(() => undefined);
     }
   }, []);
+
+  // Back in view: mark what arrived meanwhile, if it is still the open conversation
+  useEffect(() => {
+    viewingRef.current = viewing;
+    const unseen = unseenRef.current;
+    if (!viewing || !unseen) return;
+    unseenRef.current = null;
+    if (unseen.convId === conversationId) markSeen(unseen.convId, unseen.upToSeq);
+  }, [viewing, conversationId, markSeen]);
 
   // Missed while disconnected ('reconnect') or on the way ('gap'): read history back from the newest
   // message until it meets what is held; after a reconnect also until it covers it, for missed revokes.

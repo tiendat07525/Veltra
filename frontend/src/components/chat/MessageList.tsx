@@ -1,11 +1,13 @@
 'use client';
 
-import React, { useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { AlertCircle, Loader2, MessageSquare, RefreshCw } from 'lucide-react';
 import { Conversation } from '@/types/conversation';
 import { Message, ReactionEmoji } from '@/types/message';
 import { formatDate } from '@/lib/utils';
+import { computeReceipts } from '@/lib/receipts';
 import { MessageBubble } from './MessageBubble';
+import { DirectReceipt, GroupReaders } from './ReadReceipt';
 
 interface MessageListProps {
   conversation: Conversation;
@@ -85,6 +87,20 @@ export const MessageList: React.FC<MessageListProps> = ({
     lastKeyRef.current = lastKey;
   }, [messages, loadingMore]);
 
+  // "Đã gửi" / "Đã xem" (direct) or reader avatars (group) under the messages
+  const receipts = useMemo(
+    () => computeReceipts(messages, conversation, currentUserId),
+    [messages, conversation, currentUserId]
+  );
+  // A receipt appearing under the newest message: stay at the bottom if the user was there
+  const receiptsKey = `${receipts.direct?.messageId}:${receipts.direct?.seen}:${Object.entries(receipts.readers)
+    .map(([id, list]) => `${id}=${list.length}`)
+    .join(',')}`;
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 120) el.scrollTop = el.scrollHeight;
+  }, [receiptsKey]);
+
   // History shorter than the viewport has no scrollbar to pull: keep loading while it fits
   useEffect(() => {
     const el = scrollRef.current;
@@ -149,17 +165,20 @@ export const MessageList: React.FC<MessageListProps> = ({
               </div>
 
               {group.messages.map((msg) => (
-                <MessageBubble
-                  // clientMsgId keeps the bubble mounted when the stored copy replaces the optimistic one
-                  key={msg.type === 'system' ? msg._id : msg.clientMsgId || msg._id || msg.id}
-                  msg={msg}
-                  conversation={conversation}
-                  currentUserId={currentUserId}
-                  onRevokeMessage={onRevokeMessage}
-                  onReactMessage={onReactMessage}
-                  onRetryMessage={onRetryMessage}
-                  onOpenImage={onOpenImage}
-                />
+                // clientMsgId keeps the bubble mounted when the stored copy replaces the optimistic one
+                <React.Fragment key={msg.type === 'system' ? msg._id : msg.clientMsgId || msg._id || msg.id}>
+                  <MessageBubble
+                    msg={msg}
+                    conversation={conversation}
+                    currentUserId={currentUserId}
+                    onRevokeMessage={onRevokeMessage}
+                    onReactMessage={onReactMessage}
+                    onRetryMessage={onRetryMessage}
+                    onOpenImage={onOpenImage}
+                  />
+                  {receipts.direct?.messageId === msg._id && <DirectReceipt seen={receipts.direct.seen} />}
+                  {receipts.readers[msg._id] && <GroupReaders readers={receipts.readers[msg._id]} />}
+                </React.Fragment>
               ))}
             </div>
           ))}
