@@ -93,6 +93,40 @@ export function toAttachmentPayload(attachment: Attachment) {
   };
 }
 
+// A finished 1-1 call, stored as a message of the caller (CallService, message_logic.md §9)
+export const CALL_RECORD_STATUSES = [
+  'completed',
+  'missed',
+  'declined',
+] as const;
+export type CallRecordStatus = (typeof CALL_RECORD_STATUSES)[number];
+
+@Schema({ _id: false })
+export class CallRecord {
+  @Prop({ type: String, enum: ['audio', 'video'], required: true })
+  media: 'audio' | 'video';
+
+  @Prop({ type: String, enum: CALL_RECORD_STATUSES, required: true })
+  status: CallRecordStatus;
+
+  // Seconds from accept to hang-up; only on completed calls
+  @Prop({ type: Number })
+  durationSec?: number;
+}
+
+export const CallRecordSchema = SchemaFactory.createForClass(CallRecord);
+
+// What clients receive for a call record
+export function toCallPayload(call: CallRecord) {
+  return {
+    media: call.media,
+    status: call.status,
+    ...(call.durationSec !== undefined
+      ? { durationSec: call.durationSec }
+      : {}),
+  };
+}
+
 // The only reactions a message can get (one per user per message)
 export const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢'] as const;
 export type ReactionEmoji = (typeof REACTION_EMOJIS)[number];
@@ -166,13 +200,18 @@ export class Message {
   @Prop({ type: Number })
   seq: number;
 
-  // Absent on user messages (and every message stored before system messages existed) = 'text'
-  @Prop({ type: String, enum: ['text', 'system'] })
-  type?: 'text' | 'system';
+  // Absent on user messages (and every message stored before system messages existed) = 'text'.
+  // 'call': a finished call (CallService); content holds the rendered text
+  @Prop({ type: String, enum: ['text', 'system', 'call'] })
+  type?: 'text' | 'system' | 'call';
 
   // Set only when type === 'system'; content holds the rendered sentence
   @Prop({ type: SystemEventSchema })
   system?: SystemEvent;
+
+  // Set only when type === 'call'
+  @Prop({ type: CallRecordSchema })
+  call?: CallRecord;
 
   // Absent on messages without files (and on revoked ones: the files are deleted)
   @Prop({ type: [AttachmentSchema], default: undefined })
@@ -213,6 +252,9 @@ export function toMessagePayload(message: MessageDocument) {
             targetIds: (raw.system.targetIds ?? []).map((id) => id.toString()),
           },
         }
+      : {}),
+    ...(raw.type === 'call' && raw.call
+      ? { type: 'call' as const, call: toCallPayload(raw.call) }
       : {}),
     ...(raw.reactions?.length
       ? {

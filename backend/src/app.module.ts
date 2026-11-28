@@ -14,6 +14,7 @@ import { RealtimeModule } from './realtime/realtime.module';
 import { NotificationModule } from './notification/notification.module';
 import { SettingsModule } from './settings/settings.module';
 import { HealthModule } from './health/health.module';
+import { CallModule } from './call/call.module';
 import { ThrottlerStorageRedisService } from './auth/throttler-storage-redis.service';
 import { AppThrottlerGuard } from './auth/app-throttler.guard';
 
@@ -46,6 +47,7 @@ import { AppThrottlerGuard } from './auth/app-throttler.guard';
     NotificationModule,
     SettingsModule,
     HealthModule,
+    CallModule,
   ],
   controllers: [AppController],
   providers: [

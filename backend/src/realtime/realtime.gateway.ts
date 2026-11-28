@@ -16,12 +16,12 @@ import { UsersService } from 'src/users/users.service';
 import { RealtimeService } from './realtime.service';
 import { SessionService } from 'src/auth/session.service';
 import { errorMessage } from 'src/common/error-message';
-import { isAllowedOrigin } from 'src/common/allowed-origins';
 import { ThrottlerStorageRedisService } from 'src/auth/throttler-storage-redis.service';
 import { PresenceService } from './presence.service';
 import { createSocketAuthMiddleware } from './socket-auth.middleware';
 import type { GatewaySocket } from './socket-auth.middleware';
 import { SocketRedisAdapter } from './socket-redis-adapter';
+import { GATEWAY_OPTIONS } from './gateway-options';
 import type { RedisClient } from './socket-redis-adapter';
 
 // typing:start / typing:stop: at most one of each per socket per second
@@ -31,25 +31,14 @@ export const TYPING_MIN_INTERVAL_MS = 1_000;
 export const PRESENCE_SYNC_LIMIT = 10;
 export const PRESENCE_SYNC_WINDOW_MS = 10_000;
 
-type SocketAck<T = undefined> =
+export type SocketAck<T = undefined> =
   | (T extends undefined ? { ok: true } : { ok: true; data: T })
   | { ok: false; error: { code: string; message: string } };
 
-const ackError = (code: string, message: string) =>
+export const ackError = (code: string, message: string) =>
   ({ ok: false, error: { code, message } }) as const;
 
-@WebSocketGateway({
-  cors: {
-    origin: (origin, callback) => {
-      if (isAllowedOrigin(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error(`WebSocket CORS blocked for origin: ${origin}`));
-      }
-    },
-    credentials: true,
-  },
-})
+@WebSocketGateway(GATEWAY_OPTIONS)
 export class RealtimeGateway
   implements
     OnGatewayInit,
