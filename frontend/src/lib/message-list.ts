@@ -7,6 +7,11 @@ export function isRetryableSendError(err: unknown): boolean {
   return status === undefined || status >= 500;
 }
 
+// Conversations with an unsent message that gave up (status 'failed'): shown as "Gửi lỗi" in the list
+export function failedConversationIds(outbox: Message[]): Set<string> {
+  return new Set(outbox.filter((m) => m.status === 'failed').map((m) => String(m.conversationId)));
+}
+
 // Put a stored message into the list. The list holds stored messages in ascending seq, then
 // optimistic ones (no seq yet) at the end. The REST response and the `message:new` event carry the
 // same message: whichever arrives first replaces the optimistic copy (same clientMsgId), the other

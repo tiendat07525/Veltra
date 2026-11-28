@@ -75,6 +75,7 @@ export const ChatTab: React.FC<ChatTabProps> = ({
           onlineIds={chat.presence.onlineIds}
           typingByConversation={chat.presence.typingByConversation}
           mutedConversationIds={mutedConversationIds}
+          failedConversationIds={chat.messagesHook.failedConversationIds}
           onCreateNewConversation={async (params) => {
             try {
               const newConv = await chat.createNewConversation(params);

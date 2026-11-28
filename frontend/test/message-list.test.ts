@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyRevokes,
+  failedConversationIds,
   isRetryableSendError,
   mergeNewestPage,
   prependOlderPage,
@@ -130,5 +131,18 @@ describe('isRetryableSendError', () => {
     [{ response: { status: 429 } }, false],
   ])('%j -> %s', (err, expected) => {
     expect(isRetryableSendError(err)).toBe(expected);
+  });
+});
+
+describe('failedConversationIds', () => {
+  it('lists the conversations with a failed message, once each; sending ones do not count', () => {
+    const outbox = [
+      msg({ clientMsgId: 'a', conversationId: 'c1', status: 'failed' }),
+      msg({ clientMsgId: 'b', conversationId: 'c1', status: 'failed' }),
+      msg({ clientMsgId: 'c', conversationId: 'c2', status: 'sending' }),
+      msg({ clientMsgId: 'd', conversationId: 'c3', status: 'failed' }),
+    ];
+    expect([...failedConversationIds(outbox)].sort()).toEqual(['c1', 'c3']);
+    expect(failedConversationIds([]).size).toBe(0);
   });
 });

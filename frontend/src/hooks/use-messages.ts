@@ -6,6 +6,7 @@ import { socketService } from '@/services/socket/socket.service';
 import {
   applyRevokes,
   contiguousTop,
+  failedConversationIds,
   hasGap,
   mergeBySeq,
   mergeNewestPage,
@@ -369,8 +370,12 @@ export function useMessages(
     [conversationId, loading, stored, outbox]
   );
 
+  // Every conversation, not only the open one (the outbox keeps them all)
+  const failedIds = useMemo(() => failedConversationIds(outbox), [outbox]);
+
   return {
     messages,
+    failedConversationIds: failedIds,
     loading,
     error: open?.error ?? null,
     hasMore: open?.hasMore ?? false,

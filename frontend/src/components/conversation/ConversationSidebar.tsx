@@ -36,6 +36,8 @@ interface ConversationSidebarProps {
   typingByConversation?: Record<string, string[]>;
   // From settings (useSettings)
   mutedConversationIds?: Set<string>;
+  // Conversations with a message that failed to send (useMessages, from the outbox)
+  failedConversationIds?: Set<string>;
 }
 
 export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
@@ -52,6 +54,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
   onlineIds,
   typingByConversation,
   mutedConversationIds,
+  failedConversationIds,
 }) => {
   const [showNewModal, setShowNewModal] = useState(false);
   // Conversation waiting for the delete confirmation (trash button or long press on touch)
@@ -178,6 +181,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
               }
               typingUserIds={typingByConversation?.[conv._id]}
               isMuted={!!mutedConversationIds?.has(conv._id)}
+              hasFailedSend={!!failedConversationIds?.has(conv._id)}
             />
           ))
         )}
