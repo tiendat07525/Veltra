@@ -433,6 +433,7 @@ describe('MessageService with attachments', () => {
     findOne: jest.Mock;
     create: jest.Mock;
     findById: jest.Mock;
+    updateOne: jest.Mock;
   };
   let conversationModel: {
     findById: jest.Mock;
@@ -464,6 +465,7 @@ describe('MessageService with attachments', () => {
         ]),
       ),
       findById: jest.fn(),
+      updateOne: jest.fn().mockResolvedValue({}),
     };
     conversationModel = {
       findById: jest.fn().mockResolvedValue(conversationDoc()),
@@ -635,6 +637,10 @@ describe('MessageService with attachments', () => {
       }),
     };
     messageModel.findById.mockResolvedValue(message);
+    messageModel.updateOne.mockImplementation(() => {
+      order.push('unset reactions');
+      return Promise.resolve({});
+    });
     attachments.destroy.mockImplementation(() => order.push('destroy'));
 
     await service.revokeMessage(message._id.toString(), me.toString());
@@ -644,6 +650,10 @@ describe('MessageService with attachments', () => {
     expect(attachments.destroy).toHaveBeenCalledWith([
       { publicId: storedAttachment.publicId, resourceType: 'image' },
     ]);
-    expect(order).toEqual(['save', 'destroy']);
+    expect(order).toEqual(['save', 'unset reactions', 'destroy']);
+    expect(messageModel.updateOne).toHaveBeenCalledWith(
+      { _id: message._id },
+      { $unset: { reactions: 1 } },
+    );
   });
 });

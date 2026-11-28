@@ -19,6 +19,7 @@ import {
   Message,
   MessageDocument,
   toAttachmentPayload,
+  toReactionsPayload,
 } from '../messages/schemas/message.schema';
 import { isDuplicateKeyError } from '../common/mongo-errors';
 import { User, UserDocument } from '../users/schemas/user.schema';
@@ -301,6 +302,9 @@ export class ConversationService {
       // publicId / resourceType stay on the server
       attachments: msg.attachments?.length
         ? msg.attachments.map(toAttachmentPayload)
+        : undefined,
+      reactions: msg.reactions?.length
+        ? toReactionsPayload(msg.reactions)
         : undefined,
     }));
 

@@ -1,11 +1,21 @@
 export type MessageType = 'text' | 'image' | 'file' | 'audio' | 'video' | 'system' | 'call';
-export type ReactionEmoji = '👍' | '❤️' | '😂' | '😮' | '😢' | '🔥' | '😡' | '🙏';
+// The fixed set the server accepts (lib/reactions.ts REACTION_EMOJIS)
+export type ReactionEmoji = '👍' | '❤️' | '😂' | '😮' | '😢';
 
+// One user's reaction; a user has at most one per message
 export interface MessageReaction {
-  emoji: ReactionEmoji | string;
-  userId?: string;
-  users?: string[];
-  count?: number;
+  userId: string;
+  emoji: ReactionEmoji;
+}
+
+// `message:reaction` event and the PUT / DELETE /message/:id/reaction response
+export interface ReactionUpdate {
+  messageId: string;
+  conversationId: string;
+  // In reaction order; [] = none
+  reactions: MessageReaction[];
+  // +1 per change on the server: the highest one is the current state
+  reactionsVersion: number;
 }
 
 // Group change recorded as a system message; the actor is senderId
@@ -60,7 +70,9 @@ export interface Message {
     senderName?: string;
     content?: string;
   };
+  // Absent = none (also on revoked messages)
   reactions?: MessageReaction[];
+  reactionsVersion?: number;
   isPinned?: boolean;
   isDeleted?: boolean;
   isRevoked?: boolean;

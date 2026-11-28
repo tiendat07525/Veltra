@@ -1,15 +1,17 @@
 'use client';
 
-import React, { useCallback, useRef, useState } from 'react';
-import { AlertCircle, RotateCcw } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertCircle, RotateCcw, SmilePlus } from 'lucide-react';
 import { Conversation } from '@/types/conversation';
-import { Message } from '@/types/message';
+import { Message, ReactionEmoji } from '@/types/message';
 import { formatTime } from '@/lib/utils';
 import { isEmojiOnly } from '@/lib/emoji';
 import { MessageAttachments } from './MessageAttachments';
 import { InlineError } from '@/components/ui/InlineError';
 import { useLongPress } from '@/hooks/use-long-press';
 import { MessageActionOverlay } from './MessageActionOverlay';
+import { ReactionPicker } from './ReactionPicker';
+import { groupReactions, myReaction } from '@/lib/reactions';
 
 interface MessageBubbleProps {
   msg: Message;
@@ -17,6 +19,8 @@ interface MessageBubbleProps {
   currentUserId: string;
   // Rejects with an Error whose message is shown under the bubble
   onRevokeMessage?: (id: string) => Promise<void>;
+  // Set (emoji) / remove (null) my reaction; rejects with an Error shown under the bubble
+  onReactMessage?: (id: string, emoji: ReactionEmoji | null) => Promise<void>;
   onRetryMessage?: (clientMsgId: string) => void;
   onOpenImage: (url: string, name: string) => void;
 }
@@ -45,10 +49,17 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   conversation,
   currentUserId,
   onRevokeMessage,
+  onReactMessage,
   onRetryMessage,
   onOpenImage,
 }) => {
   const [revokeError, setRevokeError] = useState<string | null>(null);
+  const [reactError, setReactError] = useState<string | null>(null);
+  // A reaction change is on the way: not optimistic, the buttons wait for the server
+  const [reacting, setReacting] = useState(false);
+  // Desktop: the hover row of five emoji
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
   // Bubble position while the touch long-press menu is open
   const [pressedRect, setPressedRect] = useState<DOMRect | null>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
@@ -58,15 +69,56 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   // Optimistic copy not stored yet: no real _id, so it cannot be revoked
   const isPending = msg.status === 'sending' || msg.status === 'failed';
   const canRevoke = msg.type !== 'system' && isOwn && !msg.isRevoked && !isPending && !!onRevokeMessage;
+  const canReact = msg.type !== 'system' && !msg.isRevoked && !isPending && !!onReactMessage;
+  const hasMenu = canRevoke || canReact;
+  const reactionGroups = groupReactions(msg.reactions, currentUserId);
+  const mine = myReaction(msg.reactions, currentUserId);
 
-  // Touch only: long press opens the menu with "Thu hồi"; desktop keeps the hover button
+  // Touch only: long press opens the menu (reactions, "Thu hồi" on own messages); desktop keeps the hover buttons
   const longPress = useLongPress(
     () => {
       if (bubbleRef.current) setPressedRect(bubbleRef.current.getBoundingClientRect());
     },
-    { enabled: canRevoke }
+    { enabled: hasMenu }
   );
   const closeMenu = useCallback(() => setPressedRect(null), []);
+
+  // The hover row closes on a click outside it or Escape
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!pickerRef.current?.contains(e.target as Node)) setPickerOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setPickerOpen(false);
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [pickerOpen]);
+
+  const react = async (emoji: ReactionEmoji | null) => {
+    if (!onReactMessage || reacting) return;
+    setPickerOpen(false);
+    setReactError(null);
+    setReacting(true);
+    try {
+      await onReactMessage(msg._id || (msg.id as string), emoji);
+    } catch (err: unknown) {
+      setReactError(err instanceof Error && err.message ? err.message : 'Không thể thả cảm xúc');
+    } finally {
+      setReacting(false);
+    }
+  };
+  // Picking my current emoji again removes it
+  const pick = (emoji: ReactionEmoji) => void react(emoji === mine ? null : emoji);
+
+  const nameOf = (userId: string) => {
+    if (String(userId) === String(currentUserId)) return 'Bạn';
+    const p = conversation.participants.find((x) => String(x._id) === String(userId));
+    return p?.displayName || p?.username || 'Người dùng';
+  };
 
   const handleRevoke = async () => {
     if (!onRevokeMessage) return;
@@ -96,7 +148,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       ref={inMenu ? undefined : bubbleRef}
       {...(inMenu ? {} : longPress)}
       className={`${inMenu ? 'w-full' : 'max-w-[75%] sm:max-w-[70%] md:max-w-[65%]'} px-4 py-2.5 rounded-2xl text-sm leading-relaxed shadow-xs ${
-        canRevoke ? 'pointer-coarse:select-none [-webkit-touch-callout:none]' : ''
+        hasMenu ? 'pointer-coarse:select-none [-webkit-touch-callout:none]' : ''
       } ${!inMenu && pressedRect ? 'invisible' : ''} ${msg.isRevoked
         ? `bg-transparent border border-line text-fg-muted italic ${isOwn ? 'rounded-br-xs' : 'rounded-bl-xs'}`
         : isOwn
@@ -158,23 +210,98 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   return (
     <div className="mb-2.5">
       <div className={`flex group ${isOwn ? 'justify-end' : 'justify-start'}`}>
-        {/* Hover revoke button (mouse); touch screens use the long-press menu instead */}
-        {canRevoke && (
-          <div className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity mr-2 pointer-coarse:hidden">
-            <button
-              type="button"
-              onClick={handleRevoke}
-              className="p-1.5 text-fg-muted hover:text-danger hover:bg-danger-soft rounded-full transition-colors"
-              title="Thu hồi tin nhắn"
-              aria-label="Thu hồi tin nhắn"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
+        {/* Hover buttons (mouse), beside the bubble on the inner side; touch screens use the long-press menu */}
+        {hasMenu && (
+          <div
+            className={`relative flex items-center gap-0.5 transition-opacity pointer-coarse:hidden ${
+              isOwn ? 'order-first mr-2' : 'order-last ml-2'
+            } ${pickerOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'}`}
+          >
+            {canReact && (
+              <div ref={pickerRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen((open) => !open)}
+                  disabled={reacting}
+                  aria-expanded={pickerOpen}
+                  className="p-1.5 text-fg-muted hover:text-fg hover:bg-surface-2 rounded-full transition-colors disabled:opacity-50"
+                  title="Thả cảm xúc"
+                  aria-label="Thả cảm xúc"
+                >
+                  <SmilePlus className="w-3.5 h-3.5" />
+                </button>
+                {pickerOpen && (
+                  <ReactionPicker
+                    selected={mine}
+                    disabled={reacting}
+                    onPick={pick}
+                    className={`absolute bottom-full mb-1 z-20 p-1 rounded-full border border-line bg-surface shadow-lg ${
+                      isOwn ? 'right-0' : 'left-0'
+                    }`}
+                  />
+                )}
+              </div>
+            )}
+            {canRevoke && (
+              <button
+                type="button"
+                onClick={handleRevoke}
+                className="p-1.5 text-fg-muted hover:text-danger hover:bg-danger-soft rounded-full transition-colors"
+                title="Thu hồi tin nhắn"
+                aria-label="Thu hồi tin nhắn"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         )}
 
         {renderBubble(false)}
       </div>
+      {reactionGroups.length > 0 && !msg.isRevoked && (
+        <div className={`flex flex-wrap gap-1 mt-1 ${isOwn ? 'justify-end' : 'justify-start'}`}>
+          {reactionGroups.map((g) => {
+            const names = g.userIds.map(nameOf).join(', ');
+            const label = `${g.emoji} ${g.count}`;
+            const chip = 'inline-flex items-center gap-1 h-6 px-2 rounded-full border text-xs leading-none select-none';
+            // Only my own chip is a button: it removes my reaction
+            return g.mine && canReact ? (
+              <button
+                key={g.emoji}
+                type="button"
+                disabled={reacting}
+                onClick={() => void react(null)}
+                aria-pressed="true"
+                title={`${names} · bấm để bỏ`}
+                aria-label={`${label}: ${names}. Bấm để bỏ cảm xúc của bạn`}
+                className={`${chip} border-accent bg-accent-soft text-fg hover:brightness-95 disabled:opacity-50`}
+              >
+                <span aria-hidden="true">{g.emoji}</span>
+                <span className="font-semibold">{g.count}</span>
+              </button>
+            ) : (
+              <span
+                key={g.emoji}
+                title={names}
+                aria-label={`${label}: ${names}`}
+                className={`${chip} border-line bg-surface text-fg-muted`}
+              >
+                <span aria-hidden="true">{g.emoji}</span>
+                <span>{g.count}</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
+      {reactError && (
+        <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
+          <InlineError
+            message={reactError}
+            onDismiss={() => setReactError(null)}
+            className="mt-1 max-w-[75%] sm:max-w-[70%] md:max-w-[65%]"
+          />
+        </div>
+      )}
       {revokeError && (
         <div className="flex justify-end">
           <InlineError
@@ -192,17 +319,32 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           bubble={renderBubble(true)}
           onClose={closeMenu}
           actions={
-            <button
-              type="button"
-              onClick={() => {
-                closeMenu();
-                void handleRevoke();
-              }}
-              className="w-full min-h-11 px-4 flex items-center gap-3 text-sm font-medium text-danger hover:bg-danger-soft active:bg-danger-soft transition-colors"
-            >
-              <RotateCcw className="w-4 h-4" aria-hidden="true" />
-              Thu hồi
-            </button>
+            <>
+              {canReact && (
+                <ReactionPicker
+                  selected={mine}
+                  disabled={reacting}
+                  onPick={(emoji) => {
+                    closeMenu();
+                    pick(emoji);
+                  }}
+                  className={`p-1.5 justify-between ${canRevoke ? 'border-b border-line' : ''}`}
+                />
+              )}
+              {canRevoke && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeMenu();
+                    void handleRevoke();
+                  }}
+                  className="w-full min-h-11 px-4 flex items-center gap-3 text-sm font-medium text-danger hover:bg-danger-soft active:bg-danger-soft transition-colors"
+                >
+                  <RotateCcw className="w-4 h-4" aria-hidden="true" />
+                  Thu hồi
+                </button>
+              )}
+            </>
           }
         />
       )}

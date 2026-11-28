@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Message } from '@/types/message';
+import { Message, ReactionEmoji, ReactionUpdate } from '@/types/message';
 import { messageService } from '@/services/api/message.service';
 import { conversationService } from '@/services/api/conversation.service';
 import { socketService } from '@/services/socket/socket.service';
@@ -13,6 +13,7 @@ import {
   upsertMessage,
   withOutbox,
 } from '@/lib/message-list';
+import { applyReactions, KnownReactions, rememberReactions } from '@/lib/reactions';
 import { useOutbox } from './use-outbox';
 
 // Stored messages of one conversation. Replaced as a whole when another conversation is opened.
@@ -26,7 +27,12 @@ interface History {
   loadingMore: boolean;
   // Message id -> text shown instead; applied to every response that arrives later
   revoked: ReadonlyMap<string, string>;
+  // Newest reactions per message id (events / own changes); a later response only wins if it is newer
+  reactions: KnownReactions;
 }
+
+// What every response or event that brings messages must go through before it is shown
+const withKnown = (list: Message[], h: History) => applyReactions(applyRevokes(list, h.revoked), h.reactions);
 
 const NO_MESSAGES: Message[] = [];
 const PAGE_SIZE = 50;
@@ -73,8 +79,18 @@ export function useMessages(
   const addStored = useCallback(
     (message: Message) =>
       updateHistory(String(message.conversationId), (h) => ({
-        messages: applyRevokes(upsertMessage(h.messages, message), h.revoked),
+        messages: withKnown(upsertMessage(h.messages, message), h),
       })),
+    [updateHistory]
+  );
+
+  // Event or own PUT / DELETE response: kept only if newer than what is held (both arrive for own changes)
+  const applyReactionUpdate = useCallback(
+    (update: ReactionUpdate) =>
+      updateHistory(String(update.conversationId), (h) => {
+        const reactions = rememberReactions(h.reactions, update);
+        return reactions === h.reactions ? {} : { reactions, messages: withKnown(h.messages, { ...h, reactions }) };
+      }),
     [updateHistory]
   );
 
@@ -133,7 +149,7 @@ export function useMessages(
           const freshFrom = fresh[0]?.seq ?? 1;
           if (freshFrom <= top + 1) {
             updateHistory(convId, (h) => ({
-              messages: applyRevokes(mergeBySeq(h.messages, fresh), h.revoked),
+              messages: withKnown(mergeBySeq(h.messages, fresh), h),
               ...(freshFrom <= oldest ? { hasMore } : {}),
             }));
           } else {
@@ -141,7 +157,7 @@ export function useMessages(
             // Older messages still on the way no longer fit in front of them.
             nextGeneration();
             updateHistory(convId, (h) => ({
-              messages: applyRevokes(mergeNewestPage(h.messages, fresh), h.revoked),
+              messages: withKnown(mergeNewestPage(h.messages, fresh), h),
               hasMore,
               loadingMore: false,
             }));
@@ -188,13 +204,14 @@ export function useMessages(
       hasMore: false,
       loadingMore: false,
       revoked: held?.revoked ?? new Map(),
+      reactions: held?.reactions ?? new Map(),
     });
     try {
       const data = await messageService.getMessages(conversationId);
       if (generation !== generationRef.current) return;
       settle(data.messages);
       updateHistory(conversationId, (h) => ({
-        messages: applyRevokes(mergeNewestPage(h.messages, data.messages), h.revoked),
+        messages: withKnown(mergeNewestPage(h.messages, data.messages), h),
         hasMore: data.hasMore,
         loading: false,
       }));
@@ -251,6 +268,8 @@ export function useMessages(
       });
     };
 
+    const handleReaction = (payload: ReactionUpdate) => applyReactionUpdate(payload);
+
     const handleRemoved = (payload: { conversationId: string }) => dropConversation(String(payload.conversationId));
 
     const handleConnect = () => {
@@ -261,14 +280,16 @@ export function useMessages(
     socketService.on('connect', handleConnect);
     socketService.on('message:new', handleNewMessage);
     socketService.on('message:revoked', handleRevoked);
+    socketService.on('message:reaction', handleReaction);
     socketService.on('conversation:removed', handleRemoved);
     return () => {
       socketService.off('connect', handleConnect);
       socketService.off('message:new', handleNewMessage);
       socketService.off('message:revoked', handleRevoked);
+      socketService.off('message:reaction', handleReaction);
       socketService.off('conversation:removed', handleRemoved);
     };
-  }, [addStored, updateHistory, settle, dropConversation, markSeen, fetchMessages, resync]);
+  }, [addStored, updateHistory, settle, dropConversation, markSeen, fetchMessages, resync, applyReactionUpdate]);
 
   const loadMore = useCallback(async () => {
     const held = historyRef.current;
@@ -284,7 +305,7 @@ export function useMessages(
       if (generation !== generationRef.current) return;
       settle(data.messages);
       updateHistory(conversationId, (h) => ({
-        messages: applyRevokes(prependOlderPage(h.messages, data.messages), h.revoked),
+        messages: withKnown(prependOlderPage(h.messages, data.messages), h),
         hasMore: data.hasMore,
         loadingMore: false,
       }));
@@ -321,6 +342,23 @@ export function useMessages(
     [updateHistory]
   );
 
+  // Set (emoji) or remove (null) my reaction. Not optimistic: shown once the server answers.
+  // Rejects with the request error (the bubble shows it).
+  const reactToMessage = useCallback(
+    async (messageId: string, emoji: ReactionEmoji | null) => {
+      try {
+        const update = emoji
+          ? await messageService.setReaction(messageId, emoji)
+          : await messageService.removeReaction(messageId);
+        applyReactionUpdate(update);
+      } catch (err: unknown) {
+        console.error('Lỗi khi thả cảm xúc:', err);
+        throw err;
+      }
+    },
+    [applyReactionUpdate]
+  );
+
   // Never the history of another conversation: after a switch it counts as loading until its own arrives
   const open = history && history.conversationId === conversationId ? history : null;
   const loading = enabled && !!conversationId && (!open || open.loading);
@@ -342,5 +380,6 @@ export function useMessages(
     loadMore,
     refetch: fetchMessages,
     revokeMessage,
+    reactToMessage,
   };
 }

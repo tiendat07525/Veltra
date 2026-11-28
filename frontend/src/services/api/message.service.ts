@@ -1,5 +1,5 @@
 import api from './api';
-import { AttachmentKind, Message, MessagesResponse } from '@/types/message';
+import { AttachmentKind, Message, MessagesResponse, ReactionEmoji, ReactionUpdate } from '@/types/message';
 
 // `api` has no default timeout; without one a hung send would never be retried
 const SEND_TIMEOUT_MS = 15_000;
@@ -27,6 +27,16 @@ export const messageService = {
 
   async revokeMessage(messageId: string): Promise<{ success: boolean; message: string; data?: { messageId: string; conversationId: string } }> {
     const res = await api.patch(`/message/${messageId}/revoke`);
+    return res.data;
+  },
+
+  async setReaction(messageId: string, emoji: ReactionEmoji): Promise<ReactionUpdate> {
+    const res = await api.put(`/message/${messageId}/reaction`, { emoji });
+    return res.data;
+  },
+
+  async removeReaction(messageId: string): Promise<ReactionUpdate> {
+    const res = await api.delete(`/message/${messageId}/reaction`);
     return res.data;
   },
 };

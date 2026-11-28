@@ -93,6 +93,29 @@ export function toAttachmentPayload(attachment: Attachment) {
   };
 }
 
+// The only reactions a message can get (one per user per message)
+export const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢'] as const;
+export type ReactionEmoji = (typeof REACTION_EMOJIS)[number];
+
+@Schema({ _id: false })
+export class Reaction {
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  userId: Types.ObjectId;
+
+  @Prop({ type: String, enum: REACTION_EMOJIS, required: true })
+  emoji: ReactionEmoji;
+}
+
+export const ReactionSchema = SchemaFactory.createForClass(Reaction);
+
+// What clients receive for reactions: in the order they were made, userId as a string
+export function toReactionsPayload(reactions?: Reaction[] | null) {
+  return (reactions ?? []).map((r) => ({
+    userId: r.userId.toString(),
+    emoji: r.emoji,
+  }));
+}
+
 @Schema({
   timestamps: true,
 })
@@ -155,6 +178,15 @@ export class Message {
   @Prop({ type: [AttachmentSchema], default: undefined })
   attachments?: Attachment[];
 
+  // One entry per user who reacted, in reaction order; absent = none (also after a revoke).
+  // Written only by MessageService.setReaction / revokeMessage (atomic updates).
+  @Prop({ type: [ReactionSchema], default: undefined })
+  reactions?: Reaction[];
+
+  // +1 on every reaction change; clients keep the reactions with the highest version
+  @Prop({ type: Number })
+  reactionsVersion?: number;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -180,6 +212,12 @@ export function toMessagePayload(message: MessageDocument) {
             action: raw.system.action,
             targetIds: (raw.system.targetIds ?? []).map((id) => id.toString()),
           },
+        }
+      : {}),
+    ...(raw.reactions?.length
+      ? {
+          reactions: toReactionsPayload(raw.reactions),
+          reactionsVersion: raw.reactionsVersion ?? 0,
         }
       : {}),
     seq: raw.seq,

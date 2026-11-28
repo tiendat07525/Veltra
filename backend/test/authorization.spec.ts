@@ -52,6 +52,7 @@ describe('Authorization & IDOR/BOLA Protection Suite (P1.3)', () => {
     findById: jest.fn(),
     create: jest.fn(),
     deleteMany: jest.fn(),
+    updateOne: jest.fn().mockResolvedValue({}),
   };
 
   const mockRealtimeGateway = {

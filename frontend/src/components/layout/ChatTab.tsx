@@ -134,6 +134,13 @@ export const ChatTab: React.FC<ChatTabProps> = ({
               throw new Error(apiErr?.response?.data?.message || 'Không thể thu hồi tin nhắn');
             })
           }
+          onReactMessage={(id, emoji) =>
+            chat.messagesHook.reactToMessage(id, emoji).catch((err: unknown) => {
+              // Shown under the message
+              const apiErr = err as { response?: { data?: { message?: string } } };
+              throw new Error(apiErr?.response?.data?.message || 'Không thể thả cảm xúc');
+            })
+          }
           onOpenGroupInfo={() => setGroupInfoFor(chat.activeConversationId)}
           onlineIds={chat.presence.onlineIds}
           typingUserIds={

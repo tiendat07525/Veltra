@@ -45,13 +45,13 @@ export function prependOlderPage(held: Message[], page: Message[]): Message[] {
   return [...page.filter((m) => !heldIds.has(String(m._id))), ...held];
 }
 
-// A message is never un-revoked: a response built before the revoke must not bring its content back.
-// `revoked` maps message id -> the text shown instead.
+// A message is never un-revoked: a response built before the revoke must not bring its content (or its
+// reactions) back. `revoked` maps message id -> the text shown instead.
 export function applyRevokes(list: Message[], revoked: ReadonlyMap<string, string>): Message[] {
   if (revoked.size === 0) return list;
   return list.map((m) => {
     const content = revoked.get(String(m._id));
-    return content === undefined ? m : { ...m, isRevoked: true, content, attachments: undefined };
+    return content === undefined ? m : { ...m, isRevoked: true, content, attachments: undefined, reactions: undefined };
   });
 }
 

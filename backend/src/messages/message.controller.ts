@@ -6,9 +6,12 @@ import {
   UseGuards,
   Patch,
   Param,
+  Put,
+  Delete,
 } from '@nestjs/common';
 import { MessageService } from './message.service';
 import { CreateMessageDto, SignAttachmentDto } from './dto/create-message.dto';
+import { ReactionDto } from './dto/reaction.dto';
 import { Throttle } from '@nestjs/throttler';
 import { AttachmentService } from './attachment.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
@@ -48,6 +51,35 @@ export class MessageController {
     return this.messageService.revokeMessage(
       messageId,
       req.user._id.toString(),
+    );
+  }
+
+  // Set / replace my reaction (one per user per message)
+  @Put(':messageId/reaction')
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
+  async setReaction(
+    @Param('messageId') messageId: string,
+    @Body() dto: ReactionDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.messageService.setReaction(
+      messageId,
+      req.user._id.toString(),
+      dto.emoji,
+    );
+  }
+
+  // Remove my reaction; no-op when there is none
+  @Delete(':messageId/reaction')
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
+  async removeReaction(
+    @Param('messageId') messageId: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.messageService.setReaction(
+      messageId,
+      req.user._id.toString(),
+      null,
     );
   }
 }
